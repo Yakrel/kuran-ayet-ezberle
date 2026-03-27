@@ -1,0 +1,42 @@
+{
+  "expo": {
+    "name": "Kur'an - Ayet Ezberle",
+    "slug": "kuran-ayet-ezberle",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#020617"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.berkayyetgin.kuranayetezberle"
+    },
+    "android": {
+      "package": "com.berkayyetgin.kuranayetezberle",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "33dd3b2a-fa78-451d-b52f-2efaf137133c"
+      }
+    },
+    "owner": "yakrel",
+    "plugins": [
+      "expo-localization",
+      "expo-font"
+    ]
+  }
+}
