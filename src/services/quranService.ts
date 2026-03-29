@@ -25,6 +25,10 @@ let cachedQuranData: QuranData | null = null;
 let cachedSurahsById = new Map<number, RawSurah>();
 let cachedVersesByPage = new Map<number, Array<{ surahId: number; verse: RawVerse }>>();
 
+function normalizeArabicVerseText(text: string): string {
+  return text.normalize('NFC');
+}
+
 function getTranslationText(verse: RawVerse, translationAuthorId: number): string {
   return verse.translations[String(translationAuthorId)] ?? verse.translations['6'] ?? '';
 }
@@ -87,7 +91,7 @@ export async function fetchSurahDetail(
       surah_id: surah.id,
       verse_number: verse.verse_number,
       page: verse.page,
-      verse: verse.verse,
+      verse: normalizeArabicVerseText(verse.verse),
       translation: {
         text: getTranslationText(verse, translationAuthorId),
       },
@@ -106,7 +110,7 @@ export async function fetchPageVerses(
     surah_id: surahId,
     verse_number: verse.verse_number,
     page: verse.page,
-    verse: verse.verse,
+    verse: normalizeArabicVerseText(verse.verse),
     translation: {
       text: getTranslationText(verse, translationAuthorId),
     },

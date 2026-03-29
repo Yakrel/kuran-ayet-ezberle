@@ -163,6 +163,7 @@ function MainApp() {
   const [playbackState, dispatchPlayback] = useReducer(playbackReducer, initialPlaybackState);
   const [navigationState, dispatchNavigation] = useReducer(navigationReducer, initialNavigationState);
   const pendingPageJumpRef = useRef<VerseLocation | null>(null);
+  const queuedVersesRef = useRef<Verse[]>([]);
 
   // Track and save the last visible verse
   useEffect(() => {
@@ -177,14 +178,6 @@ function MainApp() {
     selectedSurahId,
     selectedTranslationAuthorId,
     text.loadingSurahDetailError
-  );
-  
-  const audioPlayer = useAudioPlayer(
-    setErrorMessage,
-    setIsPreparingAudio,
-    text.stoppingAudioError,
-    text.playbackError,
-    text.audioModeError
   );
   
   const computed = useComputedState(
@@ -275,6 +268,28 @@ function MainApp() {
       page: nextVerse.page,
     });
   }, [surahDetail, syncToVerseLocation]);
+
+  const handleAudioTrackChange = useCallback((payload: { verseIndex: number; repeat: number }) => {
+    dispatchPlayback({ type: 'SET_REPEAT', repeat: payload.repeat });
+    dispatchPlayback({ type: 'SET_VERSE_INDEX', index: payload.verseIndex });
+  }, []);
+
+  const handleQueueEnded = useCallback(() => {
+    const completedVerses = queuedVersesRef.current;
+    if (completedVerses.length > 0) {
+      prepareNextRange(completedVerses);
+    }
+  }, [prepareNextRange]);
+
+  const audioPlayer = useAudioPlayer(
+    setErrorMessage,
+    setIsPreparingAudio,
+    text.stoppingAudioError,
+    text.playbackError,
+    text.audioModeError,
+    handleAudioTrackChange,
+    handleQueueEnded
+  );
   
   const resolveRange = useCallback((overrideStartVerse?: number) => {
     if (!surahDetail) {
@@ -299,51 +314,13 @@ function MainApp() {
     return { verses, repeatCount, startVerse, endVerse };
   }, [verseCountInput, repeatCountInput, startVerseInput, surahDetail, text]);
 
-  const runPlaybackSession = useCallback(
-    async (sessionToken: number, verses: Verse[], repeatCount: number): Promise<void> => {
-      for (let repeat = 1; repeat <= repeatCount; repeat += 1) {
-        if (sessionToken !== audioPlayer.playbackTokenRef.current) {
-          return;
-        }
-        dispatchPlayback({ type: 'SET_REPEAT', repeat });
-        
-        for (let index = 0; index < verses.length; index += 1) {
-          if (sessionToken !== audioPlayer.playbackTokenRef.current) {
-            return;
-          }
-          dispatchPlayback({ type: 'SET_VERSE_INDEX', index });
-          
-          // Determine the next verse to preload
-          let nextVerse: Verse | null = null;
-          if (index + 1 < verses.length) {
-            // Next verse in the range
-            nextVerse = verses[index + 1];
-          } else if (repeat < repeatCount) {
-            // First verse of the next repeat
-            nextVerse = verses[0];
-          }
-
-          // Trigger preload in background (do not await it here, we want it to happen while playing)
-          if (nextVerse) {
-            void audioPlayer.preloadVerse(nextVerse);
-          }
-
-          await audioPlayer.playSingleVerse(verses[index], sessionToken);
-        }
-      }
-      if (sessionToken === audioPlayer.playbackTokenRef.current) {
-        prepareNextRange(verses);
-      }
-    },
-    [audioPlayer, prepareNextRange]
-  );
-
   const handleStartPlayback = useCallback(async (overrideStartVerse?: number) => {
     try {
       const { verses, repeatCount, startVerse, endVerse } = resolveRange(overrideStartVerse);
       await audioPlayer.stopPlayback();
       const nextSessionToken = audioPlayer.playbackTokenRef.current + 1;
       audioPlayer.playbackTokenRef.current = nextSessionToken;
+      queuedVersesRef.current = verses;
       setErrorMessage(null);
       dispatchPlayback({
         type: 'START_PLAYBACK',
@@ -351,16 +328,18 @@ function MainApp() {
         repeatCount,
         rangeText: `${startVerse}-${endVerse}`,
       });
-      await runPlaybackSession(nextSessionToken, verses, repeatCount);
+      await audioPlayer.startPlaybackSession(verses, repeatCount, nextSessionToken);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : text.startingPlaybackError);
       await audioPlayer.stopPlayback();
+      queuedVersesRef.current = [];
       dispatchPlayback({ type: 'STOP_PLAYBACK' });
     }
-  }, [resolveRange, runPlaybackSession, audioPlayer, text.startingPlaybackError]);
+  }, [resolveRange, audioPlayer, text.startingPlaybackError]);
   
   const handleStopPlayback = useCallback(async () => {
     await audioPlayer.stopPlayback();
+    queuedVersesRef.current = [];
     dispatchPlayback({ type: 'STOP_PLAYBACK' });
   }, [audioPlayer]);
   

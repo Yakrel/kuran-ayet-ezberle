@@ -45,6 +45,7 @@ export type TranslationStrings = {
   downloadingAll: string;
   downloadComplete: string;
   downloadError: string;
+  lowStorageWarning: string;
   cancel: string;
   loadingSurahsError: string;
   loadingSurahDetailError: string;

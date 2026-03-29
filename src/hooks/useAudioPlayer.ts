@@ -1,192 +1,189 @@
 import { useCallback, useEffect, useRef } from 'react';
-import { Audio, InterruptionModeAndroid, InterruptionModeIOS, type AVPlaybackStatus } from 'expo-av';
-import * as KeepAwake from 'expo-keep-awake';
-import { getOrDownloadVerseAudio } from '../services/audioCache';
+import TrackPlayer, {
+  AppKilledPlaybackBehavior,
+  Capability,
+  Event,
+  RepeatMode,
+  useTrackPlayerEvents,
+} from 'react-native-track-player';
+import { getPreferredVerseAudioUri } from '../services/audioCache';
 import type { Verse } from '../types/quran';
 
+type TrackChangePayload = {
+  verseIndex: number;
+  repeat: number;
+};
+
 type UseAudioPlayerReturn = {
-  soundRef: React.MutableRefObject<Audio.Sound | null>;
-  playSingleVerse: (verse: Verse, sessionToken: number) => Promise<void>;
-  preloadVerse: (verse: Verse) => Promise<void>;
+  startPlaybackSession: (verses: Verse[], repeatCount: number, sessionToken: number) => Promise<void>;
   stopPlayback: () => Promise<void>;
-  unloadCurrentSound: () => Promise<void>;
   playbackTokenRef: React.MutableRefObject<number>;
 };
+
+type QueuedVerseTrack = {
+  id: string;
+  url: string;
+  title: string;
+  artist: string;
+  verseIndex: number;
+  repeat: number;
+};
+
+const RECITER_NAME = 'Saad Al-Ghamdi';
 
 export function useAudioPlayer(
   setErrorMessage: (error: string | null) => void,
   setIsPreparingAudio: (preparing: boolean) => void,
   stoppingAudioError: string,
   playbackError: string,
-  audioModeError: string
+  audioModeError: string,
+  onTrackChange: (payload: TrackChangePayload) => void,
+  onQueueEnded: () => void
 ): UseAudioPlayerReturn {
-  const soundRef = useRef<Audio.Sound | null>(null);
-  const preloadedSoundRef = useRef<{ sound: Audio.Sound; verseKey: string } | null>(null);
   const playbackTokenRef = useRef(0);
-  const pendingVerseResolveRef = useRef<(() => void) | null>(null);
+  const setupPromiseRef = useRef<Promise<void> | null>(null);
+  const activeSessionTokenRef = useRef<number | null>(null);
+  const onTrackChangeRef = useRef(onTrackChange);
+  const onQueueEndedRef = useRef(onQueueEnded);
 
-  const resolvePendingVerse = () => {
-    pendingVerseResolveRef.current?.();
-    pendingVerseResolveRef.current = null;
-  };
+  useEffect(() => {
+    onTrackChangeRef.current = onTrackChange;
+  }, [onTrackChange]);
 
-  const unloadSound = async (sound: Audio.Sound | null) => {
-    if (!sound) {
-      return;
+  useEffect(() => {
+    onQueueEndedRef.current = onQueueEnded;
+  }, [onQueueEnded]);
+
+  const ensurePlayerSetup = useCallback(async () => {
+    if (!setupPromiseRef.current) {
+      setupPromiseRef.current = (async () => {
+        try {
+          await TrackPlayer.setupPlayer();
+        } catch (error) {
+          const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
+          if (code !== 'player_already_initialized') {
+            throw error;
+          }
+        }
+
+        await TrackPlayer.updateOptions({
+          capabilities: [Capability.Play, Capability.Pause, Capability.Stop],
+          compactCapabilities: [Capability.Play, Capability.Pause, Capability.Stop],
+          notificationCapabilities: [Capability.Play, Capability.Pause, Capability.Stop],
+          progressUpdateEventInterval: 0.25,
+          android: {
+            appKilledPlaybackBehavior: AppKilledPlaybackBehavior.StopPlaybackAndRemoveNotification,
+            alwaysPauseOnInterruption: true,
+          },
+        });
+
+        await TrackPlayer.setRepeatMode(RepeatMode.Off);
+      })().catch((error) => {
+        setupPromiseRef.current = null;
+        throw error;
+      });
     }
 
     try {
-      sound.setOnPlaybackStatusUpdate(null);
-      const status = await sound.getStatusAsync();
-      if (status.isLoaded) {
-        await sound.stopAsync();
-        await sound.unloadAsync();
-      }
-    } catch {
-      // Ignore cleanup errors during interruption or teardown.
+      await setupPromiseRef.current;
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : audioModeError);
+      throw error;
     }
-  };
+  }, [audioModeError, setErrorMessage]);
+
+  const buildQueue = useCallback(async (verses: Verse[], repeatCount: number, sessionToken: number) => {
+    const queue: QueuedVerseTrack[] = [];
+
+    for (let repeat = 1; repeat <= repeatCount; repeat += 1) {
+      for (let verseIndex = 0; verseIndex < verses.length; verseIndex += 1) {
+        const verse = verses[verseIndex];
+        const url = await getPreferredVerseAudioUri(verse.surah_id, verse.verse_number);
+
+        queue.push({
+          id: `${sessionToken}:${repeat}:${verse.surah_id}:${verse.verse_number}`,
+          url,
+          title: `${verse.surah_id}:${verse.verse_number}`,
+          artist: RECITER_NAME,
+          verseIndex,
+          repeat,
+        });
+      }
+    }
+
+    return queue;
+  }, []);
 
   const stopPlayback = useCallback(async (): Promise<void> => {
     playbackTokenRef.current += 1;
-    resolvePendingVerse();
+    activeSessionTokenRef.current = null;
 
     try {
-      const current = soundRef.current;
-      soundRef.current = null;
-
-      const preloaded = preloadedSoundRef.current?.sound;
-      preloadedSoundRef.current = null;
-
-      await Promise.all([
-        unloadSound(current),
-        unloadSound(preloaded ?? null),
-      ]);
-
-      await KeepAwake.deactivateKeepAwake();
+      await ensurePlayerSetup();
+      await TrackPlayer.stop();
+      await TrackPlayer.reset();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : stoppingAudioError);
     }
 
     setIsPreparingAudio(false);
-  }, [setErrorMessage, setIsPreparingAudio, stoppingAudioError]);
+  }, [ensurePlayerSetup, setErrorMessage, setIsPreparingAudio, stoppingAudioError]);
 
-  const preloadVerse = useCallback(async (verse: Verse): Promise<void> => {
-    const verseKey = `${verse.surah_id}:${verse.verse_number}`;
-    if (preloadedSoundRef.current?.verseKey === verseKey) {
-      return;
-    }
-
-    try {
-      const audioUri = await getOrDownloadVerseAudio(verse.surah_id, verse.verse_number);
-      const sound = new Audio.Sound();
-      await sound.loadAsync({ uri: audioUri }, { shouldPlay: false });
-
-      const oldPreloaded = preloadedSoundRef.current?.sound;
-      preloadedSoundRef.current = { sound, verseKey };
-      if (oldPreloaded) {
-        void unloadSound(oldPreloaded);
-      }
-    } catch {
-      // Preloading is opportunistic; playback can still continue without it.
-    }
-  }, []);
-
-  const waitForVerseToFinish = useCallback(
-    async (sound: Audio.Sound, sessionToken: number): Promise<void> =>
-      new Promise<void>((resolve) => {
-        pendingVerseResolveRef.current = resolve;
-        sound.setOnPlaybackStatusUpdate((status: AVPlaybackStatus) => {
-          if (sessionToken !== playbackTokenRef.current) {
-            sound.setOnPlaybackStatusUpdate(null);
-            resolvePendingVerse();
-            return;
-          }
-
-          if (status.isLoaded && status.didJustFinish) {
-            sound.setOnPlaybackStatusUpdate(null);
-            resolvePendingVerse();
-          }
-        });
-      }),
-    []
-  );
-
-  const playSingleVerse = useCallback(
-    async (verse: Verse, sessionToken: number): Promise<void> => {
-      const verseKey = `${verse.surah_id}:${verse.verse_number}`;
-      KeepAwake.activateKeepAwake();
+  const startPlaybackSession = useCallback(
+    async (verses: Verse[], repeatCount: number, sessionToken: number): Promise<void> => {
+      setIsPreparingAudio(true);
 
       try {
-        let nextSound: Audio.Sound;
-
-        if (preloadedSoundRef.current?.verseKey === verseKey) {
-          nextSound = preloadedSoundRef.current.sound;
-          preloadedSoundRef.current = null;
-        } else {
-          setIsPreparingAudio(true);
-          const audioUri = await getOrDownloadVerseAudio(verse.surah_id, verse.verse_number);
-          if (sessionToken !== playbackTokenRef.current) {
-            return;
-          }
-
-          nextSound = new Audio.Sound();
-          await nextSound.loadAsync({ uri: audioUri }, { shouldPlay: false });
-        }
+        await ensurePlayerSetup();
 
         if (sessionToken !== playbackTokenRef.current) {
-          void unloadSound(nextSound);
+          setIsPreparingAudio(false);
           return;
         }
 
-        const previousSound = soundRef.current;
-        soundRef.current = nextSound;
-        setIsPreparingAudio(false);
-
-        await nextSound.playAsync();
-
-        if (previousSound) {
-          void unloadSound(previousSound);
+        const queue = await buildQueue(verses, repeatCount, sessionToken);
+        if (sessionToken !== playbackTokenRef.current) {
+          setIsPreparingAudio(false);
+          return;
         }
 
-        await waitForVerseToFinish(nextSound, sessionToken);
+        await TrackPlayer.reset();
+        await TrackPlayer.setQueue(queue);
+        activeSessionTokenRef.current = sessionToken;
+        setIsPreparingAudio(false);
+        await TrackPlayer.play();
       } catch (error) {
         setIsPreparingAudio(false);
         setErrorMessage(error instanceof Error ? error.message : playbackError);
-        void stopPlayback();
+        await stopPlayback();
       }
     },
-    [playbackError, setErrorMessage, setIsPreparingAudio, stopPlayback, waitForVerseToFinish]
+    [buildQueue, ensurePlayerSetup, playbackError, setErrorMessage, setIsPreparingAudio, stopPlayback]
   );
 
-  useEffect(() => {
-    let isMounted = true;
+  useTrackPlayerEvents([Event.PlaybackActiveTrackChanged, Event.PlaybackQueueEnded], (event) => {
+    if (activeSessionTokenRef.current !== playbackTokenRef.current) {
+      return;
+    }
 
-    void Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      interruptionModeIOS: InterruptionModeIOS.DuckOthers,
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: true,
-      interruptionModeAndroid: InterruptionModeAndroid.DuckOthers,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-    }).catch((error) => {
-      if (isMounted) {
-        setErrorMessage(error instanceof Error ? error.message : audioModeError);
+    if (event.type === Event.PlaybackActiveTrackChanged && event.track) {
+      const verseIndex = Number(event.track.verseIndex);
+      const repeat = Number(event.track.repeat);
+
+      if (!Number.isNaN(verseIndex) && !Number.isNaN(repeat)) {
+        onTrackChangeRef.current({ verseIndex, repeat });
       }
-    });
+    }
 
-    return () => {
-      isMounted = false;
-    };
-  }, [audioModeError, setErrorMessage]);
+    if (event.type === Event.PlaybackQueueEnded) {
+      activeSessionTokenRef.current = null;
+      onQueueEndedRef.current();
+    }
+  });
 
   return {
-    soundRef,
-    playSingleVerse,
-    preloadVerse,
+    startPlaybackSession,
     stopPlayback,
-    unloadCurrentSound: () => unloadSound(soundRef.current),
     playbackTokenRef,
   };
 }

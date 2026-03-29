@@ -13,7 +13,12 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.berkayyetgin.kuranayetezberle"
+      "bundleIdentifier": "com.berkayyetgin.kuranayetezberle",
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "audio"
+        ]
+      }
     },
     "android": {
       "package": "com.berkayyetgin.kuranayetezberle",
@@ -36,7 +41,15 @@
     "owner": "yakrel",
     "plugins": [
       "expo-localization",
-      "expo-font"
+      "expo-font",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.5"
+          }
+        }
+      ]
     ]
   }
 }
