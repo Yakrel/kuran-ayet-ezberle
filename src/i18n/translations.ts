@@ -128,6 +128,7 @@ export const TRANSLATIONS: Translations = {
     downloadingAll: 'Downloading listening pack...',
     downloadComplete: 'Listening pack is ready.',
     downloadError: 'An error occurred while downloading the listening pack.',
+    lowStorageWarning: 'There is not enough free space on this device. The listening pack needs roughly 1 GB of free space.',
     cancel: 'Cancel',
     changelogPlaybackLoop: 'Memorization-focused repeat and range loop',
     changelogAudioTracking: 'Audio playback with automatic page tracking',

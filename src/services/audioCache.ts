@@ -28,6 +28,26 @@ async function ensureCacheDir(): Promise<void> {
   }
 }
 
+export function buildRemoteVerseAudioUrl(surahId: number, verseNumber: number): string {
+  const fileName = buildVerseFileName(surahId, verseNumber);
+  const baseUrl = AUDIO_SOURCE_URLS[0];
+  if (!baseUrl) {
+    throw new Error('No audio source URL is configured.');
+  }
+  return `${baseUrl}/${fileName}`;
+}
+
+export async function getPreferredVerseAudioUri(surahId: number, verseNumber: number): Promise<string> {
+  const fileName = buildVerseFileName(surahId, verseNumber);
+  const localUri = `${getCacheDir()}${fileName}`;
+  const info = await FileSystem.getInfoAsync(localUri);
+  if (info.exists) {
+    return localUri;
+  }
+
+  return buildRemoteVerseAudioUrl(surahId, verseNumber);
+}
+
 async function deleteFileIfExists(fileUri: string): Promise<void> {
   const info = await FileSystem.getInfoAsync(fileUri);
   if (info.exists) {
