@@ -31,11 +31,12 @@ Use `npm run start:lan` or `npx expo start --dev-client --lan --port 19000` for 
 ## Data sources
 
 - Text & translations: https://api.acikkuran.com
-- Audio (Saad Al-Ghamdi): https://everyayah.com/data/Ghamadi_40kbps/{sss}{aaa}.mp3
+- Audio (Saad Al-Ghamdi): https://everyayah.com/data/Ghamadi_40kbps/
+  Ayah files follow the pattern `SSSAAA.mp3` where `SSS` is the 3-digit surah and `AAA` is the 3-digit ayah.
+  Example: https://everyayah.com/data/Ghamadi_40kbps/001001.mp3
 
 ## License
 
 GPL-3.0-or-later — see LICENSE for details.
 
 ---
-
