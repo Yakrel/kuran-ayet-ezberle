@@ -78,6 +78,7 @@ export function useAudioPlayer(
           android: {
             appKilledPlaybackBehavior: AppKilledPlaybackBehavior.StopPlaybackAndRemoveNotification,
             alwaysPauseOnInterruption: true,
+            foregroundServiceType: 'mediaPlayback',
           },
         });
 
