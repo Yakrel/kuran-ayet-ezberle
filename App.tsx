@@ -41,6 +41,7 @@ import { Storage } from './src/services/storage';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { clearAllDownloads, downloadAudioBundle, downloadSurahAudio, getAvailableSpaceMB, getCachedAudioFileNames, getCacheStats } from './src/services/audioCache';
 import { SURAH_LIST } from './src/constants/surahList';
+import { getTrackPlayerUnavailableReason } from './src/services/trackPlayer';
 
 // Prevent splash screen from hiding until fonts are loaded
 void SplashScreen.preventAutoHideAsync();
@@ -141,6 +142,13 @@ function MainApp() {
       }
     }
     void loadSettings();
+  }, []);
+
+  useEffect(() => {
+    const trackPlayerError = getTrackPlayerUnavailableReason();
+    if (trackPlayerError) {
+      setErrorMessage(`Ses oynatici yuklenemedi: ${trackPlayerError}`);
+    }
   }, []);
 
   // SAVE SETTINGS WHEN THEY CHANGE

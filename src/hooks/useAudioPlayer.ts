@@ -1,12 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
-import TrackPlayer, {
-  AppKilledPlaybackBehavior,
-  Capability,
-  Event,
-  RepeatMode,
-  useTrackPlayerEvents,
-} from 'react-native-track-player';
 import { getPreferredVerseAudioUri } from '../services/audioCache';
+import { getTrackPlayerModule, getTrackPlayerUnavailableReason } from '../services/trackPlayer';
 import type { Verse } from '../types/quran';
 
 type TrackChangePayload = {
@@ -55,6 +49,16 @@ export function useAudioPlayer(
   }, [onQueueEnded]);
 
   const ensurePlayerSetup = useCallback(async () => {
+    const trackPlayerModule = getTrackPlayerModule();
+    if (!trackPlayerModule) {
+      const reason = getTrackPlayerUnavailableReason() ?? audioModeError;
+      setErrorMessage(reason);
+      throw new Error(reason);
+    }
+
+    const TrackPlayer = trackPlayerModule.default ?? trackPlayerModule;
+    const { AppKilledPlaybackBehavior, Capability, RepeatMode } = trackPlayerModule;
+
     if (!setupPromiseRef.current) {
       setupPromiseRef.current = (async () => {
         try {
@@ -119,7 +123,12 @@ export function useAudioPlayer(
     activeSessionTokenRef.current = null;
 
     try {
+      const trackPlayerModule = getTrackPlayerModule();
+      const TrackPlayer = trackPlayerModule?.default ?? trackPlayerModule;
       await ensurePlayerSetup();
+      if (!TrackPlayer) {
+        return;
+      }
       await TrackPlayer.stop();
       await TrackPlayer.reset();
     } catch (error) {
@@ -134,7 +143,12 @@ export function useAudioPlayer(
       setIsPreparingAudio(true);
 
       try {
+        const trackPlayerModule = getTrackPlayerModule();
+        const TrackPlayer = trackPlayerModule?.default ?? trackPlayerModule;
         await ensurePlayerSetup();
+        if (!TrackPlayer) {
+          return;
+        }
 
         if (sessionToken !== playbackTokenRef.current) {
           setIsPreparingAudio(false);
@@ -161,25 +175,44 @@ export function useAudioPlayer(
     [buildQueue, ensurePlayerSetup, playbackError, setErrorMessage, setIsPreparingAudio, stopPlayback]
   );
 
-  useTrackPlayerEvents([Event.PlaybackActiveTrackChanged, Event.PlaybackQueueEnded], (event) => {
-    if (activeSessionTokenRef.current !== playbackTokenRef.current) {
+  useEffect(() => {
+    const trackPlayerModule = getTrackPlayerModule();
+    if (!trackPlayerModule) {
       return;
     }
 
-    if (event.type === Event.PlaybackActiveTrackChanged && event.track) {
-      const verseIndex = Number(event.track.verseIndex);
-      const repeat = Number(event.track.repeat);
+    const TrackPlayer = trackPlayerModule.default ?? trackPlayerModule;
+    const { Event } = trackPlayerModule;
 
-      if (!Number.isNaN(verseIndex) && !Number.isNaN(repeat)) {
-        onTrackChangeRef.current({ verseIndex, repeat });
-      }
-    }
+    const subscriptions = [
+      TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, (event: { track?: { verseIndex?: string | number; repeat?: string | number } }) => {
+        if (activeSessionTokenRef.current !== playbackTokenRef.current || !event.track) {
+          return;
+        }
 
-    if (event.type === Event.PlaybackQueueEnded) {
-      activeSessionTokenRef.current = null;
-      onQueueEndedRef.current();
-    }
-  });
+        const verseIndex = Number(event.track.verseIndex);
+        const repeat = Number(event.track.repeat);
+
+        if (!Number.isNaN(verseIndex) && !Number.isNaN(repeat)) {
+          onTrackChangeRef.current({ verseIndex, repeat });
+        }
+      }),
+      TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
+        if (activeSessionTokenRef.current !== playbackTokenRef.current) {
+          return;
+        }
+
+        activeSessionTokenRef.current = null;
+        onQueueEndedRef.current();
+      }),
+    ];
+
+    return () => {
+      subscriptions.forEach((subscription) => {
+        subscription.remove();
+      });
+    };
+  }, []);
 
   return {
     startPlaybackSession,
