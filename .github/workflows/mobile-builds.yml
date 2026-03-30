@@ -7,7 +7,7 @@ on:
 
 jobs:
   android-build:
-    name: Android debug build
+    name: Android production build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -50,19 +50,19 @@ jobs:
       - name: Run Expo prebuild
         run: CI=1 npx expo prebuild --platform android --no-install
 
-      - name: Build Android debug APK
+      - name: Build Android release APK
         working-directory: android
-        run: ./gradlew :app:assembleDebug --stacktrace --warning-mode all
+        run: ./gradlew :app:assembleRelease --stacktrace --warning-mode all
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v6
         with:
-          name: android-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: android-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
   ios-build:
-    name: iOS simulator build
+    name: iOS release simulator build
     runs-on: macos-latest
     permissions:
       contents: read
@@ -93,21 +93,21 @@ jobs:
         working-directory: ios
         run: pod install --repo-update
 
-      - name: Build iOS app for simulator
+      - name: Build iOS release app for simulator
         run: |
           xcodebuild \
             -workspace ios/KuranAyetEzberle.xcworkspace \
             -scheme KuranAyetEzberle \
-            -configuration Debug \
+            -configuration Release \
             -sdk iphonesimulator \
             -destination 'platform=iOS Simulator,name=iPhone 16' \
             -derivedDataPath ios/build \
             CODE_SIGNING_ALLOWED=NO \
             build
 
-      - name: Upload iOS app bundle
+      - name: Upload iOS release app bundle
         uses: actions/upload-artifact@v6
         with:
-          name: ios-simulator-app
-          path: ios/build/Build/Products/Debug-iphonesimulator/*.app
+          name: ios-release-simulator-app
+          path: ios/build/Build/Products/Release-iphonesimulator/*.app
           if-no-files-found: error
