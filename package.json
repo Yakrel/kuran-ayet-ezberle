@@ -3,9 +3,10 @@
   "version": "0.0.1",
   "main": "index.ts",
   "scripts": {
-    "start": "expo start",
-    "start:lan": "expo start --lan --port 19000",
-    "start:tunnel": "expo start --tunnel --clear",
+    "start": "expo start --dev-client --lan --port 19000",
+    "start:lan": "expo start --dev-client --lan --port 19000",
+    "start:metro": "expo start --lan --port 19000",
+    "start:tunnel": "expo start --dev-client --tunnel --clear",
     "start:dev-client": "expo start --dev-client --lan --port 19000",
     "postinstall": "patch-package",
     "android": "expo run:android",
@@ -13,6 +14,7 @@
     "web": "expo start --web",
     "backup:audio": "node scripts/backup-everyayah-audio.mjs",
     "build:dev-client": "eas build -p android --profile development",
+    "build:android": "eas build -p android --profile development",
     "build:apk": "eas build -p android --profile preview",
     "build:aab": "eas build -p android --profile production"
   },

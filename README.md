@@ -13,20 +13,32 @@ A concise, open-source Android-first Quran memorization app built with Expo and 
 
 ## Quick start
 
-Install dependencies and start the dev server:
+Install dependencies and start the Android dev-client server:
 
 ```bash
 npm install
 npm run start
 ```
 
-Run on Android (development):
+Create the Android development build once:
 
 ```bash
-npm run android
+npm run build:dev-client
 ```
 
-Use `npm run start:lan` or `npx expo start --dev-client --lan --port 19000` for device testing over LAN.
+After installing that build on the device, use Metro-driven development:
+
+```bash
+npm run start
+```
+
+`npm run start` now launches Expo in dev-client mode over LAN, so JavaScript/UI changes refresh in the installed development build without rebuilding the APK each time.
+
+If you need a plain Metro server without dev-client flags, use:
+
+```bash
+npm run start:metro
+```
 
 ## Data sources
 
