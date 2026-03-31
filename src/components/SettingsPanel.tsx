@@ -26,10 +26,12 @@ type SettingsPanelProps = {
   autoScrollText: string;
   aboutText: string;
   manageDownloadsText: string;
+  audioLogsText: string;
   onText: string;
   offText: string;
   onAboutPress: () => void;
   onManageDownloadsPress: () => void;
+  onAudioLogsPress: () => void;
 };
 
 export function SettingsPanel({
@@ -52,10 +54,12 @@ export function SettingsPanel({
   autoScrollText,
   aboutText,
   manageDownloadsText,
+  audioLogsText,
   onText,
   offText,
   onAboutPress,
   onManageDownloadsPress,
+  onAudioLogsPress,
 }: SettingsPanelProps) {
   return (
     <View style={styles.settingsPanel}>
@@ -162,6 +166,17 @@ export function SettingsPanel({
         >
           <Feather name="info" size={18} color={theme.colors.ACCENT_PRIMARY} />
           <Text style={styles.footerButtonText}>{aboutText}</Text>
+        </Pressable>
+
+        <Pressable
+          style={({ pressed }) => [
+            styles.footerButton,
+            pressed && styles.footerButtonPressed
+          ]}
+          onPress={onAudioLogsPress}
+        >
+          <Feather name="file-text" size={18} color={theme.colors.ACCENT_PRIMARY} />
+          <Text style={styles.footerButtonText}>{audioLogsText}</Text>
         </Pressable>
       </View>
     </View>
