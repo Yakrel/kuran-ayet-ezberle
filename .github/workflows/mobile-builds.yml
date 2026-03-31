@@ -7,7 +7,7 @@ on:
 
 jobs:
   android-build:
-    name: Android production build
+    name: Android dev client build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -50,15 +50,15 @@ jobs:
       - name: Run Expo prebuild
         run: CI=1 npx expo prebuild --platform android --no-install
 
-      - name: Build Android release APK
+      - name: Build Android debug APK
         working-directory: android
-        run: ./gradlew :app:assembleRelease --stacktrace --warning-mode all
+        run: ./gradlew :app:assembleDebug --stacktrace --warning-mode all
 
       - name: Upload Android APK
         uses: actions/upload-artifact@v6
         with:
-          name: android-release-apk
-          path: android/app/build/outputs/apk/release/*.apk
+          name: android-dev-client-apk
+          path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
   ios-build:
