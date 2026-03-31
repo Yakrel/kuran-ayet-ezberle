@@ -61,6 +61,11 @@ export function SettingsPanel({
   onManageDownloadsPress,
   onAudioLogsPress,
 }: SettingsPanelProps) {
+  const languageOptions: Array<{ value: LanguageCode; label: string }> = [
+    { value: 'tr', label: language === 'tr' ? 'Türkçe' : 'Turkish' },
+    { value: 'en', label: language === 'tr' ? 'İngilizce' : 'English' },
+  ];
+
   return (
     <View style={styles.settingsPanel}>
       <View style={styles.settingsGroup}>
@@ -73,8 +78,14 @@ export function SettingsPanel({
             dropdownIconColor={theme.colors.PICKER_ICON}
             style={styles.settingsPicker}
           >
-            <Picker.Item label="Türkçe" value="tr" color={theme.colors.TEXT_SECONDARY} />
-            <Picker.Item label="English" value="en" color={theme.colors.TEXT_SECONDARY} />
+            {languageOptions.map((option) => (
+              <Picker.Item
+                key={option.value}
+                label={option.label}
+                value={option.value}
+                color={theme.colors.TEXT_SECONDARY}
+              />
+            ))}
           </Picker>
         </View>
       </View>
@@ -114,7 +125,7 @@ export function SettingsPanel({
             {quranFontOptions.map((option) => (
               <Picker.Item
                 key={option.id}
-                label={`${option.label} • ${option.note}`}
+                label={`${option.label} • ${option.note[language]}`}
                 value={option.id}
                 color={theme.colors.TEXT_SECONDARY}
               />

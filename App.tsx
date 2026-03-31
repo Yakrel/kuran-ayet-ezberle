@@ -403,9 +403,20 @@ function MainApp() {
   };
 
   const handleClearDownloads = async () => {
-    await clearAllSurahAudio();
-    setCacheStats(await getSurahAudioCacheStats());
-    setDownloadProgressLabel('');
+    Alert.alert(text.clearDownloads, text.deleteDownloads, [
+      { text: text.cancel, style: 'cancel' },
+      {
+        text: text.clearDownloads,
+        style: 'destructive',
+        onPress: () => {
+          void (async () => {
+            await clearAllSurahAudio();
+            setCacheStats(await getSurahAudioCacheStats());
+            setDownloadProgressLabel('');
+          })();
+        },
+      },
+    ]);
   };
 
   const currentVerse = player.activeVerse;
@@ -436,39 +447,20 @@ function MainApp() {
       <View style={commonStyles.statusTopSpacer} />
       <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', android: undefined })} style={commonStyles.flex}>
         <View style={styles.header}>
-          <View style={styles.heroCard}>
-            <View style={styles.heroCopy}>
-              <Text style={styles.heroEyebrow}>Segmented Recitation</Text>
-              <Text style={styles.heroTitle}>{selectedSurah ? selectedSurah.name : text.appName}</Text>
-              <Text style={styles.heroSubtitle}>
-                {currentVerse
-                  ? `${currentVerse.surah_id}:${currentVerse.verse_number} aktif • kelime takibi açık`
-                  : 'Gapless sure oynatma, ayet takibi ve kelime vurgusu'}
-              </Text>
-            </View>
-            <View style={styles.heroBadge}>
-              <Text style={styles.heroBadgeValue}>{`${currentPage + 1}`}</Text>
-              <Text style={styles.heroBadgeLabel}>{text.page}</Text>
-            </View>
-          </View>
-
           <TopControlBar
             surahs={surahs}
             selectedSurahId={selectedSurahId}
             isFetchingSurahs={isFetchingSurahs}
             onSurahChange={handleSurahChange}
+            surahText={text.surah}
             settingsText={text.settings}
             onSettingsPress={() => setIsSettingsOpen(true)}
             canGoPreviousPage={computed.canGoPreviousPage}
             canGoNextPage={computed.canGoNextPage}
             onPreviousPress={pageNavigation.goToPreviousPage}
             onNextPress={pageNavigation.goToNextPage}
-            onPageChange={(page) => void handlePageChange(page)}
             pageText={text.page}
-            currentPage={currentPage}
             pageProgressText={`${currentPage + 1}/${TOTAL_QURAN_PAGES}`}
-            minPage={0}
-            maxPage={TOTAL_QURAN_PAGES - 1}
           />
         </View>
 
@@ -551,7 +543,7 @@ function MainApp() {
                     setIsDownloadManagerOpen(true);
                   }}
                   onAudioLogsPress={() => {
-                    Alert.alert(text.audioLogs, 'QUL segmented playback active.');
+                    Alert.alert(text.audioLogs, text.audioLogsActive);
                   }}
                 />
 
@@ -595,7 +587,7 @@ function MainApp() {
 
               <View style={styles.downloadCard}>
                 <Text style={styles.downloadStat}>{`${text.storageUsed}: ${cacheStats.megabytes} MB`}</Text>
-                <Text style={styles.downloadStat}>{`${text.readyVerses}: ${cacheStats.files} ${text.page.toLowerCase()} mp3`}</Text>
+                <Text style={styles.downloadStat}>{`${text.cachedFiles}: ${cacheStats.files} MP3`}</Text>
                 {downloadProgressLabel ? <Text style={styles.downloadHint}>{downloadProgressLabel}</Text> : null}
 
                 <Pressable
@@ -621,7 +613,7 @@ function MainApp() {
             <View style={[styles.modalContent, styles.aboutContent]}>
               <Text style={styles.modalTitle}>{text.about}</Text>
               <Text style={styles.aboutText}>{`${text.appName}\n${text.version}: ${APP_VERSION}\n${text.developedBy}: ${DEVELOPER_NAME}`}</Text>
-              <Text style={styles.aboutText}>QUL segmented playback with embedded ayah timing and word layout.</Text>
+              <Text style={styles.aboutText}>{text.aboutDescription}</Text>
               <Pressable style={styles.downloadButton} onPress={() => setIsAboutOpen(false)}>
                 <Text style={styles.downloadButtonText}>{text.close}</Text>
               </Pressable>
@@ -645,7 +637,7 @@ const styles = StyleSheet.create({
   header: {
     paddingHorizontal: theme.spacing.XL,
     paddingTop: theme.spacing.SM,
-    gap: theme.spacing.MD,
+    gap: 0,
   },
   loaderState: {
     flex: 1,
@@ -759,60 +751,5 @@ const styles = StyleSheet.create({
     height: 260,
     borderRadius: 130,
     backgroundColor: 'rgba(96, 165, 250, 0.08)',
-  },
-  heroCard: {
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    justifyContent: 'space-between',
-    gap: theme.spacing.MD,
-    padding: theme.spacing.LG,
-    borderRadius: 30,
-    backgroundColor: 'rgba(7, 18, 39, 0.92)',
-    borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.14)',
-  },
-  heroCopy: {
-    flex: 1,
-    gap: 6,
-  },
-  heroEyebrow: {
-    color: theme.colors.ACCENT_PRIMARY,
-    textTransform: 'uppercase',
-    letterSpacing: 1.2,
-    fontSize: theme.fontSize.XS,
-    fontWeight: '700',
-  },
-  heroTitle: {
-    color: theme.colors.TEXT_PRIMARY,
-    fontSize: 30,
-    fontWeight: '800',
-  },
-  heroSubtitle: {
-    color: theme.colors.TEXT_MUTED,
-    lineHeight: 20,
-  },
-  heroBadge: {
-    minWidth: 84,
-    borderRadius: 24,
-    backgroundColor: 'rgba(2, 6, 23, 0.72)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.18)',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: theme.spacing.MD,
-    paddingVertical: theme.spacing.SM,
-    gap: 4,
-  },
-  heroBadgeValue: {
-    color: theme.colors.TEXT_PRIMARY,
-    fontSize: 28,
-    fontWeight: '800',
-  },
-  heroBadgeLabel: {
-    color: theme.colors.TEXT_MUTED,
-    textTransform: 'uppercase',
-    letterSpacing: 0.9,
-    fontSize: theme.fontSize.XS,
-    fontWeight: '700',
   },
 });

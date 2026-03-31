@@ -2,6 +2,7 @@ export type LanguageCode = 'tr' | 'en';
 
 export type TranslationStrings = {
   appName: string;
+  surah: string;
   settings: string;
   startVerse: string;
   verseCount: string;
@@ -69,6 +70,12 @@ export type TranslationStrings = {
   changelogFonts: string;
   changelogLanguages: string;
   changelogOfflineListening: string;
+  segmentedRecitation: string;
+  heroIdleSubtitle: string;
+  heroActiveSubtitle: (reference: string) => string;
+  audioLogsActive: string;
+  cachedFiles: string;
+  aboutDescription: string;
 };
 
 export type Translations = Record<LanguageCode, TranslationStrings>;

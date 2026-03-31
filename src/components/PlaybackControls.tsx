@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { theme } from '../styles/theme';
 import { onlyDigits } from '../utils/parsers';
 
@@ -75,12 +75,28 @@ export function PlaybackControls({
       </View>
 
       <View style={styles.buttonsRow}>
-        <Text style={[styles.controlButton, styles.startButton]} onPress={onStart}>
-          {startText}
-        </Text>
-        <Text style={[styles.controlButton, styles.stopButton]} onPress={onStop}>
-          {stopText}
-        </Text>
+        <Pressable
+          style={({ pressed }) => [
+            styles.controlButton,
+            styles.startButton,
+            pressed && styles.controlButtonPressed,
+          ]}
+          onPress={onStart}
+          accessibilityRole="button"
+        >
+          <Text style={styles.startButtonText}>{startText}</Text>
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [
+            styles.controlButton,
+            styles.stopButton,
+            pressed && styles.controlButtonPressed,
+          ]}
+          onPress={onStop}
+          accessibilityRole="button"
+        >
+          <Text style={styles.stopButtonText}>{stopText}</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -119,23 +135,32 @@ const styles = StyleSheet.create({
   },
   controlButton: {
     flex: 1,
-    textAlign: 'center',
     paddingVertical: theme.spacing.MD,
     borderRadius: theme.borderRadius.MEDIUM,
-    fontWeight: '700',
-    fontSize: theme.fontSize.MD,
-    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   startButton: {
     backgroundColor: theme.colors.SUCCESS_BG,
-    color: theme.colors.TEXT_PRIMARY,
     borderWidth: 1,
     borderColor: theme.colors.BORDER_ACCENT,
   },
   stopButton: {
     backgroundColor: theme.colors.CARD_BG,
-    color: theme.colors.TEXT_SECONDARY,
     borderWidth: 1,
     borderColor: theme.colors.BORDER_SECONDARY,
+  },
+  controlButtonPressed: {
+    opacity: 0.8,
+  },
+  startButtonText: {
+    color: theme.colors.TEXT_PRIMARY,
+    fontWeight: '700',
+    fontSize: theme.fontSize.MD,
+  },
+  stopButtonText: {
+    color: theme.colors.TEXT_SECONDARY,
+    fontWeight: '700',
+    fontSize: theme.fontSize.MD,
   },
 });

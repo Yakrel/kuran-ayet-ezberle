@@ -18,8 +18,7 @@ export function getTrackPlayerModule(): TrackPlayerModule | null {
   }
 
   try {
-    const moduleName = ['react-native-track-player'].join('');
-    cachedModule = require(moduleName) as TrackPlayerModule;
+    cachedModule = require('react-native-track-player') as TrackPlayerModule;
     cachedError = null;
     return cachedModule;
   } catch (error) {

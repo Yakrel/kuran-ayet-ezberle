@@ -4,6 +4,7 @@ import { APP_NAME } from '../constants/defaults';
 export const TRANSLATIONS: Translations = {
   tr: {
     appName: APP_NAME,
+    surah: 'Sure',
     settings: 'Ayarlar',
     startVerse: 'Başlangıç',
     verseCount: 'Ayet sayısı',
@@ -71,9 +72,16 @@ export const TRANSLATIONS: Translations = {
     changelogFonts: "3 farklı Kur'an fontu seçeneği",
     changelogLanguages: 'Türkçe ve İngilizce dil desteği',
     changelogOfflineListening: 'Çevrimdışı dinleme paketi ve önbellek yönetimi',
+    segmentedRecitation: 'Parçalı tilavet',
+    heroIdleSubtitle: 'Kesintisiz sure oynatma, ayet takibi ve kelime vurgusu',
+    heroActiveSubtitle: (reference: string) => `${reference} aktif, kelime takibi açık`,
+    audioLogsActive: 'Ses tanı kaydı sistemi etkin.',
+    cachedFiles: 'Hazır Ses Dosyaları',
+    aboutDescription: 'QUL, ayet zamanlaması ve kelime yerleşimi ile desteklenen parçalı tilavet deneyimi sunar.',
   },
   en: {
     appName: APP_NAME,
+    surah: 'Surah',
     settings: 'Settings',
     startVerse: 'Start Verse',
     verseCount: 'Verse Count',
@@ -141,5 +149,11 @@ export const TRANSLATIONS: Translations = {
     changelogFonts: '3 Quran font options',
     changelogLanguages: 'Turkish and English language support',
     changelogOfflineListening: 'Offline listening pack and cache management',
+    segmentedRecitation: 'Segmented Recitation',
+    heroIdleSubtitle: 'Gapless surah playback with verse tracking and word highlighting',
+    heroActiveSubtitle: (reference: string) => `${reference} active, word tracking enabled`,
+    audioLogsActive: 'Audio diagnostics are active.',
+    cachedFiles: 'Cached Audio Files',
+    aboutDescription: 'QUL delivers segmented recitation with embedded ayah timing and word layout support.',
   },
 };

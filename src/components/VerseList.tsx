@@ -117,7 +117,7 @@ export function VerseList({
 const styles = StyleSheet.create({
   listContainer: {
     flex: 1,
-    marginTop: theme.spacing.MD,
+    marginTop: theme.spacing.SM,
     marginHorizontal: theme.spacing.LG,
     marginBottom: theme.spacing.LG,
     borderRadius: 30,
@@ -139,9 +139,9 @@ const styles = StyleSheet.create({
     paddingTop: 8,
   },
   pageHint: {
-    marginTop: theme.spacing.SM,
+    marginTop: 6,
     color: theme.colors.TEXT_MUTED,
-    fontSize: theme.fontSize.SM,
+    fontSize: theme.fontSize.XS,
     marginLeft: 6,
   },
 });

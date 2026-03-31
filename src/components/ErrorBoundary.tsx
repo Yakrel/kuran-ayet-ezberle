@@ -1,6 +1,7 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { StyleSheet, Text, View, Pressable } from 'react-native';
 import { theme } from '../styles/theme';
+import { inferDeviceLanguage } from '../utils/language';
 
 interface Props {
   children: ReactNode;
@@ -10,6 +11,17 @@ interface State {
   hasError: boolean;
   error: Error | null;
 }
+
+const ERROR_COPY = {
+  tr: {
+    title: 'Beklenmedik bir hata oluştu',
+    action: 'Uygulamayı yeniden başlat',
+  },
+  en: {
+    title: 'An unexpected error occurred',
+    action: 'Restart app',
+  },
+} as const;
 
 export class ErrorBoundary extends Component<Props, State> {
   public state: State = {
@@ -31,12 +43,15 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public render() {
     if (this.state.hasError) {
+      const language = inferDeviceLanguage();
+      const copy = ERROR_COPY[language];
+
       return (
         <View style={styles.container}>
-          <Text style={styles.title}>Beklenmedik Bir Hata Oluştu</Text>
+          <Text style={styles.title}>{copy.title}</Text>
           <Text style={styles.message}>{this.state.error?.message}</Text>
           <Pressable style={styles.button} onPress={this.handleReset}>
-            <Text style={styles.buttonText}>Uygulamayı Yeniden Başlat</Text>
+            <Text style={styles.buttonText}>{copy.action}</Text>
           </Pressable>
         </View>
       );
