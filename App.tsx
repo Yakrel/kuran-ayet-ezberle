@@ -46,6 +46,7 @@ import {
   getAvailableSpaceMB,
   getCachedAudioFileNames,
   getCacheStats,
+  cancelAudioBundleDownload,
   getPendingAudioBundleDownload,
   pauseActiveAudioBundleDownload,
   resumeAudioBundleDownload,
@@ -94,6 +95,8 @@ function MainApp() {
   const [downloadedFileCount, setDownloadedFileCount] = useState(0);
   const [isFullDownloadComplete, setIsFullDownloadComplete] = useState(false);
   const appStateRef = useRef(AppState.currentState);
+  const isDownloadingRef = useRef(false);
+  const hasAttemptedInitialResumeRef = useRef(false);
 
   const applyDownloadProgress = useCallback((progress: AudioBundleDownloadProgress) => {
     setDownloadProgress({
@@ -133,7 +136,7 @@ function MainApp() {
   }, [applyDownloadProgress, refreshCacheState]);
 
   const runAudioBundleDownload = useCallback(async (resumeIfPossible: boolean) => {
-    if (isDownloading) {
+    if (isDownloadingRef.current) {
       return;
     }
 
@@ -146,6 +149,7 @@ function MainApp() {
     }
 
     setIsDownloadManagerOpen(true);
+    isDownloadingRef.current = true;
     setIsDownloading(true);
 
     try {
@@ -165,12 +169,12 @@ function MainApp() {
       await refreshCacheState();
       Alert.alert(text.downloadPromptTitle, text.downloadError);
     } finally {
+      isDownloadingRef.current = false;
       setIsDownloading(false);
       await syncDownloadProgressFromPersistence();
     }
   }, [
     applyDownloadProgress,
-    isDownloading,
     refreshCacheState,
     syncDownloadProgressFromPersistence,
     text.downloadComplete,
@@ -178,6 +182,13 @@ function MainApp() {
     text.downloadPromptTitle,
     text.lowStorageWarning,
   ]);
+
+  const handleCancelDownload = useCallback(async () => {
+    await cancelAudioBundleDownload();
+    isDownloadingRef.current = false;
+    setIsDownloading(false);
+    await syncDownloadProgressFromPersistence();
+  }, [syncDownloadProgressFromPersistence]);
 
   // LOAD SAVED SETTINGS ON STARTUP
   useEffect(() => {
@@ -233,6 +244,10 @@ function MainApp() {
     }
     void loadSettings();
   }, [applyDownloadProgress]);
+
+  useEffect(() => {
+    isDownloadingRef.current = isDownloading;
+  }, [isDownloading]);
 
   useEffect(() => {
     const trackPlayerError = getTrackPlayerUnavailableReason();
@@ -605,13 +620,19 @@ function MainApp() {
   }, [isDownloadManagerOpen, isDownloading, syncDownloadProgressFromPersistence]);
 
   useEffect(() => {
+    if (hasAttemptedInitialResumeRef.current || isFullDownloadComplete) {
+      return;
+    }
+
+    hasAttemptedInitialResumeRef.current = true;
     void (async () => {
       const pendingDownload = await getPendingAudioBundleDownload();
-      if (pendingDownload && !isFullDownloadComplete) {
+      if (pendingDownload) {
+        applyDownloadProgress(pendingDownload);
         await runAudioBundleDownload(true);
       }
     })();
-  }, [isFullDownloadComplete, runAudioBundleDownload]);
+  }, [applyDownloadProgress, isFullDownloadComplete, runAudioBundleDownload]);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextAppState) => {
@@ -965,6 +986,10 @@ function MainApp() {
                   <Text style={styles.progressText}>
                     {downloadProgress.current} / {downloadProgress.total} ({downloadProgress.percent}%)
                   </Text>
+                  <Pressable style={[styles.downloadButton, styles.clearButton]} onPress={() => void handleCancelDownload()}>
+                    <Feather name="x-circle" size={20} color={theme.colors.TEXT_PRIMARY} />
+                    <Text style={styles.downloadButtonText}>{text.cancel}</Text>
+                  </Pressable>
                 </View>
               ) : (
                 <View style={styles.downloadActions}>

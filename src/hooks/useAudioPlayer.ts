@@ -39,6 +39,11 @@ type ActiveTrackChangedEvent = {
   track?: Record<string, unknown>;
 };
 
+type PlaybackErrorEvent = {
+  code?: string;
+  message?: string;
+};
+
 const RECITER_NAME = 'Saad Al-Ghamdi';
 
 function isTrackPlayerApi(value: unknown): value is TrackPlayerApi {
@@ -299,6 +304,14 @@ export function useAudioPlayer(
           logAudioStep('queue_ended');
           onQueueEndedRef.current();
         }),
+        TrackPlayer.addEventListener(Event.PlaybackError, (event: unknown) => {
+          const payload = event as PlaybackErrorEvent;
+          logAudioStep('playback_error_event', {
+            code: payload.code ?? 'unknown',
+            message: payload.message ?? 'unknown',
+          });
+          setErrorMessage(payload.message ?? playbackError);
+        }),
       ];
 
       return () => {
@@ -310,7 +323,7 @@ export function useAudioPlayer(
       logAudioStep('event_listener_attach_error', { message: error instanceof Error ? error.message : String(error) });
       return;
     }
-  }, [logAudioStep]);
+  }, [logAudioStep, playbackError, setErrorMessage]);
 
   return {
     startPlaybackSession,

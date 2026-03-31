@@ -1,4 +1,5 @@
 type TrackPlayerModule = typeof import('react-native-track-player');
+type PlaybackServiceFactory = () => (() => Promise<void>);
 
 let cachedModule: TrackPlayerModule | null | undefined;
 let cachedError: string | null | undefined;
@@ -37,13 +38,13 @@ export function getTrackPlayerUnavailableReason() {
   return cachedError ?? null;
 }
 
-export function registerPlaybackService(service: () => Promise<void>) {
+export function registerPlaybackService(factory: PlaybackServiceFactory) {
   const trackPlayerModule = getTrackPlayerModule();
   if (!trackPlayerModule) {
     return false;
   }
 
   const TrackPlayer = trackPlayerModule.default ?? trackPlayerModule;
-  TrackPlayer.registerPlaybackService(() => service);
+  TrackPlayer.registerPlaybackService(factory);
   return true;
 }

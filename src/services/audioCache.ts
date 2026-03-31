@@ -427,6 +427,25 @@ export async function pauseActiveAudioBundleDownload(): Promise<boolean> {
   }
 }
 
+export async function cancelAudioBundleDownload(): Promise<void> {
+  if (activeBundleDownloadResumable) {
+    pauseRequested = true;
+
+    try {
+      await activeBundleDownloadResumable.pauseAsync();
+    } catch {
+      // Best effort; cancellation continues with cleanup below.
+    }
+  }
+
+  activeBundleDownloadResumable = null;
+  activeBundleProgress = null;
+  activeBundleDownloadPromise = null;
+  pauseRequested = false;
+  await Storage.clearBundleDownloadState();
+  await cleanupBundleTempFiles();
+}
+
 export async function downloadSurahAudio(
   surahId: number,
   verseCount: number,
