@@ -41,13 +41,32 @@ type ActiveTrackChangedEvent = {
 
 const RECITER_NAME = 'Saad Al-Ghamdi';
 
+function isTrackPlayerApi(value: unknown): value is TrackPlayerApi {
+  if (!value || typeof value !== 'object') {
+    return false;
+  }
+
+  const candidate = value as Partial<TrackPlayerApi>;
+  return (
+    typeof candidate.setupPlayer === 'function' &&
+    typeof candidate.updateOptions === 'function' &&
+    typeof candidate.setRepeatMode === 'function' &&
+    typeof candidate.stop === 'function' &&
+    typeof candidate.reset === 'function' &&
+    typeof candidate.setQueue === 'function' &&
+    typeof candidate.play === 'function' &&
+    typeof candidate.addEventListener === 'function'
+  );
+}
+
 function resolveTrackPlayerApi(): TrackPlayerApi | null {
   const trackPlayerModule = getTrackPlayerModule();
   if (!trackPlayerModule) {
     return null;
   }
 
-  return (trackPlayerModule.default ?? trackPlayerModule) as unknown as TrackPlayerApi;
+  const candidate = trackPlayerModule.default ?? trackPlayerModule;
+  return isTrackPlayerApi(candidate) ? candidate : null;
 }
 
 export function useAudioPlayer(
@@ -194,9 +213,9 @@ export function useAudioPlayer(
       setIsPreparingAudio(true);
 
       try {
-        const TrackPlayer = resolveTrackPlayerApi();
         logAudioStep('start_session', { repeatCount, verseCount: verses.length });
         await ensurePlayerSetup();
+        const TrackPlayer = resolveTrackPlayerApi();
         if (!TrackPlayer) {
           logAudioStep('start_session_no_player');
           setIsPreparingAudio(false);

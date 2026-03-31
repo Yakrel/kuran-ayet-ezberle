@@ -75,7 +75,8 @@ async function downloadWithRetry(remoteUrl: string, localUri: string, onProgress
         localUri,
         {},
         (downloadProgress) => {
-          const progress = downloadProgress.totalBytesWritten / downloadProgress.totalBytesExpectedToWrite;
+          const expectedBytes = downloadProgress.totalBytesExpectedToWrite;
+          const progress = expectedBytes > 0 ? downloadProgress.totalBytesWritten / expectedBytes : 0;
           onProgress?.(progress);
         }
       );
@@ -157,9 +158,11 @@ export async function downloadAudioBundle(
     const files = await FileSystem.readDirectoryAsync(extractedFolder);
     
     for (const file of files) {
+      const destination = `${cacheDir}${file}`;
+      await deleteFileIfExists(destination);
       await FileSystem.moveAsync({
         from: `${extractedFolder}${file}`,
-        to: `${cacheDir}${file}`
+        to: destination
       });
     }
 

@@ -40,6 +40,7 @@ import { commonStyles } from './src/styles/common';
 import { Storage } from './src/services/storage';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { clearAllDownloads, downloadAudioBundle, downloadSurahAudio, getAvailableSpaceMB, getCachedAudioFileNames, getCacheStats } from './src/services/audioCache';
+import { clearAudioDiagnosticLog, getAudioDiagnosticLog } from './src/services/audioDiagnostics';
 import { SURAH_LIST } from './src/constants/surahList';
 import { getTrackPlayerUnavailableReason } from './src/services/trackPlayer';
 
@@ -525,6 +526,24 @@ function MainApp() {
       ]
     );
   }, [refreshCacheState, text.cancel, text.clearDownloads, text.deleteDownloads]);
+
+  const handleShowAudioLogs = useCallback(() => {
+    void (async () => {
+      const logs = await getAudioDiagnosticLog();
+      const message = logs.trim().length > 0 ? logs.slice(-3500) : text.noAudioLogs;
+
+      Alert.alert(text.audioLogs, message, [
+        {
+          text: text.clearAudioLogs,
+          style: 'destructive',
+          onPress: () => {
+            void clearAudioDiagnosticLog();
+          },
+        },
+        { text: text.close, style: 'cancel' },
+      ]);
+    })();
+  }, [text.audioLogs, text.clearAudioLogs, text.close, text.noAudioLogs]);
   
   useEffect(() => {
     if (surahs.length > 0 && selectedSurahId === null) {
@@ -716,6 +735,7 @@ function MainApp() {
                   autoScrollText={text.autoScroll}
                   aboutText={text.about}
                   manageDownloadsText={text.manageDownloads}
+                  audioLogsText={text.audioLogs}
                   onText={text.on}
                   offText={text.off}
                   onAboutPress={() => {
@@ -726,6 +746,7 @@ function MainApp() {
                     setIsSettingsOpen(false);
                     setIsDownloadManagerOpen(true);
                   }}
+                  onAudioLogsPress={handleShowAudioLogs}
                 />
 
                 <View style={styles.modalSection}>
