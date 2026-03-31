@@ -23,6 +23,17 @@ type QueuedVerseTrack = {
   repeat: number;
 };
 
+type TrackPlayerApi = {
+  setupPlayer: () => Promise<void>;
+  updateOptions: (options: unknown) => Promise<void>;
+  setRepeatMode: (mode: unknown) => Promise<unknown>;
+  stop: () => Promise<void>;
+  reset: () => Promise<void>;
+  setQueue: (queue: QueuedVerseTrack[]) => Promise<void>;
+  play: () => Promise<void>;
+  addEventListener: (event: unknown, listener: (payload: any) => void) => { remove: () => void };
+};
+
 const RECITER_NAME = 'Saad Al-Ghamdi';
 
 export function useAudioPlayer(
@@ -36,6 +47,7 @@ export function useAudioPlayer(
 ): UseAudioPlayerReturn {
   const playbackTokenRef = useRef(0);
   const setupPromiseRef = useRef<Promise<void> | null>(null);
+  const isPlayerSetupRef = useRef(false);
   const activeSessionTokenRef = useRef<number | null>(null);
   const onTrackChangeRef = useRef(onTrackChange);
   const onQueueEndedRef = useRef(onQueueEnded);
@@ -56,7 +68,7 @@ export function useAudioPlayer(
       throw new Error(reason);
     }
 
-    const TrackPlayer = trackPlayerModule.default ?? trackPlayerModule;
+    const TrackPlayer = (trackPlayerModule.default ?? trackPlayerModule) as unknown as TrackPlayerApi;
     const { AppKilledPlaybackBehavior, Capability, RepeatMode } = trackPlayerModule;
 
     if (!setupPromiseRef.current) {
@@ -78,13 +90,14 @@ export function useAudioPlayer(
           android: {
             appKilledPlaybackBehavior: AppKilledPlaybackBehavior.StopPlaybackAndRemoveNotification,
             alwaysPauseOnInterruption: true,
-            foregroundServiceType: 'mediaPlayback',
           },
         });
 
         await TrackPlayer.setRepeatMode(RepeatMode.Off);
+        isPlayerSetupRef.current = true;
       })().catch((error) => {
         setupPromiseRef.current = null;
+        isPlayerSetupRef.current = false;
         throw error;
       });
     }
@@ -92,6 +105,7 @@ export function useAudioPlayer(
     try {
       await setupPromiseRef.current;
     } catch (error) {
+      isPlayerSetupRef.current = false;
       setErrorMessage(error instanceof Error ? error.message : audioModeError);
       throw error;
     }
@@ -125,19 +139,17 @@ export function useAudioPlayer(
 
     try {
       const trackPlayerModule = getTrackPlayerModule();
-      const TrackPlayer = trackPlayerModule?.default ?? trackPlayerModule;
-      await ensurePlayerSetup();
-      if (!TrackPlayer) {
-        return;
+      const TrackPlayer = (trackPlayerModule?.default ?? trackPlayerModule) as unknown as TrackPlayerApi | undefined;
+      if (TrackPlayer && isPlayerSetupRef.current) {
+        await TrackPlayer.stop();
+        await TrackPlayer.reset();
       }
-      await TrackPlayer.stop();
-      await TrackPlayer.reset();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : stoppingAudioError);
+    } finally {
+      setIsPreparingAudio(false);
     }
-
-    setIsPreparingAudio(false);
-  }, [ensurePlayerSetup, setErrorMessage, setIsPreparingAudio, stoppingAudioError]);
+  }, [setErrorMessage, setIsPreparingAudio, stoppingAudioError]);
 
   const startPlaybackSession = useCallback(
     async (verses: Verse[], repeatCount: number, sessionToken: number): Promise<void> => {
@@ -145,7 +157,7 @@ export function useAudioPlayer(
 
       try {
         const trackPlayerModule = getTrackPlayerModule();
-        const TrackPlayer = trackPlayerModule?.default ?? trackPlayerModule;
+        const TrackPlayer = (trackPlayerModule?.default ?? trackPlayerModule) as unknown as TrackPlayerApi | undefined;
         await ensurePlayerSetup();
         if (!TrackPlayer) {
           return;
@@ -182,17 +194,18 @@ export function useAudioPlayer(
       return;
     }
 
-    const TrackPlayer = trackPlayerModule.default ?? trackPlayerModule;
+    const TrackPlayer = (trackPlayerModule.default ?? trackPlayerModule) as unknown as TrackPlayerApi;
     const { Event } = trackPlayerModule;
 
     const subscriptions = [
-      TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, (event: { track?: { verseIndex?: string | number; repeat?: string | number } }) => {
-        if (activeSessionTokenRef.current !== playbackTokenRef.current || !event.track) {
+      TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, (event) => {
+        if (activeSessionTokenRef.current !== playbackTokenRef.current || !event?.track) {
           return;
         }
 
-        const verseIndex = Number(event.track.verseIndex);
-        const repeat = Number(event.track.repeat);
+        const trackExtras = event.track as Record<string, unknown>;
+        const verseIndex = Number(trackExtras.verseIndex);
+        const repeat = Number(trackExtras.repeat);
 
         if (!Number.isNaN(verseIndex) && !Number.isNaN(repeat)) {
           onTrackChangeRef.current({ verseIndex, repeat });
