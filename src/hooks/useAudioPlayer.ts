@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { getPreferredVerseAudioUri } from '../services/audioCache';
+import { appendAudioDiagnosticLog } from '../services/audioDiagnostics';
 import { getTrackPlayerModule, getTrackPlayerUnavailableReason } from '../services/trackPlayer';
 import type { Verse } from '../types/quran';
 
@@ -65,6 +66,11 @@ export function useAudioPlayer(
   const onTrackChangeRef = useRef(onTrackChange);
   const onQueueEndedRef = useRef(onQueueEnded);
 
+  const logAudioStep = useCallback((step: string, payload?: Record<string, unknown>) => {
+    console.log(`[audio] ${step}`, payload ?? '');
+    void appendAudioDiagnosticLog(step, payload);
+  }, []);
+
   useEffect(() => {
     onTrackChangeRef.current = onTrackChange;
   }, [onTrackChange]);
@@ -77,6 +83,7 @@ export function useAudioPlayer(
     const trackPlayerModule = getTrackPlayerModule();
     if (!trackPlayerModule) {
       const reason = getTrackPlayerUnavailableReason() ?? audioModeError;
+      logAudioStep('track_player_module_missing', { reason });
       setErrorMessage(reason);
       throw new Error(reason);
     }
@@ -84,6 +91,7 @@ export function useAudioPlayer(
     const TrackPlayer = resolveTrackPlayerApi();
     if (!TrackPlayer) {
       const reason = getTrackPlayerUnavailableReason() ?? audioModeError;
+      logAudioStep('track_player_api_missing', { reason });
       setErrorMessage(reason);
       throw new Error(reason);
     }
@@ -92,14 +100,19 @@ export function useAudioPlayer(
     if (!setupPromiseRef.current) {
       setupPromiseRef.current = (async () => {
         try {
+          logAudioStep('setup_player_start');
           await TrackPlayer.setupPlayer();
+          logAudioStep('setup_player_success');
         } catch (error) {
           const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
           if (code !== 'player_already_initialized') {
+            logAudioStep('setup_player_error', { code, message: error instanceof Error ? error.message : String(error) });
             throw error;
           }
+          logAudioStep('setup_player_already_initialized');
         }
 
+        logAudioStep('update_options_start');
         await TrackPlayer.updateOptions({
           capabilities: [Capability.Play, Capability.Pause, Capability.Stop],
           compactCapabilities: [Capability.Play, Capability.Pause, Capability.Stop],
@@ -111,12 +124,15 @@ export function useAudioPlayer(
             foregroundServiceType: 'mediaPlayback',
           },
         });
+        logAudioStep('update_options_success');
 
         await TrackPlayer.setRepeatMode(RepeatMode.Off);
+        logAudioStep('set_repeat_mode_success');
         isPlayerSetupRef.current = true;
       })().catch((error) => {
         setupPromiseRef.current = null;
         isPlayerSetupRef.current = false;
+        logAudioStep('setup_sequence_error', { message: error instanceof Error ? error.message : String(error) });
         throw error;
       });
     }
@@ -125,10 +141,11 @@ export function useAudioPlayer(
       await setupPromiseRef.current;
     } catch (error) {
       isPlayerSetupRef.current = false;
+      logAudioStep('ensure_setup_error', { message: error instanceof Error ? error.message : String(error) });
       setErrorMessage(error instanceof Error ? error.message : audioModeError);
       throw error;
     }
-  }, [audioModeError, setErrorMessage]);
+  }, [audioModeError, logAudioStep, setErrorMessage]);
 
   const buildQueue = useCallback(async (verses: Verse[], repeatCount: number, sessionToken: number) => {
     const queue: QueuedVerseTrack[] = [];
@@ -159,15 +176,18 @@ export function useAudioPlayer(
     try {
       const TrackPlayer = resolveTrackPlayerApi();
       if (TrackPlayer && isPlayerSetupRef.current) {
+        logAudioStep('stop_playback_start');
         await TrackPlayer.stop();
         await TrackPlayer.reset();
+        logAudioStep('stop_playback_success');
       }
     } catch (error) {
+      logAudioStep('stop_playback_error', { message: error instanceof Error ? error.message : String(error) });
       setErrorMessage(error instanceof Error ? error.message : stoppingAudioError);
     } finally {
       setIsPreparingAudio(false);
     }
-  }, [setErrorMessage, setIsPreparingAudio, stoppingAudioError]);
+  }, [logAudioStep, setErrorMessage, setIsPreparingAudio, stoppingAudioError]);
 
   const startPlaybackSession = useCallback(
     async (verses: Verse[], repeatCount: number, sessionToken: number): Promise<void> => {
@@ -175,8 +195,10 @@ export function useAudioPlayer(
 
       try {
         const TrackPlayer = resolveTrackPlayerApi();
+        logAudioStep('start_session', { repeatCount, verseCount: verses.length });
         await ensurePlayerSetup();
         if (!TrackPlayer) {
+          logAudioStep('start_session_no_player');
           setIsPreparingAudio(false);
           return;
         }
@@ -187,23 +209,29 @@ export function useAudioPlayer(
         }
 
         const queue = await buildQueue(verses, repeatCount, sessionToken);
+        logAudioStep('queue_built', { queueSize: queue.length });
         if (sessionToken !== playbackTokenRef.current) {
           setIsPreparingAudio(false);
           return;
         }
 
+        logAudioStep('playback_reset_before_queue');
         await TrackPlayer.reset();
+        logAudioStep('set_queue_start');
         await TrackPlayer.setQueue(queue);
         activeSessionTokenRef.current = sessionToken;
         setIsPreparingAudio(false);
+        logAudioStep('play_start');
         await TrackPlayer.play();
+        logAudioStep('play_started');
       } catch (error) {
         setIsPreparingAudio(false);
+        logAudioStep('start_session_error', { message: error instanceof Error ? error.message : String(error) });
         setErrorMessage(error instanceof Error ? error.message : playbackError);
         await stopPlayback();
       }
     },
-    [buildQueue, ensurePlayerSetup, playbackError, setErrorMessage, setIsPreparingAudio, stopPlayback]
+    [buildQueue, ensurePlayerSetup, logAudioStep, playbackError, setErrorMessage, setIsPreparingAudio, stopPlayback]
   );
 
   useEffect(() => {
@@ -230,6 +258,7 @@ export function useAudioPlayer(
         const repeat = Number(trackExtras.repeat);
 
         if (!Number.isNaN(verseIndex) && !Number.isNaN(repeat)) {
+          logAudioStep('active_track_changed', { verseIndex, repeat });
           onTrackChangeRef.current({ verseIndex, repeat });
         }
       }),
@@ -239,6 +268,7 @@ export function useAudioPlayer(
         }
 
         activeSessionTokenRef.current = null;
+        logAudioStep('queue_ended');
         onQueueEndedRef.current();
       }),
     ];
@@ -248,7 +278,7 @@ export function useAudioPlayer(
         subscription.remove();
       });
     };
-  }, []);
+  }, [logAudioStep]);
 
   return {
     startPlaybackSession,
