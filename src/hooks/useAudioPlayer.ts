@@ -140,7 +140,6 @@ export function useAudioPlayer(
           android: {
             appKilledPlaybackBehavior: AppKilledPlaybackBehavior.StopPlaybackAndRemoveNotification,
             alwaysPauseOnInterruption: true,
-            foregroundServiceType: 'mediaPlayback',
           },
         });
         logAudioStep('update_options_success');
@@ -235,13 +234,22 @@ export function useAudioPlayer(
         }
 
         logAudioStep('playback_reset_before_queue');
-        await TrackPlayer.reset();
+        await TrackPlayer.reset().catch((error: unknown) => {
+          logAudioStep('reset_before_queue_error', { message: error instanceof Error ? error.message : String(error) });
+          throw error;
+        });
         logAudioStep('set_queue_start');
-        await TrackPlayer.setQueue(queue);
+        await TrackPlayer.setQueue(queue).catch((error: unknown) => {
+          logAudioStep('set_queue_error', { message: error instanceof Error ? error.message : String(error) });
+          throw error;
+        });
         activeSessionTokenRef.current = sessionToken;
         setIsPreparingAudio(false);
         logAudioStep('play_start');
-        await TrackPlayer.play();
+        await TrackPlayer.play().catch((error: unknown) => {
+          logAudioStep('play_error', { message: error instanceof Error ? error.message : String(error) });
+          throw error;
+        });
         logAudioStep('play_started');
       } catch (error) {
         setIsPreparingAudio(false);
@@ -265,38 +273,43 @@ export function useAudioPlayer(
     }
     const { Event } = trackPlayerModule;
 
-    const subscriptions = [
-      TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, (event: unknown) => {
-        const payload = event as ActiveTrackChangedEvent;
-        if (activeSessionTokenRef.current !== playbackTokenRef.current || !payload.track) {
-          return;
-        }
+    try {
+      const subscriptions = [
+        TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, (event: unknown) => {
+          const payload = event as ActiveTrackChangedEvent;
+          if (activeSessionTokenRef.current !== playbackTokenRef.current || !payload.track) {
+            return;
+          }
 
-        const trackExtras = payload.track;
-        const verseIndex = Number(trackExtras.verseIndex);
-        const repeat = Number(trackExtras.repeat);
+          const trackExtras = payload.track;
+          const verseIndex = Number(trackExtras.verseIndex);
+          const repeat = Number(trackExtras.repeat);
 
-        if (!Number.isNaN(verseIndex) && !Number.isNaN(repeat)) {
-          logAudioStep('active_track_changed', { verseIndex, repeat });
-          onTrackChangeRef.current({ verseIndex, repeat });
-        }
-      }),
-      TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
-        if (activeSessionTokenRef.current !== playbackTokenRef.current) {
-          return;
-        }
+          if (!Number.isNaN(verseIndex) && !Number.isNaN(repeat)) {
+            logAudioStep('active_track_changed', { verseIndex, repeat });
+            onTrackChangeRef.current({ verseIndex, repeat });
+          }
+        }),
+        TrackPlayer.addEventListener(Event.PlaybackQueueEnded, () => {
+          if (activeSessionTokenRef.current !== playbackTokenRef.current) {
+            return;
+          }
 
-        activeSessionTokenRef.current = null;
-        logAudioStep('queue_ended');
-        onQueueEndedRef.current();
-      }),
-    ];
+          activeSessionTokenRef.current = null;
+          logAudioStep('queue_ended');
+          onQueueEndedRef.current();
+        }),
+      ];
 
-    return () => {
-      subscriptions.forEach((subscription) => {
-        subscription.remove();
-      });
-    };
+      return () => {
+        subscriptions.forEach((subscription) => {
+          subscription.remove();
+        });
+      };
+    } catch (error) {
+      logAudioStep('event_listener_attach_error', { message: error instanceof Error ? error.message : String(error) });
+      return;
+    }
   }, [logAudioStep]);
 
   return {

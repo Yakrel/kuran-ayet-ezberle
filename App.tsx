@@ -1,7 +1,7 @@
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useFonts } from 'expo-font';
-import { KeyboardAvoidingView, Modal, Platform, SafeAreaView, StyleSheet, Text, View, Pressable, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { AppState, KeyboardAvoidingView, Modal, Platform, SafeAreaView, StyleSheet, Text, View, Pressable, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as SplashScreen from 'expo-splash-screen';
 import { Amiri_400Regular } from '@expo-google-fonts/amiri';
@@ -39,7 +39,18 @@ import { commonStyles } from './src/styles/common';
 
 import { Storage } from './src/services/storage';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
-import { clearAllDownloads, downloadAudioBundle, downloadSurahAudio, getAvailableSpaceMB, getCachedAudioFileNames, getCacheStats } from './src/services/audioCache';
+import {
+  clearAllDownloads,
+  downloadAudioBundle,
+  downloadSurahAudio,
+  getAvailableSpaceMB,
+  getCachedAudioFileNames,
+  getCacheStats,
+  getPendingAudioBundleDownload,
+  pauseActiveAudioBundleDownload,
+  resumeAudioBundleDownload,
+  type AudioBundleDownloadProgress,
+} from './src/services/audioCache';
 import { clearAudioDiagnosticLog, getAudioDiagnosticLog } from './src/services/audioDiagnostics';
 import { SURAH_LIST } from './src/constants/surahList';
 import { getTrackPlayerUnavailableReason } from './src/services/trackPlayer';
@@ -82,6 +93,15 @@ function MainApp() {
   const [cacheSize, setCacheSize] = useState(0);
   const [downloadedFileCount, setDownloadedFileCount] = useState(0);
   const [isFullDownloadComplete, setIsFullDownloadComplete] = useState(false);
+  const appStateRef = useRef(AppState.currentState);
+
+  const applyDownloadProgress = useCallback((progress: AudioBundleDownloadProgress) => {
+    setDownloadProgress({
+      current: progress.current,
+      total: progress.total,
+      percent: progress.percent,
+    });
+  }, []);
 
   const refreshCacheState = useCallback(async () => {
     const stats = await getCacheStats();
@@ -95,11 +115,75 @@ function MainApp() {
     return stats;
   }, []);
 
+  const syncDownloadProgressFromPersistence = useCallback(async () => {
+    const pendingDownload = await getPendingAudioBundleDownload();
+    if (pendingDownload) {
+      applyDownloadProgress(pendingDownload);
+      return true;
+    }
+
+    const stats = await refreshCacheState();
+    const current = Math.min(stats.files, TOTAL_AUDIO_FILES);
+    setDownloadProgress({
+      current,
+      total: TOTAL_AUDIO_FILES,
+      percent: Math.round((current / TOTAL_AUDIO_FILES) * 100),
+    });
+    return false;
+  }, [applyDownloadProgress, refreshCacheState]);
+
+  const runAudioBundleDownload = useCallback(async (resumeIfPossible: boolean) => {
+    if (isDownloading) {
+      return;
+    }
+
+    if (!resumeIfPossible) {
+      const availableMB = await getAvailableSpaceMB();
+      if (availableMB < 1024) {
+        Alert.alert(text.downloadPromptTitle, text.lowStorageWarning);
+        return;
+      }
+    }
+
+    setIsDownloadManagerOpen(true);
+    setIsDownloading(true);
+
+    try {
+      const result = resumeIfPossible
+        ? await resumeAudioBundleDownload(applyDownloadProgress)
+        : await downloadAudioBundle(applyDownloadProgress);
+
+      await refreshCacheState();
+
+      if (result === 'completed') {
+        await Storage.setDownloadComplete(true);
+        await Storage.setOnboardingDone(true);
+        Alert.alert(text.downloadPromptTitle, text.downloadComplete);
+      }
+    } catch (e) {
+      console.error('Download error:', e);
+      await refreshCacheState();
+      Alert.alert(text.downloadPromptTitle, text.downloadError);
+    } finally {
+      setIsDownloading(false);
+      await syncDownloadProgressFromPersistence();
+    }
+  }, [
+    applyDownloadProgress,
+    isDownloading,
+    refreshCacheState,
+    syncDownloadProgressFromPersistence,
+    text.downloadComplete,
+    text.downloadError,
+    text.downloadPromptTitle,
+    text.lowStorageWarning,
+  ]);
+
   // LOAD SAVED SETTINGS ON STARTUP
   useEffect(() => {
     async function loadSettings() {
       try {
-        const [savedFont, savedSurah, savedTranslation, savedAutoScroll, lastVerse, onboardingDone, downloadComplete, stats] = await Promise.all([
+        const [savedFont, savedSurah, savedTranslation, savedAutoScroll, lastVerse, onboardingDone, downloadComplete, stats, pendingDownload] = await Promise.all([
           Storage.getQuranFont(),
           Storage.getSelectedSurah(),
           Storage.getSelectedTranslation(),
@@ -108,6 +192,7 @@ function MainApp() {
           Storage.getOnboardingDone(),
           Storage.getDownloadComplete(),
           getCacheStats(),
+          getPendingAudioBundleDownload(),
         ]);
 
         if (savedFont) setSelectedQuranFontId(savedFont as QuranFontId);
@@ -117,11 +202,15 @@ function MainApp() {
         setCacheSize(stats.megabytes);
         setDownloadedFileCount(stats.files);
         setIsFullDownloadComplete(completed);
-        setDownloadProgress({
-          current: Math.min(stats.files, TOTAL_AUDIO_FILES),
-          total: TOTAL_AUDIO_FILES,
-          percent: Math.round((Math.min(stats.files, TOTAL_AUDIO_FILES) / TOTAL_AUDIO_FILES) * 100),
-        });
+        if (pendingDownload) {
+          applyDownloadProgress(pendingDownload);
+        } else {
+          setDownloadProgress({
+            current: Math.min(stats.files, TOTAL_AUDIO_FILES),
+            total: TOTAL_AUDIO_FILES,
+            percent: Math.round((Math.min(stats.files, TOTAL_AUDIO_FILES) / TOTAL_AUDIO_FILES) * 100),
+          });
+        }
         if (downloadComplete !== completed) {
           void Storage.setDownloadComplete(completed);
         }
@@ -143,7 +232,7 @@ function MainApp() {
       }
     }
     void loadSettings();
-  }, []);
+  }, [applyDownloadProgress]);
 
   useEffect(() => {
     const trackPlayerError = getTrackPlayerUnavailableReason();
@@ -459,53 +548,8 @@ function MainApp() {
   );
 
   const handleDownloadAll = useCallback(async () => {
-    if (isDownloading) {
-      return;
-    }
-
-    // Check for enough disk space (roughly 1GB)
-    const availableMB = await getAvailableSpaceMB();
-    if (availableMB < 1024) {
-      Alert.alert(text.downloadPromptTitle, text.lowStorageWarning);
-      return;
-    }
-
-    setIsDownloadManagerOpen(true);
-    setIsDownloading(true);
-    setDownloadProgress({ current: 0, total: 100, percent: 0 });
-
-    try {
-      await downloadAudioBundle((type, progress) => {
-        const percent = Math.round(progress * 100);
-        if (type === 'download') {
-          setDownloadProgress({
-            current: percent,
-            total: 100,
-            percent: percent,
-          });
-        } else {
-          // Unzip phase - we can show it as 100% download or a special state
-          setDownloadProgress({
-            current: 100,
-            total: 100,
-            percent: 100,
-          });
-        }
-      });
-
-      await Storage.setDownloadComplete(true);
-      await Storage.setOnboardingDone(true);
-      await refreshCacheState();
-      
-      Alert.alert(text.downloadPromptTitle, text.downloadComplete);
-    } catch (e) {
-      console.error('Download error:', e);
-      await refreshCacheState();
-      Alert.alert(text.downloadPromptTitle, text.downloadError);
-    } finally {
-      setIsDownloading(false);
-    }
-  }, [isDownloading, refreshCacheState, text.downloadComplete, text.downloadError, text.downloadPromptTitle]);
+    await runAudioBundleDownload(false);
+  }, [runAudioBundleDownload]);
 
   const handleClearDownloads = useCallback(() => {
     Alert.alert(
@@ -518,6 +562,7 @@ function MainApp() {
           style: 'destructive', 
           onPress: async () => {
             await clearAllDownloads();
+            await Storage.clearBundleDownloadState();
             await Storage.setDownloadComplete(false);
             await refreshCacheState();
             setDownloadProgress({ current: 0, total: TOTAL_AUDIO_FILES, percent: 0 });
@@ -556,15 +601,47 @@ function MainApp() {
       return;
     }
 
-    void refreshCacheState().then((stats) => {
-      const current = Math.min(stats.files, TOTAL_AUDIO_FILES);
-      setDownloadProgress({
-        current,
-        total: TOTAL_AUDIO_FILES,
-        percent: Math.round((current / TOTAL_AUDIO_FILES) * 100),
-      });
+    void syncDownloadProgressFromPersistence();
+  }, [isDownloadManagerOpen, isDownloading, syncDownloadProgressFromPersistence]);
+
+  useEffect(() => {
+    void (async () => {
+      const pendingDownload = await getPendingAudioBundleDownload();
+      if (pendingDownload && !isFullDownloadComplete) {
+        await runAudioBundleDownload(true);
+      }
+    })();
+  }, [isFullDownloadComplete, runAudioBundleDownload]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      const previousAppState = appStateRef.current;
+      appStateRef.current = nextAppState;
+
+      if (previousAppState === 'active' && nextAppState.match(/inactive|background/)) {
+        void pauseActiveAudioBundleDownload().then((paused) => {
+          if (paused) {
+            setIsDownloading(false);
+          }
+        });
+        return;
+      }
+
+      if (nextAppState === 'active') {
+        void (async () => {
+          const pendingDownload = await getPendingAudioBundleDownload();
+          if (pendingDownload) {
+            applyDownloadProgress(pendingDownload);
+            await runAudioBundleDownload(true);
+          }
+        })();
+      }
     });
-  }, [isDownloadManagerOpen, isDownloading, refreshCacheState]);
+
+    return () => {
+      subscription.remove();
+    };
+  }, [applyDownloadProgress, runAudioBundleDownload]);
   
   useEffect(() => {
     if (!surahDetail) {

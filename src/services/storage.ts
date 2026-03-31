@@ -1,5 +1,15 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+export type BundleDownloadPhase = 'downloading' | 'unzipping' | 'moving';
+
+export type SavedBundleDownloadState = {
+  phase: BundleDownloadPhase;
+  current: number;
+  total: number;
+  percent: number;
+  resumable: Record<string, unknown> | null;
+};
+
 const KEYS = {
   LANGUAGE: '@app_language',
   QURAN_FONT: '@app_quran_font',
@@ -9,6 +19,7 @@ const KEYS = {
   LAST_VERSE: '@app_last_verse',
   DOWNLOAD_COMPLETE: '@app_full_download_complete',
   ONBOARDING_DONE: '@app_onboarding_done',
+  BUNDLE_DOWNLOAD_STATE: '@app_bundle_download_state',
 };
 
 async function setBoolean(key: string, value: boolean) {
@@ -90,5 +101,44 @@ export const Storage = {
     } catch {
       return null;
     }
-  }
+  },
+
+  async setBundleDownloadState(state: SavedBundleDownloadState) {
+    await AsyncStorage.setItem(KEYS.BUNDLE_DOWNLOAD_STATE, JSON.stringify(state));
+  },
+
+  async getBundleDownloadState(): Promise<SavedBundleDownloadState | null> {
+    const val = await AsyncStorage.getItem(KEYS.BUNDLE_DOWNLOAD_STATE);
+    if (!val) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(val) as Partial<SavedBundleDownloadState>;
+      if (
+        (parsed.phase !== 'downloading' && parsed.phase !== 'unzipping' && parsed.phase !== 'moving') ||
+        typeof parsed.current !== 'number' ||
+        typeof parsed.total !== 'number' ||
+        typeof parsed.percent !== 'number'
+      ) {
+        return null;
+      }
+
+      return {
+        phase: parsed.phase,
+        current: parsed.current,
+        total: parsed.total,
+        percent: parsed.percent,
+        resumable: parsed.resumable && typeof parsed.resumable === 'object'
+          ? parsed.resumable as Record<string, unknown>
+          : null,
+      };
+    } catch {
+      return null;
+    }
+  },
+
+  async clearBundleDownloadState() {
+    await AsyncStorage.removeItem(KEYS.BUNDLE_DOWNLOAD_STATE);
+  },
 };
