@@ -31,10 +31,23 @@ type TrackPlayerApi = {
   reset: () => Promise<void>;
   setQueue: (queue: QueuedVerseTrack[]) => Promise<void>;
   play: () => Promise<void>;
-  addEventListener: (event: unknown, listener: (payload: any) => void) => { remove: () => void };
+  addEventListener: (event: unknown, listener: (payload: unknown) => void) => { remove: () => void };
+};
+
+type ActiveTrackChangedEvent = {
+  track?: Record<string, unknown>;
 };
 
 const RECITER_NAME = 'Saad Al-Ghamdi';
+
+function resolveTrackPlayerApi(): TrackPlayerApi | null {
+  const trackPlayerModule = getTrackPlayerModule();
+  if (!trackPlayerModule) {
+    return null;
+  }
+
+  return (trackPlayerModule.default ?? trackPlayerModule) as unknown as TrackPlayerApi;
+}
 
 export function useAudioPlayer(
   setErrorMessage: (error: string | null) => void,
@@ -68,7 +81,12 @@ export function useAudioPlayer(
       throw new Error(reason);
     }
 
-    const TrackPlayer = (trackPlayerModule.default ?? trackPlayerModule) as unknown as TrackPlayerApi;
+    const TrackPlayer = resolveTrackPlayerApi();
+    if (!TrackPlayer) {
+      const reason = getTrackPlayerUnavailableReason() ?? audioModeError;
+      setErrorMessage(reason);
+      throw new Error(reason);
+    }
     const { AppKilledPlaybackBehavior, Capability, RepeatMode } = trackPlayerModule;
 
     if (!setupPromiseRef.current) {
@@ -138,8 +156,7 @@ export function useAudioPlayer(
     activeSessionTokenRef.current = null;
 
     try {
-      const trackPlayerModule = getTrackPlayerModule();
-      const TrackPlayer = (trackPlayerModule?.default ?? trackPlayerModule) as unknown as TrackPlayerApi | undefined;
+      const TrackPlayer = resolveTrackPlayerApi();
       if (TrackPlayer && isPlayerSetupRef.current) {
         await TrackPlayer.stop();
         await TrackPlayer.reset();
@@ -156,10 +173,10 @@ export function useAudioPlayer(
       setIsPreparingAudio(true);
 
       try {
-        const trackPlayerModule = getTrackPlayerModule();
-        const TrackPlayer = (trackPlayerModule?.default ?? trackPlayerModule) as unknown as TrackPlayerApi | undefined;
+        const TrackPlayer = resolveTrackPlayerApi();
         await ensurePlayerSetup();
         if (!TrackPlayer) {
+          setIsPreparingAudio(false);
           return;
         }
 
@@ -194,16 +211,20 @@ export function useAudioPlayer(
       return;
     }
 
-    const TrackPlayer = (trackPlayerModule.default ?? trackPlayerModule) as unknown as TrackPlayerApi;
+    const TrackPlayer = resolveTrackPlayerApi();
+    if (!TrackPlayer) {
+      return;
+    }
     const { Event } = trackPlayerModule;
 
     const subscriptions = [
-      TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, (event) => {
-        if (activeSessionTokenRef.current !== playbackTokenRef.current || !event?.track) {
+      TrackPlayer.addEventListener(Event.PlaybackActiveTrackChanged, (event: unknown) => {
+        const payload = event as ActiveTrackChangedEvent;
+        if (activeSessionTokenRef.current !== playbackTokenRef.current || !payload.track) {
           return;
         }
 
-        const trackExtras = event.track as Record<string, unknown>;
+        const trackExtras = payload.track;
         const verseIndex = Number(trackExtras.verseIndex);
         const repeat = Number(trackExtras.repeat);
 
