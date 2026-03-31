@@ -1,7 +1,7 @@
 import React, { useRef, useEffect } from 'react';
 import { FlatList, Platform, StyleSheet, Text, View, type ViewToken } from 'react-native';
 import type { Verse } from '../types/quran';
-import type { VerseLocation } from '../reducers/types';
+import type { VerseLocation } from '../types/navigation';
 import { VerseCard } from './VerseCard';
 import { PageHeader } from './PageHeader';
 import { theme } from '../styles/theme';
@@ -10,6 +10,7 @@ import { UI_CONFIG } from '../constants/gestures';
 type VerseListProps = {
   currentPageVerses: Verse[];
   currentVerse: Verse | null;
+  activeWordLocation?: string | null;
   quranFontFamily: string;
   currentPage: number;
   pageText: string;
@@ -25,6 +26,7 @@ type VerseListProps = {
 export function VerseList({
   currentPageVerses,
   currentVerse,
+  activeWordLocation,
   quranFontFamily,
   currentPage,
   pageText,
@@ -99,6 +101,7 @@ export function VerseList({
                 verse={item}
                 quranFontFamily={quranFontFamily}
                 isCurrentVerse={isCurrent}
+                activeWordLocation={isCurrent ? activeWordLocation : null}
                 onPress={onVerseTap}
                 onLongPress={onVerseLongPress}
               />
@@ -114,16 +117,17 @@ export function VerseList({
 const styles = StyleSheet.create({
   listContainer: {
     flex: 1,
-    marginTop: theme.spacing.SM,
-    marginHorizontal: theme.spacing.XL,
+    marginTop: theme.spacing.MD,
+    marginHorizontal: theme.spacing.LG,
     marginBottom: theme.spacing.LG,
-    borderRadius: theme.borderRadius.XXLARGE,
-    backgroundColor: theme.colors.SECONDARY_BG,
+    borderRadius: 30,
+    backgroundColor: 'rgba(6, 16, 32, 0.84)',
     borderWidth: 1,
-    borderColor: theme.colors.BORDER_PRIMARY,
+    borderColor: 'rgba(148, 163, 184, 0.16)',
     paddingHorizontal: theme.spacing.MD,
-    paddingTop: 6,
-    paddingBottom: 80, // Space for BottomPlayerBar
+    paddingTop: 10,
+    paddingBottom: 92,
+    overflow: 'hidden',
   },
   pageBody: {
     flex: 1,
@@ -131,12 +135,13 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingBottom: 32,
-    gap: 12,
+    gap: 14,
+    paddingTop: 8,
   },
   pageHint: {
     marginTop: theme.spacing.SM,
     color: theme.colors.TEXT_MUTED,
     fontSize: theme.fontSize.SM,
-    marginLeft: 2,
+    marginLeft: 6,
   },
 });

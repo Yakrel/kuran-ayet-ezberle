@@ -25,16 +25,18 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: theme.spacing.MD,
+    paddingHorizontal: 6,
   },
   pageTitle: {
     color: theme.colors.TEXT_PRIMARY,
     fontWeight: '700',
-    fontSize: theme.fontSize.LG,
+    fontSize: theme.fontSize.XL,
     marginLeft: 2,
   },
   pageProgressText: {
     color: theme.colors.TEXT_MUTED,
-    fontSize: theme.fontSize.XS,
+    fontSize: theme.fontSize.SM,
     fontWeight: '700',
+    letterSpacing: 0.6,
   },
 });

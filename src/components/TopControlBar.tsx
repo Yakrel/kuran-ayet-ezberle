@@ -66,8 +66,8 @@ export function TopControlBar({
   
   return (
     <View style={styles.container}>
-      {/* Surah Picker - Takes most space */}
       <View style={styles.surahSection}>
+        <Text style={styles.sectionLabel}>Surah</Text>
         <SurahPicker
           surahs={surahs}
           selectedSurahId={selectedSurahId}
@@ -76,8 +76,8 @@ export function TopControlBar({
         />
       </View>
 
-      {/* Page Navigation - Compact center section */}
       <View style={styles.pageNavSection}>
+        <Text style={styles.sectionLabel}>{pageText}</Text>
         <Pressable
           onPress={onPreviousPress}
           disabled={!canGoPreviousPage}
@@ -118,7 +118,6 @@ export function TopControlBar({
         </Pressable>
       </View>
 
-      {/* Settings Button - Icon only */}
       <Pressable style={styles.settingsButton} onPress={onSettingsPress}>
         <Feather name="settings" size={22} color={theme.colors.TEXT_PRIMARY} />
       </Pressable>
@@ -129,22 +128,29 @@ export function TopControlBar({
 const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.MD,
+    alignItems: 'stretch',
+    gap: theme.spacing.SM,
   },
   surahSection: {
     flex: 1,
+    gap: 6,
+    paddingHorizontal: theme.spacing.MD,
+    paddingVertical: theme.spacing.SM,
+    borderRadius: theme.borderRadius.LARGE,
+    backgroundColor: 'rgba(15, 23, 42, 0.76)',
+    borderWidth: 1,
+    borderColor: 'rgba(148, 163, 184, 0.12)',
   },
   pageNavSection: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing.SM,
-    backgroundColor: theme.colors.TERTIARY_BG,
-    borderRadius: theme.borderRadius.MEDIUM,
+    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+    borderRadius: theme.borderRadius.LARGE,
     borderWidth: 1,
-    borderColor: theme.colors.BORDER_SECONDARY,
-    paddingHorizontal: theme.spacing.SM,
-    paddingVertical: theme.spacing.XS,
+    borderColor: 'rgba(148, 163, 184, 0.12)',
+    paddingHorizontal: theme.spacing.MD,
+    paddingVertical: theme.spacing.SM,
   },
   navButton: {
     width: 32,
@@ -152,7 +158,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: theme.borderRadius.SMALL,
-    backgroundColor: theme.colors.CARD_BG,
+    backgroundColor: 'rgba(30, 41, 59, 0.88)',
   },
   navButtonDisabled: {
     opacity: 0.3,
@@ -173,8 +179,8 @@ const styles = StyleSheet.create({
     padding: 4,
     borderRadius: theme.borderRadius.SMALL,
     borderWidth: 1,
-    borderColor: theme.colors.BORDER_ACCENT,
-    backgroundColor: theme.colors.CARD_BG,
+    borderColor: 'rgba(16, 185, 129, 0.45)',
+    backgroundColor: 'rgba(2, 6, 23, 0.65)',
   },
   pageProgress: {
     color: theme.colors.TEXT_TERTIARY,
@@ -184,11 +190,18 @@ const styles = StyleSheet.create({
   settingsButton: {
     width: 44,
     height: 44,
-    borderRadius: theme.borderRadius.MEDIUM,
-    backgroundColor: theme.colors.CARD_BG,
+    borderRadius: theme.borderRadius.LARGE,
+    backgroundColor: 'rgba(15, 23, 42, 0.88)',
     borderWidth: 1,
-    borderColor: theme.colors.BORDER_SECONDARY,
+    borderColor: 'rgba(148, 163, 184, 0.12)',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  sectionLabel: {
+    color: theme.colors.TEXT_MUTED,
+    fontSize: theme.fontSize.XS,
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 0.8,
   },
 });

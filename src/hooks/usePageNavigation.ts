@@ -1,6 +1,6 @@
 import { useCallback, useRef } from 'react';
 import type { SurahSummary, SurahDetail, Verse } from '../types/quran';
-import type { VerseLocation } from '../reducers/types';
+import type { VerseLocation } from '../types/navigation';
 
 export function usePageNavigation(
   allPages: number[],

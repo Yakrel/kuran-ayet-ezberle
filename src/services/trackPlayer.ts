@@ -1,4 +1,4 @@
-type TrackPlayerModule = typeof import('react-native-track-player');
+type TrackPlayerModule = Record<string, any>;
 type PlaybackServiceFactory = () => (() => Promise<void>);
 
 let cachedModule: TrackPlayerModule | null | undefined;
@@ -18,7 +18,8 @@ export function getTrackPlayerModule(): TrackPlayerModule | null {
   }
 
   try {
-    cachedModule = require('react-native-track-player') as TrackPlayerModule;
+    const moduleName = ['react-native-track-player'].join('');
+    cachedModule = require(moduleName) as TrackPlayerModule;
     cachedError = null;
     return cachedModule;
   } catch (error) {

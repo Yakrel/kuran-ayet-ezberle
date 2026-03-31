@@ -1,30 +1,34 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View, ActivityIndicator } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { theme } from '../styles/theme';
 
 type BottomPlayerBarProps = {
-  playbackState: 'idle' | 'playing' | 'stopped';
-  currentVerseText?: string;
+  playbackState: 'idle' | 'loading' | 'playing' | 'paused' | 'stopped';
   activeLocationText: string;
-  onStop: () => void;
+  currentVerseText?: string;
+  progressLabel: string;
+  progressPercent: number;
   onStart: () => void;
-  isPreparingAudio: boolean;
-  progressText?: string;
-  readyToStartText: string;
+  onPause: () => void;
+  onResume: () => void;
+  onStop: () => void;
 };
 
 export function BottomPlayerBar({
   playbackState,
-  currentVerseText,
   activeLocationText,
-  onStop,
+  currentVerseText,
+  progressLabel,
+  progressPercent,
   onStart,
-  isPreparingAudio,
-  progressText,
-  readyToStartText,
+  onPause,
+  onResume,
+  onStop,
 }: BottomPlayerBarProps) {
   const isPlaying = playbackState === 'playing';
+  const isPaused = playbackState === 'paused';
+  const isLoading = playbackState === 'loading';
 
   return (
     <View style={styles.container}>
@@ -33,37 +37,40 @@ export function BottomPlayerBar({
           <Text style={styles.locationText} numberOfLines={1}>
             {activeLocationText}
           </Text>
-          {isPlaying && currentVerseText ? (
-            <Text style={styles.verseText}>{currentVerseText}</Text>
-          ) : (
-            <Text style={styles.idleText}>{readyToStartText}</Text>
-          )}
+          <Text style={styles.verseText} numberOfLines={1}>
+            {currentVerseText ?? progressLabel}
+          </Text>
+          <Text style={styles.progressLabel} numberOfLines={1}>
+            {progressLabel}
+          </Text>
         </View>
 
         <View style={styles.controlsSection}>
-          {isPreparingAudio ? (
+          {isLoading ? (
             <ActivityIndicator color={theme.colors.ACCENT_PRIMARY} style={styles.loader} />
+          ) : isPlaying ? (
+            <View style={styles.controlRow}>
+              <Pressable style={[styles.iconButton, styles.pauseButton]} onPress={onPause}>
+                <Feather name="pause" size={20} color={theme.colors.TEXT_PRIMARY} />
+              </Pressable>
+              <Pressable style={[styles.iconButton, styles.stopButton]} onPress={onStop}>
+                <Feather name="square" size={18} color={theme.colors.TEXT_PRIMARY} />
+              </Pressable>
+            </View>
           ) : (
             <Pressable
-              style={[styles.playButton, isPlaying ? styles.stopButton : styles.startButton]}
-              onPress={isPlaying ? onStop : onStart}
+              style={[styles.iconButton, styles.startButton]}
+              onPress={isPaused ? onResume : onStart}
             >
-              <Feather 
-                name={isPlaying ? "square" : "play"} 
-                size={24} 
-                color={theme.colors.TEXT_PRIMARY} 
-              />
+              <Feather name="play" size={22} color={theme.colors.TEXT_PRIMARY} />
             </Pressable>
           )}
         </View>
       </View>
-      
-      {/* Mini Progress Bar if playing */}
-      {isPlaying && progressText && (
-        <View style={styles.progressBarBackground}>
-          <View style={styles.progressBarFill} />
-        </View>
-      )}
+
+      <View style={styles.progressBarBackground}>
+        <View style={[styles.progressBarFill, { width: `${Math.max(0, Math.min(100, progressPercent))}%` }]} />
+      </View>
     </View>
   );
 }
@@ -86,7 +93,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 12,
     paddingHorizontal: 16,
-    height: 70,
+    minHeight: 78,
   },
   infoSection: {
     flex: 1,
@@ -103,23 +110,29 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
   },
-  idleText: {
+  progressLabel: {
     color: theme.colors.TEXT_MUTED,
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '500',
   },
   controlsSection: {
     marginLeft: 12,
   },
-  playButton: {
+  controlRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  iconButton: {
     width: 48,
     height: 48,
     borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.colors.ACCENT_PRIMARY,
   },
   startButton: {
+    backgroundColor: theme.colors.ACCENT_PRIMARY,
+  },
+  pauseButton: {
     backgroundColor: theme.colors.ACCENT_PRIMARY,
   },
   stopButton: {
@@ -130,13 +143,12 @@ const styles = StyleSheet.create({
     height: 48,
   },
   progressBarBackground: {
-    height: 3,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    height: 4,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     width: '100%',
   },
   progressBarFill: {
     height: '100%',
     backgroundColor: theme.colors.ACCENT_PRIMARY,
-    width: '40%', // We can calculate this later based on current repeat/verse
-  }
+  },
 });
