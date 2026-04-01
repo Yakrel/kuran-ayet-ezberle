@@ -36,6 +36,7 @@ type TrackPlayerApi = {
   pause: () => Promise<void>;
   stop: () => Promise<void>;
   seekTo: (positionSeconds: number) => Promise<void>;
+  setRate: (rate: number) => Promise<void>;
   getProgress: () => Promise<{ position: number; duration: number; buffered: number }>;
   addEventListener: (event: unknown, listener: (payload: unknown) => void) => { remove: () => void };
 };
@@ -56,6 +57,7 @@ function isTrackPlayerApi(value: unknown): value is TrackPlayerApi {
     typeof candidate.pause === 'function' &&
     typeof candidate.stop === 'function' &&
     typeof candidate.seekTo === 'function' &&
+    typeof candidate.setRate === 'function' &&
     typeof candidate.getProgress === 'function' &&
     typeof candidate.addEventListener === 'function'
   );
@@ -121,10 +123,12 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
   const [activeVerse, setActiveVerse] = useState<Verse | null>(null);
   const [activeWordLocation, setActiveWordLocation] = useState<string | null>(null);
   const [loadedSurahId, setLoadedSurahId] = useState<number | null>(null);
+  const [playbackRate, setPlaybackRateState] = useState(1.0);
 
   const surahRef = useRef<SurahDetail | null>(null);
   const sessionRef = useRef<PlaybackSession | null>(null);
   const currentRepeatRef = useRef(1);
+  const playbackRateRef = useRef(1.0);
   const setupPromiseRef = useRef<Promise<void> | null>(null);
   const loadedAudioUriRef = useRef<string | null>(null);
   const isHandlingLoopRef = useRef(false);
@@ -148,6 +152,21 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
     });
     setActiveWordLocation(findWordLocationAtTime(nextActiveVerse, positionMs));
   }, [onActiveVerseChange]);
+
+  const setPlaybackRate = useCallback(async (rate: number) => {
+    const TrackPlayer = getPlayerApi();
+    if (!TrackPlayer) {
+      return;
+    }
+
+    try {
+      await TrackPlayer.setRate(rate);
+      playbackRateRef.current = rate;
+      setPlaybackRateState(rate);
+    } catch (error) {
+      onError(error instanceof Error ? error.message : 'Failed to set playback rate.');
+    }
+  }, [onError]);
 
   const ensurePlayerSetup = useCallback(async () => {
     const playerModule = getTrackPlayerModule();
@@ -177,6 +196,7 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
           progressUpdateEventInterval: 0.25,
         });
         await TrackPlayer.setRepeatMode(RepeatMode.Off);
+        await TrackPlayer.setRate(playbackRateRef.current);
       })().catch((error) => {
         setupPromiseRef.current = null;
         throw error;
@@ -186,6 +206,7 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
     await setupPromiseRef.current;
     return { playerModule, TrackPlayer };
   }, [onError]);
+
 
   useEffect(() => {
     let isMounted = true;
@@ -415,7 +436,8 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
     activeVerse,
     activeWordLocation,
     loadedSurahId,
-  }), [activeVerse, activeWordLocation, currentRepeat, currentTimeMs, durationMs, loadedSurahId, playbackStatus]);
+    playbackRate,
+  }), [activeVerse, activeWordLocation, currentRepeat, currentTimeMs, durationMs, loadedSurahId, playbackStatus, playbackRate]);
 
   return {
     ...state,
@@ -424,5 +446,6 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
     resumePlayback,
     stopPlayback,
     seekToVerse,
+    setPlaybackRate,
   };
 }

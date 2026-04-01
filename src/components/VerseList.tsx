@@ -4,7 +4,7 @@ import type { Verse } from '../types/quran';
 import type { VerseLocation } from '../types/navigation';
 import { VerseCard } from './VerseCard';
 import { PageHeader } from './PageHeader';
-import { theme } from '../styles/theme';
+import { useTheme } from '../hooks/useTheme';
 import { UI_CONFIG } from '../constants/gestures';
 
 type VerseListProps = {
@@ -12,8 +12,7 @@ type VerseListProps = {
   currentVerse: Verse | null;
   activeWordLocation?: string | null;
   quranFontFamily: string;
-  currentPage: number;
-  pageText: string;
+  sectionTitle: string;
   pageProgressText: string;
   swipeHintText: string;
   autoScrollEnabled: boolean;
@@ -28,8 +27,7 @@ export function VerseList({
   currentVerse,
   activeWordLocation,
   quranFontFamily,
-  currentPage,
-  pageText,
+  sectionTitle,
   pageProgressText,
   swipeHintText,
   autoScrollEnabled,
@@ -38,6 +36,7 @@ export function VerseList({
   onVisibleVerseChange,
   panHandlers,
 }: VerseListProps) {
+  const { theme, themeType } = useTheme();
   const verseListRef = useRef<FlatList<Verse> | null>(null);
   
   const viewabilityConfigRef = useRef({
@@ -74,11 +73,17 @@ export function VerseList({
   });
 
   return (
-    <View style={styles.listContainer}>
-      <PageHeader pageText={pageText} currentPage={currentPage} pageProgressText={pageProgressText} />
+    <View style={[
+      styles.listContainer, 
+      { 
+        backgroundColor: themeType === 'DARK' ? 'rgba(8, 15, 28, 0.86)' : 'rgba(255, 252, 245, 0.84)',
+        borderColor: themeType === 'DARK' ? 'rgba(148, 163, 184, 0.18)' : 'rgba(7, 54, 66, 0.12)'
+      }
+    ]}>
+      <PageHeader title={sectionTitle} pageProgressText={pageProgressText} />
       <View style={styles.pageBody} {...panHandlers}>
         <FlatList
-          key={`page-${currentPage}`}
+          key={`page-${pageProgressText}`}
           ref={verseListRef}
           data={currentPageVerses}
           keyExtractor={(item) => `${item.surah_id}-${item.verse_number}`}
@@ -109,7 +114,7 @@ export function VerseList({
           }}
         />
       </View>
-      <Text style={styles.pageHint}>{swipeHintText}</Text>
+      <Text style={[styles.pageHint, { color: theme.colors.TEXT_MUTED }]}>{swipeHintText}</Text>
     </View>
   );
 }
@@ -117,31 +122,29 @@ export function VerseList({
 const styles = StyleSheet.create({
   listContainer: {
     flex: 1,
-    marginTop: theme.spacing.SM,
-    marginHorizontal: theme.spacing.LG,
-    marginBottom: theme.spacing.LG,
-    borderRadius: 30,
-    backgroundColor: 'rgba(6, 16, 32, 0.84)',
+    marginTop: 8,
+    marginHorizontal: 16,
+    marginBottom: 16,
+    borderRadius: 22,
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.16)',
-    paddingHorizontal: theme.spacing.MD,
-    paddingTop: 10,
-    paddingBottom: 92,
+    paddingHorizontal: 12,
+    paddingTop: 12,
+    paddingBottom: 16,
     overflow: 'hidden',
   },
   pageBody: {
     flex: 1,
-    borderRadius: theme.borderRadius.LARGE,
+    borderRadius: 16,
   },
   listContent: {
-    paddingBottom: 32,
-    gap: 14,
-    paddingTop: 8,
+    paddingBottom: 24,
+    gap: 12,
+    paddingTop: 2,
   },
   pageHint: {
-    marginTop: 6,
-    color: theme.colors.TEXT_MUTED,
-    fontSize: theme.fontSize.XS,
-    marginLeft: 6,
+    marginTop: 8,
+    fontSize: 10,
+    marginLeft: 4,
+    letterSpacing: 0.2,
   },
 });

@@ -8,24 +8,22 @@ import {
   Modal,
   Platform,
   Pressable,
-  SafeAreaView,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Feather } from '@expo/vector-icons';
 import * as SplashScreen from 'expo-splash-screen';
 import { Amiri_400Regular } from '@expo-google-fonts/amiri';
 import { NotoNaskhArabic_400Regular } from '@expo-google-fonts/noto-naskh-arabic';
 import { ScheherazadeNew_400Regular } from '@expo-google-fonts/scheherazade-new';
 
-import { BottomPlayerBar } from './src/components/BottomPlayerBar';
+import { CompactHeader } from './src/components/CompactHeader';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { ErrorCard } from './src/components/ErrorCard';
-import { PlaybackControls } from './src/components/PlaybackControls';
 import { SettingsPanel } from './src/components/SettingsPanel';
-import { TopControlBar } from './src/components/TopControlBar';
 import { VerseList } from './src/components/VerseList';
 import { TRANSLATION_OPTIONS } from './src/constants/authors';
 import {
@@ -55,7 +53,8 @@ import {
 } from './src/services/surahAudioCache';
 import { fetchPageVerses, fetchSurahDetail } from './src/services/quranService';
 import { commonStyles } from './src/styles/common';
-import { theme } from './src/styles/theme';
+import { theme as staticTheme } from './src/styles/theme';
+import { ThemeProvider, useTheme } from './src/hooks/useTheme';
 import type { Verse } from './src/types/quran';
 import { defaultTranslationAuthorByLanguage } from './src/utils/language';
 import { parsePositiveInt, parseSurahId } from './src/utils/parsers';
@@ -87,8 +86,9 @@ function MainApp() {
   );
   const [selectedQuranFontId, setSelectedQuranFontId] = useState<QuranFontId>('scheherazade');
   const [startVerseInput, setStartVerseInput] = useState('1');
-  const [verseCountInput, setVerseCountInput] = useState(String(DEFAULT_RANGE_SIZE));
+  const [endVerseInput, setEndVerseInput] = useState(String(DEFAULT_RANGE_SIZE));
   const [repeatCountInput, setRepeatCountInput] = useState(String(DEFAULT_REPEAT));
+  const [currentPageInput, setCurrentPageInput] = useState('1');
   const [currentPage, setCurrentPage] = useState(0);
   const [visibleVerseLocation, setVisibleVerseLocation] = useState<{
     surah_id: number;
@@ -144,7 +144,6 @@ function MainApp() {
       });
       if (verse.surah_id === selectedSurahId) {
         setCurrentPage(verse.page);
-        setStartVerseInput(String(verse.verse_number));
       }
       void Storage.setLastVerse(verse.surah_id, verse.verse_number);
     },
@@ -159,7 +158,7 @@ function MainApp() {
     computed.surahIndex,
     currentPage,
     setCurrentPage,
-    setStartVerseInput,
+    () => undefined,
     setVisibleVerseLocation,
     setSelectedSurahId,
     player.stopPlayback
@@ -205,6 +204,12 @@ function MainApp() {
 
     void loadPersistedState();
   }, []);
+
+  useEffect(() => {
+    setCurrentPageInput(String(currentPage + 1));
+  }, [currentPage]);
+
+  const { theme, themeType } = useTheme();
 
   useEffect(() => {
     if (surahs.length > 0 && selectedSurahId === null) {
@@ -275,7 +280,7 @@ function MainApp() {
       page: targetVerse?.page ?? initialVerse.page,
     });
     setStartVerseInput(String(targetVerse?.verse_number ?? initialVerse.verse_number));
-    setVerseCountInput(String(Math.min(DEFAULT_RANGE_SIZE, surahDetail.verse_count)));
+    setEndVerseInput(String(Math.min(surahDetail.verse_count, (targetVerse?.verse_number ?? initialVerse.verse_number) + DEFAULT_RANGE_SIZE - 1)));
   }, [surahDetail]);
 
   const resolveRange = useMemo(() => {
@@ -285,20 +290,23 @@ function MainApp() {
       }
 
       const startVerse = overrideStartVerse ?? parsePositiveInt(startVerseInput);
-      const verseCount = parsePositiveInt(verseCountInput);
+      const requestedEndVerse = parsePositiveInt(endVerseInput);
       const repeatCount = parsePositiveInt(repeatCountInput);
 
-      if (startVerse === null || verseCount === null || repeatCount === null) {
+      if (startVerse === null || requestedEndVerse === null || repeatCount === null) {
         throw new Error(text.rangeInputError);
       }
       if (startVerse > surahDetail.verse_count) {
         throw new Error(text.verseOutOfRange(surahDetail.verse_count));
       }
+      if (requestedEndVerse < startVerse) {
+        throw new Error(text.rangeInputError);
+      }
 
-      const endVerse = Math.min(surahDetail.verse_count, startVerse + verseCount - 1);
+      const endVerse = Math.min(surahDetail.verse_count, requestedEndVerse);
       return { startVerse, endVerse, repeatCount };
     };
-  }, [repeatCountInput, startVerseInput, surahDetail, text, verseCountInput]);
+  }, [endVerseInput, repeatCountInput, startVerseInput, surahDetail, text]);
 
   const handleStartPlayback = async (overrideStartVerse?: number) => {
     try {
@@ -309,6 +317,7 @@ function MainApp() {
       const { startVerse, endVerse, repeatCount } = resolveRange(overrideStartVerse);
       setErrorMessage(null);
       setStartVerseInput(String(startVerse));
+      setEndVerseInput(String(endVerse));
       await player.startPlayback({
         surahDetail,
         startVerseNumber: startVerse,
@@ -344,7 +353,6 @@ function MainApp() {
         verse_number: currentSurahVerse.verse_number,
         page: currentSurahVerse.page,
       });
-      setStartVerseInput(String(currentSurahVerse.verse_number));
       return;
     }
 
@@ -363,9 +371,26 @@ function MainApp() {
     setSelectedSurahId(firstVerse.surah_id);
   };
 
+  const handlePageInputSubmit = async () => {
+    const parsedPage = parsePositiveInt(currentPageInput);
+    if (parsedPage === null) {
+      setCurrentPageInput(String(currentPage + 1));
+      return;
+    }
+
+    const nextPage = parsedPage - 1;
+    if (nextPage < 0 || nextPage >= TOTAL_QURAN_PAGES) {
+      setCurrentPageInput(String(currentPage + 1));
+      return;
+    }
+
+    await handlePageChange(nextPage);
+  };
+
   const handleVerseTap = async (verse: Verse) => {
     setCurrentPage(verse.page);
     setStartVerseInput(String(verse.verse_number));
+    setEndVerseInput(String(verse.verse_number));
     setVisibleVerseLocation({
       surah_id: verse.surah_id,
       verse_number: verse.verse_number,
@@ -429,10 +454,12 @@ function MainApp() {
       ? `${selectedSurah.id}. ${selectedSurah.name} • ${activeLocationVerse.surah_id}:${activeLocationVerse.verse_number}`
       : `${selectedSurah.id}. ${selectedSurah.name}`
     : '-';
-  const progressLabel = `${formatDurationLabel(player.currentTimeMs, player.durationMs)} • ${startVerseInput}-${Math.min(
-    Number(startVerseInput || '1') + Math.max(1, Number(verseCountInput || '1')) - 1,
+  const resolvedRepeatCount = parsePositiveInt(repeatCountInput) ?? 1;
+  const resolvedRangeEnd = Math.min(
+    Number(endVerseInput || startVerseInput || '1'),
     surahDetail?.verse_count ?? 1
-  )}`;
+  );
+  const progressLabel = `${formatDurationLabel(player.currentTimeMs, player.durationMs)} • ${startVerseInput}-${resolvedRangeEnd}`;
   const progressPercent = player.durationMs > 0 ? Math.round((player.currentTimeMs / player.durationMs) * 100) : 0;
 
   if (!fontsLoaded) {
@@ -440,27 +467,49 @@ function MainApp() {
   }
 
   return (
-    <SafeAreaView style={commonStyles.safeArea}>
-      <View style={styles.backgroundGlowTop} />
-      <View style={styles.backgroundGlowBottom} />
-      <ExpoStatusBar style="light" />
+    <SafeAreaView style={[commonStyles.safeArea, { backgroundColor: theme.colors.PRIMARY_BG }]}>
+      <View style={[styles.backgroundGlowTop, { backgroundColor: themeType === 'DARK' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(42, 161, 152, 0.08)' }]} />
+      <View style={[styles.backgroundGlowBottom, { backgroundColor: themeType === 'DARK' ? 'rgba(96, 165, 250, 0.08)' : 'rgba(38, 139, 210, 0.05)' }]} />
+      <ExpoStatusBar style={themeType === 'DARK' ? 'light' : 'dark'} />
       <View style={commonStyles.statusTopSpacer} />
       <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', android: undefined })} style={commonStyles.flex}>
         <View style={styles.header}>
-          <TopControlBar
+          <CompactHeader
             surahs={surahs}
             selectedSurahId={selectedSurahId}
             isFetchingSurahs={isFetchingSurahs}
             onSurahChange={handleSurahChange}
-            surahText={text.surah}
-            settingsText={text.settings}
-            onSettingsPress={() => setIsSettingsOpen(true)}
+            currentPageInput={currentPageInput}
+            onCurrentPageChange={setCurrentPageInput}
+            onCurrentPageSubmit={() => void handlePageInputSubmit()}
             canGoPreviousPage={computed.canGoPreviousPage}
             canGoNextPage={computed.canGoNextPage}
             onPreviousPress={pageNavigation.goToPreviousPage}
             onNextPress={pageNavigation.goToNextPage}
-            pageText={text.page}
-            pageProgressText={`${currentPage + 1}/${TOTAL_QURAN_PAGES}`}
+            startVerseInput={startVerseInput}
+            endVerseInput={endVerseInput}
+            repeatCountInput={repeatCountInput}
+            onStartVerseChange={setStartVerseInput}
+            onEndVerseChange={setEndVerseInput}
+            onRepeatCountChange={setRepeatCountInput}
+            maxVerseInSurah={surahDetail?.verse_count}
+            playbackStatus={player.playbackStatus}
+            currentVerse={currentVerse ?? undefined}
+            currentRepeat={player.currentRepeat}
+            totalRepeats={parsePositiveInt(repeatCountInput) ?? 1}
+            progressPercent={progressPercent}
+            onStart={() => void handleStartPlayback()}
+            onPause={() => void player.pausePlayback()}
+            onResume={() => void player.resumePlayback()}
+            onStop={() => void player.stopPlayback()}
+            onSettingsPress={() => setIsSettingsOpen(true)}
+            text={{
+              startVerse: text.startVerse,
+              endVerse: text.endVerse,
+              repeat: text.repeat,
+              start: text.start,
+              page: text.page,
+            }}
           />
         </View>
 
@@ -476,9 +525,8 @@ function MainApp() {
             currentVerse={currentVerse}
             activeWordLocation={player.activeWordLocation}
             quranFontFamily={selectedQuranFont.fontFamily}
-            currentPage={currentPage}
-            pageText={text.page}
-            pageProgressText={`${currentPage + 1}/${TOTAL_QURAN_PAGES}`}
+            sectionTitle=""
+            pageProgressText={`${text.page} ${currentPage + 1}/${TOTAL_QURAN_PAGES}`}
             swipeHintText={text.swipeHint}
             autoScrollEnabled={isAutoScrollEnabled}
             onVerseTap={(verse) => void handleVerseTap(verse)}
@@ -488,24 +536,12 @@ function MainApp() {
           />
         )}
 
-        <BottomPlayerBar
-          playbackState={player.playbackStatus}
-          activeLocationText={activeLocationText}
-          currentVerseText={currentVerseText}
-          progressLabel={progressLabel}
-          progressPercent={progressPercent}
-          onStart={() => void handleStartPlayback()}
-          onPause={() => void player.pausePlayback()}
-          onResume={() => void player.resumePlayback()}
-          onStop={() => void player.stopPlayback()}
-        />
-
         <Modal visible={isSettingsOpen} animationType="slide" transparent onRequestClose={() => setIsSettingsOpen(false)}>
           <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{text.settings}</Text>
-                <Pressable onPress={() => setIsSettingsOpen(false)} style={styles.closeButton}>
+                <Text style={[styles.modalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{text.settings}</Text>
+                <Pressable onPress={() => setIsSettingsOpen(false)} style={[styles.closeButton, { backgroundColor: theme.colors.CARD_BG }]}>
                   <Feather name="x" size={24} color={theme.colors.TEXT_PRIMARY} />
                 </Pressable>
               </View>
@@ -522,6 +558,8 @@ function MainApp() {
                   quranFontId={selectedQuranFontId}
                   quranFontOptions={QURAN_FONT_OPTIONS}
                   onQuranFontChange={setSelectedQuranFontId}
+                  playbackRate={player.playbackRate}
+                  onPlaybackRateChange={player.setPlaybackRate}
                   quranFontText={text.quranFont}
                   fontPreviewText={text.fontPreview}
                   quranFontPreview={QURAN_FONT_PREVIEW_TEXT}
@@ -529,6 +567,8 @@ function MainApp() {
                   languageText={text.language}
                   translationText={text.translation}
                   autoScrollText={text.autoScroll}
+                  themeText={text.theme}
+                  playbackSpeedText={text.playbackSpeed}
                   aboutText={text.about}
                   manageDownloadsText={text.manageDownloads}
                   audioLogsText={text.audioLogs}
@@ -546,30 +586,6 @@ function MainApp() {
                     Alert.alert(text.audioLogs, text.audioLogsActive);
                   }}
                 />
-
-                <View style={styles.modalSection}>
-                  <PlaybackControls
-                    startVerseInput={startVerseInput}
-                    verseCountInput={verseCountInput}
-                    repeatCountInput={repeatCountInput}
-                    onStartVerseChange={setStartVerseInput}
-                    onVerseCountChange={setVerseCountInput}
-                    onRepeatCountChange={setRepeatCountInput}
-                    onStart={() => {
-                      setIsSettingsOpen(false);
-                      void handleStartPlayback();
-                    }}
-                    onStop={() => {
-                      setIsSettingsOpen(false);
-                      void player.stopPlayback();
-                    }}
-                    startText={text.start}
-                    stopText={text.stop}
-                    startVerseText={text.startVerse}
-                    verseCountText={text.verseCount}
-                    repeatText={text.repeat}
-                  />
-                </View>
               </ScrollView>
             </View>
           </View>
@@ -577,31 +593,31 @@ function MainApp() {
 
         <Modal visible={isDownloadManagerOpen} animationType="slide" transparent onRequestClose={() => setIsDownloadManagerOpen(false)}>
           <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
+            <View style={[styles.modalContent, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}>
               <View style={styles.modalHeader}>
-                <Text style={styles.modalTitle}>{text.manageDownloads}</Text>
-                <Pressable onPress={() => setIsDownloadManagerOpen(false)} style={styles.closeButton}>
+                <Text style={[styles.modalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{text.manageDownloads}</Text>
+                <Pressable onPress={() => setIsDownloadManagerOpen(false)} style={[styles.closeButton, { backgroundColor: theme.colors.CARD_BG }]}>
                   <Feather name="x" size={24} color={theme.colors.TEXT_PRIMARY} />
                 </Pressable>
               </View>
 
               <View style={styles.downloadCard}>
-                <Text style={styles.downloadStat}>{`${text.storageUsed}: ${cacheStats.megabytes} MB`}</Text>
-                <Text style={styles.downloadStat}>{`${text.cachedFiles}: ${cacheStats.files} MP3`}</Text>
-                {downloadProgressLabel ? <Text style={styles.downloadHint}>{downloadProgressLabel}</Text> : null}
+                <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.storageUsed}: ${cacheStats.megabytes} MB`}</Text>
+                <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.cachedFiles}: ${cacheStats.files} MP3`}</Text>
+                {downloadProgressLabel ? <Text style={[styles.downloadHint, { color: theme.colors.TEXT_MUTED }]}>{downloadProgressLabel}</Text> : null}
 
                 <Pressable
-                  style={[styles.downloadButton, isDownloadingAll && styles.downloadButtonDisabled]}
+                  style={[styles.downloadButton, isDownloadingAll && styles.downloadButtonDisabled, { backgroundColor: theme.colors.ACCENT_PRIMARY }]}
                   disabled={isDownloadingAll}
                   onPress={() => void handleDownloadAll()}
                 >
-                  <Text style={styles.downloadButtonText}>
+                  <Text style={[styles.downloadButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>
                     {isDownloadingAll ? text.downloadingAll : text.downloadAll}
                   </Text>
                 </Pressable>
 
-                <Pressable style={styles.clearButton} onPress={() => void handleClearDownloads()}>
-                  <Text style={styles.clearButtonText}>{text.clearDownloads}</Text>
+                <Pressable style={[styles.clearButton, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]} onPress={() => void handleClearDownloads()}>
+                  <Text style={[styles.clearButtonText, { color: theme.colors.TEXT_SECONDARY }]}>{text.clearDownloads}</Text>
                 </Pressable>
               </View>
             </View>
@@ -610,12 +626,12 @@ function MainApp() {
 
         <Modal visible={isAboutOpen} animationType="fade" transparent onRequestClose={() => setIsAboutOpen(false)}>
           <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, styles.aboutContent]}>
-              <Text style={styles.modalTitle}>{text.about}</Text>
-              <Text style={styles.aboutText}>{`${text.appName}\n${text.version}: ${APP_VERSION}\n${text.developedBy}: ${DEVELOPER_NAME}`}</Text>
-              <Text style={styles.aboutText}>{text.aboutDescription}</Text>
-              <Pressable style={styles.downloadButton} onPress={() => setIsAboutOpen(false)}>
-                <Text style={styles.downloadButtonText}>{text.close}</Text>
+            <View style={[styles.modalContent, styles.aboutContent, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}>
+              <Text style={[styles.modalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{text.about}</Text>
+              <Text style={[styles.aboutText, { color: theme.colors.TEXT_SECONDARY }]}>{`${text.appName}\n${text.version}: ${APP_VERSION}\n${text.developedBy}: ${DEVELOPER_NAME}`}</Text>
+              <Text style={[styles.aboutText, { color: theme.colors.TEXT_SECONDARY }]}>{text.aboutDescription}</Text>
+              <Pressable style={[styles.downloadButton, { backgroundColor: theme.colors.ACCENT_PRIMARY }]} onPress={() => setIsAboutOpen(false)}>
+                <Text style={[styles.downloadButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>{text.close}</Text>
               </Pressable>
             </View>
           </View>
@@ -628,16 +644,18 @@ function MainApp() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <MainApp />
+      <ThemeProvider>
+        <MainApp />
+      </ThemeProvider>
     </ErrorBoundary>
   );
 }
 
 const styles = StyleSheet.create({
   header: {
-    paddingHorizontal: theme.spacing.XL,
-    paddingTop: theme.spacing.SM,
-    gap: 0,
+    paddingHorizontal: 16,
+    paddingTop: 6,
+    gap: 8,
   },
   loaderState: {
     flex: 1,
@@ -648,16 +666,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: 'rgba(2, 6, 23, 0.72)',
     justifyContent: 'center',
-    padding: theme.spacing.XL,
+    padding: staticTheme.spacing.XL,
   },
   modalContent: {
     maxHeight: '88%',
-    borderRadius: theme.borderRadius.XXLARGE,
-    backgroundColor: theme.colors.SECONDARY_BG,
+    borderRadius: staticTheme.borderRadius.XXLARGE,
+    backgroundColor: staticTheme.colors.SECONDARY_BG,
     borderWidth: 1,
-    borderColor: theme.colors.BORDER_PRIMARY,
-    padding: theme.spacing.LG,
-    gap: theme.spacing.MD,
+    borderColor: staticTheme.colors.BORDER_PRIMARY,
+    padding: staticTheme.spacing.LG,
+    gap: staticTheme.spacing.MD,
   },
   aboutContent: {
     alignSelf: 'center',
@@ -670,8 +688,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   modalTitle: {
-    color: theme.colors.TEXT_PRIMARY,
-    fontSize: theme.fontSize.XL,
+    color: staticTheme.colors.TEXT_PRIMARY,
+    fontSize: staticTheme.fontSize.XL,
     fontWeight: '700',
   },
   closeButton: {
@@ -680,58 +698,51 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.colors.CARD_BG,
+    backgroundColor: staticTheme.colors.CARD_BG,
   },
   modalScroll: {
-    gap: theme.spacing.LG,
-  },
-  modalSection: {
-    padding: theme.spacing.MD,
-    borderRadius: theme.borderRadius.MEDIUM,
-    backgroundColor: theme.colors.TERTIARY_BG,
-    borderWidth: 1,
-    borderColor: theme.colors.BORDER_SECONDARY,
+    gap: staticTheme.spacing.LG,
   },
   downloadCard: {
-    gap: theme.spacing.MD,
+    gap: staticTheme.spacing.MD,
   },
   downloadStat: {
-    color: theme.colors.TEXT_PRIMARY,
-    fontSize: theme.fontSize.MD,
+    color: staticTheme.colors.TEXT_PRIMARY,
+    fontSize: staticTheme.fontSize.MD,
   },
   downloadHint: {
-    color: theme.colors.TEXT_MUTED,
-    fontSize: theme.fontSize.SM,
+    color: staticTheme.colors.TEXT_MUTED,
+    fontSize: staticTheme.fontSize.SM,
   },
   downloadButton: {
-    borderRadius: theme.borderRadius.MEDIUM,
-    backgroundColor: theme.colors.ACCENT_PRIMARY,
-    paddingVertical: theme.spacing.MD,
+    borderRadius: staticTheme.borderRadius.MEDIUM,
+    backgroundColor: staticTheme.colors.ACCENT_PRIMARY,
+    paddingVertical: staticTheme.spacing.MD,
     alignItems: 'center',
   },
   downloadButtonDisabled: {
     opacity: 0.6,
   },
   downloadButtonText: {
-    color: theme.colors.TEXT_PRIMARY,
+    color: staticTheme.colors.TEXT_PRIMARY,
     fontWeight: '700',
-    fontSize: theme.fontSize.MD,
+    fontSize: staticTheme.fontSize.MD,
   },
   clearButton: {
-    borderRadius: theme.borderRadius.MEDIUM,
-    backgroundColor: theme.colors.CARD_BG,
-    paddingVertical: theme.spacing.MD,
+    borderRadius: staticTheme.borderRadius.MEDIUM,
+    backgroundColor: staticTheme.colors.CARD_BG,
+    paddingVertical: staticTheme.spacing.MD,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: theme.colors.BORDER_SECONDARY,
+    borderColor: staticTheme.colors.BORDER_SECONDARY,
   },
   clearButtonText: {
-    color: theme.colors.TEXT_SECONDARY,
+    color: staticTheme.colors.TEXT_SECONDARY,
     fontWeight: '700',
-    fontSize: theme.fontSize.MD,
+    fontSize: staticTheme.fontSize.MD,
   },
   aboutText: {
-    color: theme.colors.TEXT_SECONDARY,
+    color: staticTheme.colors.TEXT_SECONDARY,
     lineHeight: 22,
   },
   backgroundGlowTop: {

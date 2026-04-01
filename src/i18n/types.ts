@@ -5,11 +5,14 @@ export type TranslationStrings = {
   surah: string;
   settings: string;
   startVerse: string;
+  endVerse: string;
   verseCount: string;
   repeat: string;
   start: string;
   stop: string;
   language: string;
+  theme: string;
+  playbackSpeed: string;
   page: string;
   range: string;
   location: string;
@@ -71,6 +74,10 @@ export type TranslationStrings = {
   changelogLanguages: string;
   changelogOfflineListening: string;
   segmentedRecitation: string;
+  repeatBuilder: string;
+  activeSession: string;
+  referenceVerses: string;
+  currentCycle: string;
   heroIdleSubtitle: string;
   heroActiveSubtitle: (reference: string) => string;
   audioLogsActive: string;

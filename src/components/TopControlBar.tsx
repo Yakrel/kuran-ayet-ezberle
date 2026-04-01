@@ -1,8 +1,10 @@
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import React from 'react';
+import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import type { SurahSummary } from '../types/quran';
 import { SurahPicker } from './SurahPicker';
-import { theme } from '../styles/theme';
+import type { SurahSummary } from '../types/quran';
+import { useTheme } from '../hooks/useTheme';
+import { onlyDigits } from '../utils/parsers';
 
 type TopControlBarProps = {
   surahs: SurahSummary[];
@@ -10,14 +12,14 @@ type TopControlBarProps = {
   isFetchingSurahs: boolean;
   onSurahChange: (surahId: number | string) => void;
   surahText: string;
-  settingsText: string;
-  onSettingsPress: () => void;
   canGoPreviousPage: boolean;
   canGoNextPage: boolean;
   onPreviousPress: () => void;
   onNextPress: () => void;
   pageText: string;
-  pageProgressText: string;
+  currentPageInput: string;
+  onCurrentPageChange: (value: string) => void;
+  onCurrentPageSubmit: () => void;
 };
 
 export function TopControlBar({
@@ -26,141 +28,143 @@ export function TopControlBar({
   isFetchingSurahs,
   onSurahChange,
   surahText,
-  settingsText,
-  onSettingsPress,
   canGoPreviousPage,
   canGoNextPage,
   onPreviousPress,
   onNextPress,
   pageText,
-  pageProgressText,
+  currentPageInput,
+  onCurrentPageChange,
+  onCurrentPageSubmit,
 }: TopControlBarProps) {
+  const { theme } = useTheme();
+
   return (
-    <View style={styles.container}>
-      <View style={styles.surahSection}>
-        <SurahPicker
-          surahs={surahs}
-          selectedSurahId={selectedSurahId}
-          isFetchingSurahs={isFetchingSurahs}
-          onSurahChange={onSurahChange}
-          label={surahText}
-        />
+    <View style={styles.topBar}>
+      <View
+        style={[
+          styles.surahPanel,
+          { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY },
+        ]}
+      >
+        <View style={styles.surahPickerWrap}>
+          <SurahPicker
+            surahs={surahs}
+            selectedSurahId={selectedSurahId}
+            isFetchingSurahs={isFetchingSurahs}
+            onSurahChange={onSurahChange}
+          />
+        </View>
       </View>
 
-      <View style={styles.bottomRow}>
-        <View style={styles.pageCard}>
-          <Text style={styles.sectionLabel}>{pageText}</Text>
-          <View style={styles.pageNavSection}>
-            <Pressable
-              onPress={onPreviousPress}
-              disabled={!canGoPreviousPage}
-              style={[styles.navButton, !canGoPreviousPage && styles.navButtonDisabled]}
-            >
-              <Feather
-                name="chevron-left"
-                size={18}
-                color={!canGoPreviousPage ? theme.colors.TEXT_MUTED : theme.colors.TEXT_PRIMARY}
-              />
-            </Pressable>
+      <View
+        style={[
+          styles.pageControls,
+          {
+            backgroundColor: theme.colors.SECONDARY_BG,
+            borderColor: theme.colors.BORDER_PRIMARY,
+          },
+        ]}
+      >
+        <View style={styles.pageInputRow}>
+          <Pressable
+            onPress={onPreviousPress}
+            disabled={!canGoPreviousPage}
+            style={[
+              styles.navButton,
+              { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY },
+              !canGoPreviousPage && styles.navButtonDisabled
+            ]}
+          >
+            <Feather name="chevron-left" size={18} color={canGoPreviousPage ? theme.colors.TEXT_PRIMARY : theme.colors.TEXT_MUTED} />
+          </Pressable>
 
-            <View style={styles.pageInfo}>
-              <Text style={styles.pageValue}>{pageProgressText}</Text>
-            </View>
-
-            <Pressable
-              onPress={onNextPress}
-              disabled={!canGoNextPage}
-              style={[styles.navButton, !canGoNextPage && styles.navButtonDisabled]}
-            >
-              <Feather
-                name="chevron-right"
-                size={18}
-                color={!canGoNextPage ? theme.colors.TEXT_MUTED : theme.colors.TEXT_PRIMARY}
-              />
-            </Pressable>
+          <View style={[styles.pageInputWrap, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}>
+            <TextInput
+              value={currentPageInput}
+              onChangeText={(text) => onCurrentPageChange(onlyDigits(text))}
+              onSubmitEditing={onCurrentPageSubmit}
+              keyboardType="number-pad"
+              style={[styles.pageInput, { color: theme.colors.TEXT_PRIMARY }]}
+              selectTextOnFocus
+            />
+            <Text style={[styles.pageTotal, { color: theme.colors.TEXT_MUTED }]}>/ 604</Text>
           </View>
-        </View>
 
-        <Pressable
-          style={styles.settingsButton}
-          onPress={onSettingsPress}
-          accessibilityRole="button"
-          accessibilityLabel={settingsText}
-        >
-          <Feather name="settings" size={20} color={theme.colors.TEXT_PRIMARY} />
-        </Pressable>
+          <Pressable
+            onPress={onNextPress}
+            disabled={!canGoNextPage}
+            style={[
+              styles.navButton,
+              { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY },
+              !canGoNextPage && styles.navButtonDisabled
+            ]}
+          >
+            <Feather name="chevron-right" size={18} color={canGoNextPage ? theme.colors.TEXT_PRIMARY : theme.colors.TEXT_MUTED} />
+          </Pressable>
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    gap: theme.spacing.SM,
-  },
-  surahSection: {
-    minWidth: 0,
-    borderRadius: theme.borderRadius.LARGE,
-    backgroundColor: 'rgba(15, 23, 42, 0.82)',
-    borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.12)',
-  },
-  bottomRow: {
+  topBar: {
+    gap: 8,
     flexDirection: 'row',
     alignItems: 'stretch',
-    gap: theme.spacing.SM,
   },
-  pageCard: {
-    flex: 1,
-    gap: 6,
-    borderRadius: theme.borderRadius.LARGE,
-    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+  surahPanel: {
+    flex: 1.7,
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.12)',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 14,
+    padding: 6,
   },
-  sectionLabel: {
-    color: theme.colors.TEXT_MUTED,
-    fontSize: theme.fontSize.XS,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.7,
+  surahPickerWrap: {
+    flex: 1,
   },
-  pageNavSection: {
+  pageControls: {
+    flex: 0.8,
+    borderWidth: 1,
+    borderRadius: 14,
+    padding: 6,
+    justifyContent: 'center',
+  },
+  pageInputRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 8,
+    gap: 6,
   },
   navButton: {
-    width: 32,
-    height: 32,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: theme.borderRadius.SMALL,
-    backgroundColor: 'rgba(30, 41, 59, 0.88)',
+    borderWidth: 1,
   },
   navButtonDisabled: {
-    opacity: 0.3,
+    opacity: 0.4,
   },
-  pageInfo: {
-    flex: 1,
-    minWidth: 0,
+  pageInputWrap: {
+    flexDirection: 'row',
     alignItems: 'center',
-  },
-  pageValue: {
-    color: theme.colors.TEXT_PRIMARY,
-    fontSize: theme.fontSize.MD,
-    fontWeight: '700',
-  },
-  settingsButton: {
-    width: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: theme.borderRadius.LARGE,
-    backgroundColor: 'rgba(15, 23, 42, 0.88)',
+    height: 30,
+    paddingHorizontal: 6,
+    borderRadius: 10,
     borderWidth: 1,
-    borderColor: 'rgba(148, 163, 184, 0.12)',
+    minWidth: 74,
+    flex: 1,
+  },
+  pageInput: {
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+    padding: 0,
+    minWidth: 30,
+  },
+  pageTotal: {
+    fontSize: 10,
+    fontWeight: '600',
   },
 });

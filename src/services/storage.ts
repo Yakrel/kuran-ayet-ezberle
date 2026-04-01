@@ -141,4 +141,12 @@ export const Storage = {
   async clearBundleDownloadState() {
     await AsyncStorage.removeItem(KEYS.BUNDLE_DOWNLOAD_STATE);
   },
+
+  async setItem(key: string, value: string) {
+    await AsyncStorage.setItem(key, value);
+  },
+
+  async getItem(key: string) {
+    return await AsyncStorage.getItem(key);
+  },
 };

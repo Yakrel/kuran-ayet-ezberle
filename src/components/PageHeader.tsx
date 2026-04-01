@@ -1,20 +1,19 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { theme } from '../styles/theme';
+import { useTheme } from '../hooks/useTheme';
 
 type PageHeaderProps = {
-  pageText: string;
-  currentPage: number;
+  title: string;
   pageProgressText: string;
 };
 
-export function PageHeader({ pageText, currentPage, pageProgressText }: PageHeaderProps) {
+export function PageHeader({ title, pageProgressText }: PageHeaderProps) {
+  const { theme } = useTheme();
+
   return (
-    <View style={styles.pageHeaderRow}>
-      <Text style={styles.pageTitle}>
-        {pageText} {currentPage + 1}
-      </Text>
-      <Text style={styles.pageProgressText}>{pageProgressText}</Text>
+    <View style={[styles.pageHeaderRow, { borderBottomColor: theme.colors.BORDER_PRIMARY }]}>
+      <Text style={[styles.pageTitle, { color: theme.colors.TEXT_PRIMARY }]}>{title}</Text>
+      <Text style={[styles.pageProgressText, { color: theme.colors.TEXT_TERTIARY }]}>{pageProgressText}</Text>
     </View>
   );
 }
@@ -24,19 +23,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: theme.spacing.MD,
-    paddingHorizontal: 6,
+    marginBottom: 10,
+    paddingHorizontal: 4,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    gap: 8,
   },
   pageTitle: {
-    color: theme.colors.TEXT_PRIMARY,
-    fontWeight: '700',
-    fontSize: theme.fontSize.XL,
-    marginLeft: 2,
+    fontWeight: '800',
+    fontSize: 15,
+    flex: 1,
   },
   pageProgressText: {
-    color: theme.colors.TEXT_MUTED,
-    fontSize: theme.fontSize.SM,
     fontWeight: '700',
-    letterSpacing: 0.6,
+    fontSize: 11,
+    letterSpacing: 0.3,
   },
 });

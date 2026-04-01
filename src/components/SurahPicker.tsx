@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { SurahSummary } from '../types/quran';
-import { theme } from '../styles/theme';
+import { useTheme } from '../hooks/useTheme';
 
 type SurahPickerProps = {
   surahs: SurahSummary[];
@@ -19,6 +19,7 @@ export function SurahPicker({
   onSurahChange,
   label,
 }: SurahPickerProps) {
+  const { theme, themeType } = useTheme();
   const [isOpen, setIsOpen] = useState(false);
 
   const selectedSurah = useMemo(
@@ -29,8 +30,8 @@ export function SurahPicker({
   if (isFetchingSurahs) {
     return (
       <View style={styles.container}>
-        {label ? <Text style={styles.label}>{label}</Text> : null}
-        <View style={styles.selectorButton}>
+        {label ? <Text style={[styles.label, { color: theme.colors.TEXT_MUTED }]}>{label}</Text> : null}
+        <View style={[styles.selectorButton, { backgroundColor: theme.colors.TERTIARY_BG, borderColor: theme.colors.BORDER_SECONDARY }]}>
           <ActivityIndicator color={theme.colors.ACCENT_PRIMARY} />
         </View>
       </View>
@@ -40,18 +41,22 @@ export function SurahPicker({
   return (
     <>
       <View style={styles.container}>
-        {label ? <Text style={styles.label}>{label}</Text> : null}
+        {label ? <Text style={[styles.label, { color: theme.colors.TEXT_MUTED }]}>{label}</Text> : null}
         <Pressable
-          style={({ pressed }) => [styles.selectorButton, pressed && styles.selectorButtonPressed]}
+          style={({ pressed }) => [
+            styles.selectorButton, 
+            { backgroundColor: theme.colors.TERTIARY_BG, borderColor: theme.colors.BORDER_SECONDARY },
+            pressed && styles.selectorButtonPressed
+          ]}
           onPress={() => setIsOpen(true)}
           accessibilityRole="button"
         >
           <View style={styles.selectorTextWrap}>
-            <Text style={styles.selectorTitle} numberOfLines={1}>
+            <Text style={[styles.selectorTitle, { color: theme.colors.TEXT_PRIMARY }]} numberOfLines={1}>
               {selectedSurah ? `${selectedSurah.id}. ${selectedSurah.name}` : '-'}
             </Text>
             {selectedSurah ? (
-              <Text style={styles.selectorMeta} numberOfLines={1}>
+              <Text style={[styles.selectorMeta, { color: theme.colors.TEXT_MUTED }]} numberOfLines={1}>
                 {selectedSurah.verse_count} ayet
               </Text>
             ) : null}
@@ -61,11 +66,11 @@ export function SurahPicker({
       </View>
 
       <Modal visible={isOpen} animationType="slide" transparent onRequestClose={() => setIsOpen(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{label ?? 'Sure'}</Text>
-              <Pressable style={styles.closeButton} onPress={() => setIsOpen(false)}>
+        <View style={[styles.modalOverlay, { backgroundColor: themeType === 'DARK' ? 'rgba(2, 6, 23, 0.72)' : 'rgba(7, 54, 66, 0.4)' }]}>
+          <View style={[styles.modalCard, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}>
+            <View style={[styles.modalHeader, { borderBottomColor: theme.colors.BORDER_SECONDARY }]}>
+              <Text style={[styles.modalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{label ?? 'Sure'}</Text>
+              <Pressable style={[styles.closeButton, { backgroundColor: theme.colors.CARD_BG }]} onPress={() => setIsOpen(false)}>
                 <Feather name="x" size={20} color={theme.colors.TEXT_PRIMARY} />
               </Pressable>
             </View>
@@ -79,7 +84,8 @@ export function SurahPicker({
                     key={surah.id}
                     style={({ pressed }) => [
                       styles.optionRow,
-                      isSelected && styles.optionRowSelected,
+                      { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY },
+                      isSelected && { borderColor: theme.colors.ACCENT_PRIMARY },
                       pressed && styles.optionRowPressed,
                     ]}
                     onPress={() => {
@@ -88,10 +94,14 @@ export function SurahPicker({
                     }}
                   >
                     <View style={styles.optionCopy}>
-                      <Text style={[styles.optionTitle, isSelected && styles.optionTitleSelected]}>
+                      <Text style={[
+                        styles.optionTitle, 
+                        { color: theme.colors.TEXT_PRIMARY },
+                        isSelected && { color: theme.colors.ACCENT_PRIMARY }
+                      ]}>
                         {surah.id}. {surah.name}
                       </Text>
-                      <Text style={styles.optionMeta}>{surah.verse_count} ayet</Text>
+                      <Text style={[styles.optionMeta, { color: theme.colors.TEXT_MUTED }]}>{surah.verse_count} ayet</Text>
                     </View>
                     {isSelected ? (
                       <Feather name="check" size={18} color={theme.colors.ACCENT_PRIMARY} />
@@ -109,24 +119,20 @@ export function SurahPicker({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 6,
+    gap: 8,
   },
   label: {
-    color: theme.colors.TEXT_MUTED,
-    fontSize: theme.fontSize.XS,
+    fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.7,
   },
   selectorButton: {
-    minHeight: 52,
+    minHeight: 48,
     borderWidth: 1,
-    borderColor: theme.colors.BORDER_SECONDARY,
-    borderRadius: theme.borderRadius.MEDIUM,
-    backgroundColor: theme.colors.TERTIARY_BG,
+    borderRadius: 14,
     paddingHorizontal: 12,
+    paddingVertical: 6,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -138,29 +144,25 @@ const styles = StyleSheet.create({
   selectorTextWrap: {
     flex: 1,
     minWidth: 0,
-    gap: 2,
+    gap: 4,
   },
   selectorTitle: {
-    color: theme.colors.TEXT_PRIMARY,
-    fontSize: theme.fontSize.MD,
-    fontWeight: '700',
+    fontSize: 15,
+    fontWeight: '800',
   },
   selectorMeta: {
-    color: theme.colors.TEXT_MUTED,
-    fontSize: theme.fontSize.SM,
+    fontSize: 11,
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
-    backgroundColor: 'rgba(2, 6, 23, 0.72)',
-    padding: theme.spacing.LG,
+    padding: 24,
   },
   modalCard: {
     maxHeight: '78%',
-    borderRadius: theme.borderRadius.XLARGE,
-    backgroundColor: theme.colors.SECONDARY_BG,
+    borderRadius: 24,
     borderWidth: 1,
-    borderColor: theme.colors.BORDER_PRIMARY,
     overflow: 'hidden',
   },
   modalHeader: {
@@ -170,11 +172,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: theme.colors.BORDER_SECONDARY,
   },
   modalTitle: {
-    color: theme.colors.TEXT_PRIMARY,
-    fontSize: theme.fontSize.LG,
+    fontSize: 20,
     fontWeight: '800',
   },
   closeButton: {
@@ -183,7 +183,6 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: theme.colors.CARD_BG,
   },
   options: {
     padding: 12,
@@ -191,19 +190,14 @@ const styles = StyleSheet.create({
   },
   optionRow: {
     minHeight: 56,
-    borderRadius: theme.borderRadius.MEDIUM,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: theme.colors.BORDER_SECONDARY,
-    backgroundColor: theme.colors.CARD_BG,
     paddingHorizontal: 14,
     paddingVertical: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
-  },
-  optionRowSelected: {
-    borderColor: theme.colors.ACCENT_PRIMARY,
   },
   optionRowPressed: {
     opacity: 0.85,
@@ -214,15 +208,10 @@ const styles = StyleSheet.create({
     gap: 2,
   },
   optionTitle: {
-    color: theme.colors.TEXT_PRIMARY,
-    fontSize: theme.fontSize.MD,
+    fontSize: 16,
     fontWeight: '700',
   },
-  optionTitleSelected: {
-    color: theme.colors.ACCENT_PRIMARY,
-  },
   optionMeta: {
-    color: theme.colors.TEXT_MUTED,
-    fontSize: theme.fontSize.SM,
+    fontSize: 14,
   },
 });
