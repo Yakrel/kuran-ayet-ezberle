@@ -164,16 +164,18 @@ export function CompactHeader({
 
       {/* Row 2: Playback State + Range + Controls */}
       <View style={[styles.row2, { backgroundColor: themeType === 'DARK' ? 'rgba(5, 150, 105, 0.12)' : 'rgba(42, 161, 152, 0.12)', borderColor: theme.colors.BORDER_PRIMARY }]}>
-        <View style={styles.stateSection}>
-          <Text style={[styles.stateLabel, { color: theme.colors.TEXT_PRIMARY }]} numberOfLines={1}>
-            {playbackLabel}
-          </Text>
-          {!isIdle && (
-            <Text style={[styles.stateProgress, { color: theme.colors.TEXT_TERTIARY }]} numberOfLines={1}>
-              {progressPercent}%
+        {playbackLabel && (
+          <View style={styles.stateSection}>
+            <Text style={[styles.stateLabel, { color: theme.colors.TEXT_PRIMARY }]} numberOfLines={1}>
+              {playbackLabel}
             </Text>
-          )}
-        </View>
+            {!isIdle && (
+              <Text style={[styles.stateProgress, { color: theme.colors.ACCENT_PRIMARY }]} numberOfLines={1}>
+                {progressPercent}%
+              </Text>
+            )}
+          </View>
+        )}
 
         <View style={styles.controlsSection}>
           <InlineRangeSelector
@@ -272,19 +274,22 @@ const styles = StyleSheet.create({
     height: UI_SIZES.HEADER_ROW_1_HEIGHT,
   },
   surahPanel: {
-    flex: 2,
-    borderWidth: 1,
-    borderRadius: 14,
-    padding: 6,
+    flex: 1.8,
+    borderWidth: 1.5,
+    borderRadius: 12,
+    padding: 2,
+    overflow: 'hidden',
   },
   pagePanel: {
-    flex: 1,
+    flex: 1.2,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 4,
-    borderWidth: 1,
-    borderRadius: 14,
+    borderWidth: 1.5,
+    borderRadius: 12,
     paddingHorizontal: 4,
+    marginRight: 6,
+    overflow: 'hidden',
   },
   pageInputWrap: {
     flex: 1,
@@ -321,16 +326,16 @@ const styles = StyleSheet.create({
   },
   settingsButton: {
     width: UI_SIZES.HEADER_ROW_1_HEIGHT,
-    borderWidth: 1,
-    borderRadius: 14,
+    borderWidth: 1.5,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   row2: {
     borderWidth: 1,
     borderRadius: 14,
-    padding: 10,
-    gap: 8,
+    padding: 8,
+    gap: 6,
     minHeight: UI_SIZES.HEADER_ROW_2_HEIGHT,
   },
   stateSection: {
@@ -338,7 +343,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 8,
-    minHeight: 20,
+    paddingVertical: 2,
+    paddingHorizontal: 4,
   },
   stateLabel: {
     fontSize: 12,
@@ -346,31 +352,33 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   stateProgress: {
-    fontSize: 11,
-    fontWeight: '800',
+    fontSize: 13,
+    fontWeight: '900',
+    letterSpacing: 0.3,
   },
   controlsSection: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 10,
+    gap: 6,
+    flexWrap: 'wrap',
   },
   actions: {
     flexDirection: 'row',
     gap: 6,
   },
   actionButton: {
-    height: 36,
-    minWidth: 36,
-    borderRadius: 12,
+    height: 34,
+    minWidth: 34,
+    borderRadius: 11,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 12,
-    gap: 6,
+    paddingHorizontal: 10,
+    gap: 5,
   },
   actionButtonSmall: {
-    width: 36,
+    width: 34,
     paddingHorizontal: 0,
   },
   actionButtonText: {

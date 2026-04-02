@@ -29,41 +29,28 @@ export function SurahPicker({
 
   if (isFetchingSurahs) {
     return (
-      <View style={styles.container}>
-        {label ? <Text style={[styles.label, { color: theme.colors.TEXT_MUTED }]}>{label}</Text> : null}
-        <View style={[styles.selectorButton, { backgroundColor: theme.colors.TERTIARY_BG, borderColor: theme.colors.BORDER_SECONDARY }]}>
-          <ActivityIndicator color={theme.colors.ACCENT_PRIMARY} />
-        </View>
+      <View style={[styles.selectorButton, { backgroundColor: theme.colors.TERTIARY_BG, borderColor: theme.colors.BORDER_SECONDARY }]}>
+        <ActivityIndicator color={theme.colors.ACCENT_PRIMARY} />
       </View>
     );
   }
 
   return (
     <>
-      <View style={styles.container}>
-        {label ? <Text style={[styles.label, { color: theme.colors.TEXT_MUTED }]}>{label}</Text> : null}
-        <Pressable
-          style={({ pressed }) => [
-            styles.selectorButton, 
-            { backgroundColor: theme.colors.TERTIARY_BG, borderColor: theme.colors.BORDER_SECONDARY },
-            pressed && styles.selectorButtonPressed
-          ]}
-          onPress={() => setIsOpen(true)}
-          accessibilityRole="button"
-        >
-          <View style={styles.selectorTextWrap}>
-            <Text style={[styles.selectorTitle, { color: theme.colors.TEXT_PRIMARY }]} numberOfLines={1}>
-              {selectedSurah ? `${selectedSurah.id}. ${selectedSurah.name}` : '-'}
-            </Text>
-            {selectedSurah ? (
-              <Text style={[styles.selectorMeta, { color: theme.colors.TEXT_MUTED }]} numberOfLines={1}>
-                {selectedSurah.verse_count} ayet
-              </Text>
-            ) : null}
-          </View>
-          <Feather name="chevron-down" size={18} color={theme.colors.TEXT_MUTED} />
-        </Pressable>
-      </View>
+      <Pressable
+        style={({ pressed }) => [
+          styles.selectorButton, 
+          { backgroundColor: theme.colors.TERTIARY_BG, borderColor: theme.colors.BORDER_SECONDARY },
+          pressed && styles.selectorButtonPressed
+        ]}
+        onPress={() => setIsOpen(true)}
+        accessibilityRole="button"
+      >
+        <Text style={[styles.selectorTitle, { color: theme.colors.TEXT_PRIMARY }]} numberOfLines={1}>
+          {selectedSurah ? `${selectedSurah.id}. ${selectedSurah.name}` : '-'}
+        </Text>
+        <Feather name="chevron-down" size={16} color={theme.colors.TEXT_MUTED} />
+      </Pressable>
 
       <Modal visible={isOpen} animationType="slide" transparent onRequestClose={() => setIsOpen(false)}>
         <View style={[styles.modalOverlay, { backgroundColor: themeType === 'DARK' ? 'rgba(2, 6, 23, 0.72)' : 'rgba(7, 54, 66, 0.4)' }]}>
@@ -119,7 +106,8 @@ export function SurahPicker({
 
 const styles = StyleSheet.create({
   container: {
-    gap: 8,
+    gap: 0,
+    flex: 1,
   },
   label: {
     fontSize: 10,
@@ -128,28 +116,25 @@ const styles = StyleSheet.create({
     letterSpacing: 0.7,
   },
   selectorButton: {
-    minHeight: 44,
-    borderWidth: 1,
-    borderRadius: 14,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    flex: 1,
+    borderWidth: 0,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 6,
   },
   selectorButtonPressed: {
     opacity: 0.85,
   },
-  selectorTextWrap: {
-    flex: 1,
-    minWidth: 0,
-    justifyContent: 'center',
-  },
   selectorTitle: {
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '800',
     lineHeight: 16,
+    flex: 1,
+    minWidth: 0,
   },
   selectorMeta: {
     fontSize: 10,

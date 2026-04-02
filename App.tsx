@@ -389,14 +389,40 @@ function MainApp() {
 
   const handleVerseTap = async (verse: Verse) => {
     setCurrentPage(verse.page);
-    setStartVerseInput(String(verse.verse_number));
-    setEndVerseInput(String(verse.verse_number));
+    
+    const currentStartVerse = parsePositiveInt(startVerseInput) ?? 1;
+    const currentEndVerse = parsePositiveInt(endVerseInput) ?? 1;
+    const rangeSize = Math.abs(currentEndVerse - currentStartVerse);
+    
+    const newStart = verse.verse_number;
+    const newEnd = Math.min(newStart + rangeSize, surahDetail?.verse_count ?? newStart);
+    
+    setStartVerseInput(String(newStart));
+    setEndVerseInput(String(newEnd));
     setVisibleVerseLocation({
       surah_id: verse.surah_id,
       verse_number: verse.verse_number,
       page: verse.page,
     });
-    await handleStartPlayback(verse.verse_number);
+    
+    // Direct playback with explicit values, bypassing validation
+    try {
+      if (!surahDetail) {
+        throw new Error(text.surahNotReady);
+      }
+      
+      const repeatCount = parsePositiveInt(repeatCountInput) ?? 1;
+      setErrorMessage(null);
+      
+      await player.startPlayback({
+        surahDetail,
+        startVerseNumber: newStart,
+        endVerseNumber: newEnd,
+        repeatCount,
+      });
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : text.startingPlaybackError);
+    }
   };
 
   const handleDownloadAll = async () => {
@@ -471,7 +497,6 @@ function MainApp() {
       <View style={[styles.backgroundGlowTop, { backgroundColor: themeType === 'DARK' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(42, 161, 152, 0.08)' }]} />
       <View style={[styles.backgroundGlowBottom, { backgroundColor: themeType === 'DARK' ? 'rgba(96, 165, 250, 0.08)' : 'rgba(38, 139, 210, 0.05)' }]} />
       <ExpoStatusBar style={themeType === 'DARK' ? 'light' : 'dark'} />
-      <View style={commonStyles.statusTopSpacer} />
       <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', android: undefined })} style={commonStyles.flex}>
         <View style={styles.header}>
           <CompactHeader
