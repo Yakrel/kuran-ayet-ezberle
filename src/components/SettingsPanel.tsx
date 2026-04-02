@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     textAlign: 'right',
     writingDirection: 'rtl',
     fontSize: 24,
-    lineHeight: 34,
+    lineHeight: 40,
   },
   footerButtons: {
     gap: 10,

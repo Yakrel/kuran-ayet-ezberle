@@ -74,10 +74,21 @@ function getTranslationText(verse: RawVerse, translationAuthorId: number): strin
   return verse.translations[String(translationAuthorId)] ?? verse.translations['6'] ?? '';
 }
 
+/**
+ * Normalizes word data from QUL dataset.
+ * 
+ * Unicode normalization:
+ * - Converts U+06E1 (ARABIC SMALL HIGH DOTLESS HEAD OF KHAH) → U+0652 (ARABIC SUKUN)
+ * - The QUL dataset uses U+06E1 which renders as a small ḥāʾ (ح) in most fonts
+ * - Standard Arabic typography expects U+0652 which renders as a small circle (○)
+ * - This ensures consistent rendering across all fonts (Scheherazade, Amiri, Noto Naskh)
+ */
 function normalizeWords(words: RawQulWord[]): WordToken[] {
   return words.map((word) => ({
     ...word,
-    text: word.text.normalize('NFC'),
+    text: word.text
+      .normalize('NFC')
+      .replace(/\u06E1/g, '\u0652'),
     is_ayah_marker: AYAH_MARKER_PATTERN.test(word.text.trim()),
   }));
 }
