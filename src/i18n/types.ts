@@ -36,7 +36,6 @@ export type TranslationStrings = {
   changelog: string;
   initialRelease: string;
   manageDownloads: string;
-  audioLogs: string;
   noAudioLogs: string;
   clearAudioLogs: string;
   downloadAll: string;
@@ -80,7 +79,6 @@ export type TranslationStrings = {
   currentCycle: string;
   heroIdleSubtitle: string;
   heroActiveSubtitle: (reference: string) => string;
-  audioLogsActive: string;
   cachedFiles: string;
   aboutDescription: string;
 };

@@ -571,7 +571,6 @@ function MainApp() {
                   playbackSpeedText={text.playbackSpeed}
                   aboutText={text.about}
                   manageDownloadsText={text.manageDownloads}
-                  audioLogsText={text.audioLogs}
                   onText={text.on}
                   offText={text.off}
                   onAboutPress={() => {
@@ -581,9 +580,6 @@ function MainApp() {
                   onManageDownloadsPress={() => {
                     setIsSettingsOpen(false);
                     setIsDownloadManagerOpen(true);
-                  }}
-                  onAudioLogsPress={() => {
-                    Alert.alert(text.audioLogs, text.audioLogsActive);
                   }}
                 />
               </ScrollView>

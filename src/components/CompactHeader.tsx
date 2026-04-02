@@ -268,23 +268,23 @@ const styles = StyleSheet.create({
   row1: {
     flexDirection: 'row',
     alignItems: 'stretch',
-    gap: 8,
+    gap: 6,
     height: UI_SIZES.HEADER_ROW_1_HEIGHT,
   },
   surahPanel: {
-    flex: 1.7,
+    flex: 2,
     borderWidth: 1,
     borderRadius: 14,
     padding: 6,
   },
   pagePanel: {
-    flex: 0.8,
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 4,
     borderWidth: 1,
     borderRadius: 14,
-    paddingHorizontal: 6,
+    paddingHorizontal: 4,
   },
   pageInputWrap: {
     flex: 1,

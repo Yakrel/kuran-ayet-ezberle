@@ -31,12 +31,10 @@ type SettingsPanelProps = {
   playbackSpeedText: string;
   aboutText: string;
   manageDownloadsText: string;
-  audioLogsText: string;
   onText: string;
   offText: string;
   onAboutPress: () => void;
   onManageDownloadsPress: () => void;
-  onAudioLogsPress: () => void;
 };
 
 export function SettingsPanel({
@@ -63,12 +61,10 @@ export function SettingsPanel({
   playbackSpeedText,
   aboutText,
   manageDownloadsText,
-  audioLogsText,
   onText,
   offText,
   onAboutPress,
   onManageDownloadsPress,
-  onAudioLogsPress,
 }: SettingsPanelProps) {
   const { theme, themeType, setTheme } = useTheme();
 
@@ -247,18 +243,6 @@ export function SettingsPanel({
         >
           <Feather name="info" size={18} color={theme.colors.ACCENT_PRIMARY} />
           <Text style={[styles.footerButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{aboutText}</Text>
-        </Pressable>
-
-        <Pressable
-          style={({ pressed }) => [
-            styles.footerButton,
-            { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG },
-            pressed && { opacity: 0.7, backgroundColor: theme.colors.SECONDARY_BG }
-          ]}
-          onPress={onAudioLogsPress}
-        >
-          <Feather name="file-text" size={18} color={theme.colors.ACCENT_PRIMARY} />
-          <Text style={[styles.footerButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{audioLogsText}</Text>
         </Pressable>
       </View>
     </View>

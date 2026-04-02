@@ -128,15 +128,15 @@ const styles = StyleSheet.create({
     letterSpacing: 0.7,
   },
   selectorButton: {
-    minHeight: 48,
+    minHeight: 44,
     borderWidth: 1,
     borderRadius: 14,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 12,
+    gap: 8,
   },
   selectorButtonPressed: {
     opacity: 0.85,
@@ -144,15 +144,17 @@ const styles = StyleSheet.create({
   selectorTextWrap: {
     flex: 1,
     minWidth: 0,
-    gap: 4,
+    justifyContent: 'center',
   },
   selectorTitle: {
-    fontSize: 15,
+    fontSize: 13,
     fontWeight: '800',
+    lineHeight: 16,
   },
   selectorMeta: {
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
+    lineHeight: 12,
   },
   modalOverlay: {
     flex: 1,

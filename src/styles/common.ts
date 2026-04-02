@@ -12,7 +12,7 @@ export const commonStyles = {
   },
   
   statusTopSpacer: {
-    height: Platform.OS === 'android' ? (RNStatusBar.currentHeight ?? 0) + theme.spacing.XS : theme.spacing.LG,
+    height: Platform.OS === 'android' ? (RNStatusBar.currentHeight ?? 0) : 0,
     backgroundColor: theme.colors.PRIMARY_BG,
   },
   

@@ -48,21 +48,18 @@ export function VerseCard({
     >
       {isCurrentVerse ? <View style={[styles.activeMarker, { backgroundColor: theme.colors.ACCENT_PRIMARY }]} /> : null}
 
-      <View style={styles.header}>
-        <View style={[
-          styles.numberBadge,
-          { backgroundColor: theme.colors.DARK_BG, borderColor: theme.colors.BORDER_SECONDARY },
-          isCurrentVerse && { backgroundColor: theme.colors.ACCENT_PRIMARY + '22', borderColor: theme.colors.ACCENT_PRIMARY }
+      <View style={[
+        styles.numberBadge,
+        { backgroundColor: theme.colors.DARK_BG, borderColor: theme.colors.BORDER_SECONDARY },
+        isCurrentVerse && { backgroundColor: theme.colors.ACCENT_PRIMARY + '22', borderColor: theme.colors.ACCENT_PRIMARY }
+      ]}>
+        <Text style={[
+          styles.verseNumber,
+          { color: theme.colors.TEXT_TERTIARY },
+          isCurrentVerse && { color: theme.colors.ACCENT_PRIMARY }
         ]}>
-          <Text style={[
-            styles.verseNumber,
-            { color: theme.colors.TEXT_TERTIARY },
-            isCurrentVerse && { color: theme.colors.ACCENT_PRIMARY }
-          ]}>
-            {verse.verse_number}
-          </Text>
-        </View>
-        <View style={[styles.line, { backgroundColor: theme.colors.BORDER_PRIMARY }]} />
+          {verse.verse_number}
+        </Text>
       </View>
 
       <View style={styles.arabicBlock}>
@@ -110,8 +107,9 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     borderRadius: 16,
     borderWidth: 0.5,
-    gap: 16,
+    gap: 12,
     overflow: 'hidden',
+    position: 'relative',
   },
   activeMarker: {
     position: 'absolute',
@@ -123,31 +121,26 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 2,
     opacity: 0.8,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
   numberBadge: {
-    minWidth: 28,
-    height: 28,
-    borderRadius: 14,
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    minWidth: 26,
+    height: 26,
+    borderRadius: 13,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     paddingHorizontal: 6,
+    zIndex: 10,
   },
   verseNumber: {
     fontWeight: '800',
     fontSize: 10,
   },
-  line: {
-    flex: 1,
-    height: 1,
-    opacity: 0.3,
-  },
   arabicBlock: {
     gap: 4,
+    paddingLeft: 40,
   },
   arabicText: {
     textAlign: 'right',
