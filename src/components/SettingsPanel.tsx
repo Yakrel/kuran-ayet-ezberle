@@ -1,5 +1,5 @@
-import React from 'react';
-import { Platform, StyleSheet, Switch, Text, View, Pressable } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { Modal, Platform, ScrollView, StyleSheet, Switch, Text, View, Pressable } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Feather } from '@expo/vector-icons';
 import type { TranslationOption, LanguageCode } from '../types/quran';
@@ -15,6 +15,8 @@ type SettingsPanelProps = {
   onTranslationChange: (authorId: number) => void;
   autoScrollEnabled: boolean;
   onAutoScrollChange: (enabled: boolean) => void;
+  ayahTrackingEnabled: boolean;
+  onAyahTrackingChange: (enabled: boolean) => void;
   quranFontId: QuranFontId;
   quranFontOptions: QuranFontOption[];
   onQuranFontChange: (fontId: QuranFontId) => void;
@@ -24,9 +26,14 @@ type SettingsPanelProps = {
   fontPreviewText: string;
   quranFontPreview: string;
   quranFontFamily: string;
+  quranFontPreviewStyle: {
+    fontSize: number;
+    lineHeight: number;
+  };
   languageText: string;
   translationText: string;
   autoScrollText: string;
+  ayahTrackingText: string;
   themeText: string;
   playbackSpeedText: string;
   aboutText: string;
@@ -37,6 +44,13 @@ type SettingsPanelProps = {
   onManageDownloadsPress: () => void;
 };
 
+type SelectOption<T extends string | number> = {
+  value: T;
+  label: string;
+};
+
+type ActiveSelectKey = 'language' | 'theme' | 'speed' | 'translation' | 'font' | null;
+
 export function SettingsPanel({
   language,
   onLanguageChange,
@@ -45,6 +59,8 @@ export function SettingsPanel({
   onTranslationChange,
   autoScrollEnabled,
   onAutoScrollChange,
+  ayahTrackingEnabled,
+  onAyahTrackingChange,
   quranFontId,
   quranFontOptions,
   onQuranFontChange,
@@ -54,9 +70,11 @@ export function SettingsPanel({
   fontPreviewText,
   quranFontPreview,
   quranFontFamily,
+  quranFontPreviewStyle,
   languageText,
   translationText,
   autoScrollText,
+  ayahTrackingText,
   themeText,
   playbackSpeedText,
   aboutText,
@@ -67,18 +85,21 @@ export function SettingsPanel({
   onManageDownloadsPress,
 }: SettingsPanelProps) {
   const { theme, themeType, setTheme } = useTheme();
+  const pickerMode = Platform.OS === 'android' && themeType === 'PAPER' ? 'dialog' : 'dropdown';
+  const useThemedSelect = Platform.OS === 'android' && themeType === 'PAPER';
+  const [activeSelect, setActiveSelect] = useState<ActiveSelectKey>(null);
 
-  const languageOptions: Array<{ value: LanguageCode; label: string }> = [
+  const languageOptions: Array<SelectOption<LanguageCode>> = [
     { value: 'tr', label: language === 'tr' ? 'Türkçe' : 'Turkish' },
     { value: 'en', label: language === 'tr' ? 'İngilizce' : 'English' },
   ];
 
-  const themeOptions: Array<{ value: ThemeType; label: string }> = [
+  const themeOptions: Array<SelectOption<ThemeType>> = [
     { value: 'DARK', label: language === 'tr' ? 'Koyu' : 'Dark' },
     { value: 'PAPER', label: language === 'tr' ? 'Kağıt' : 'Paper' },
   ];
 
-  const speedOptions = [
+  const speedOptions: Array<SelectOption<number>> = [
     { value: 0.5, label: '0.5x' },
     { value: 0.75, label: '0.75x' },
     { value: 1.0, label: '1.0x' },
@@ -86,119 +107,137 @@ export function SettingsPanel({
     { value: 1.5, label: '1.5x' },
   ];
 
+  const translationPickerOptions = useMemo<Array<SelectOption<number>>>(
+    () =>
+      translationOptionsForLanguage.map((option) => ({
+        value: option.id,
+        label: option.label,
+      })),
+    [translationOptionsForLanguage]
+  );
+
+  const quranFontPickerOptions = useMemo<Array<SelectOption<QuranFontId>>>(
+    () =>
+      quranFontOptions.map((option) => ({
+        value: option.id,
+        label: option.label,
+      })),
+    [quranFontOptions]
+  );
+
+  const activeSelectTitle = activeSelect === 'language'
+    ? languageText
+    : activeSelect === 'theme'
+    ? themeText
+    : activeSelect === 'speed'
+    ? playbackSpeedText
+    : activeSelect === 'translation'
+    ? translationText
+    : activeSelect === 'font'
+    ? quranFontText
+    : '';
+
+  const activeSelectOptions = activeSelect === 'language'
+    ? languageOptions
+    : activeSelect === 'theme'
+    ? themeOptions
+    : activeSelect === 'speed'
+    ? speedOptions
+    : activeSelect === 'translation'
+    ? translationPickerOptions
+    : activeSelect === 'font'
+    ? quranFontPickerOptions
+    : [];
+
+  const activeSelectValue = activeSelect === 'language'
+    ? language
+    : activeSelect === 'theme'
+    ? themeType
+    : activeSelect === 'speed'
+    ? playbackRate
+    : activeSelect === 'translation'
+    ? selectedTranslationAuthorId
+    : activeSelect === 'font'
+    ? quranFontId
+    : null;
+
+  function closeSelect() {
+    setActiveSelect(null);
+  }
+
+  function renderSelectField<T extends string | number>(
+    key: Exclude<ActiveSelectKey, null>,
+    label: string,
+    value: T,
+    options: Array<SelectOption<T>>,
+    onChange: (nextValue: T) => void
+  ) {
+    const selectedLabel = options.find((option) => option.value === value)?.label ?? String(value);
+
+    if (useThemedSelect) {
+      return (
+        <View style={styles.settingsGroup}>
+          <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{label}</Text>
+          <Pressable
+            onPress={() => setActiveSelect(key)}
+            style={({ pressed }) => [
+              styles.themedSelectButton,
+              { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG },
+              pressed && { opacity: 0.8 }
+            ]}
+          >
+            <Text style={[styles.themedSelectValue, { color: theme.colors.TEXT_PRIMARY }]} numberOfLines={1}>
+              {selectedLabel}
+            </Text>
+            <Feather name="chevron-down" size={18} color={theme.colors.PICKER_ICON} />
+          </Pressable>
+        </View>
+      );
+    }
+
+    return (
+      <View style={styles.settingsGroup}>
+        <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{label}</Text>
+        <View style={[styles.settingsPickerWrapper, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
+          <Picker
+            selectedValue={value}
+            onValueChange={(nextValue) => onChange(nextValue as T)}
+            mode={pickerMode}
+            dropdownIconColor={theme.colors.PICKER_ICON}
+            style={[styles.settingsPicker, { color: theme.colors.TEXT_PRIMARY }]}
+          >
+            {options.map((option) => (
+              <Picker.Item
+                key={String(option.value)}
+                label={option.label}
+                value={option.value}
+                color={theme.colors.TEXT_SECONDARY}
+              />
+            ))}
+          </Picker>
+        </View>
+      </View>
+    );
+  }
+
   return (
     <View style={styles.settingsPanel}>
-      <View style={styles.settingsGroup}>
-        <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{languageText}</Text>
-        <View style={[styles.settingsPickerWrapper, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
-          <Picker
-            selectedValue={language}
-            onValueChange={(nextLanguage) => onLanguageChange(nextLanguage as LanguageCode)}
-            mode="dropdown"
-            dropdownIconColor={theme.colors.PICKER_ICON}
-            style={styles.settingsPicker}
-          >
-            {languageOptions.map((option) => (
-              <Picker.Item
-                key={option.value}
-                label={option.label}
-                value={option.value}
-                color={theme.colors.TEXT_SECONDARY}
-              />
-            ))}
-          </Picker>
-        </View>
-      </View>
+      {renderSelectField('language', languageText, language, languageOptions, onLanguageChange)}
+      {renderSelectField('theme', themeText, themeType, themeOptions, (nextTheme) => setTheme(nextTheme as ThemeType))}
+      {renderSelectField('speed', playbackSpeedText, playbackRate, speedOptions, (nextRate) => onPlaybackRateChange(Number(nextRate)))}
+      {renderSelectField('translation', translationText, selectedTranslationAuthorId, translationPickerOptions, (nextAuthorId) => onTranslationChange(Number(nextAuthorId)))}
 
       <View style={styles.settingsGroup}>
-        <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{themeText}</Text>
-        <View style={[styles.settingsPickerWrapper, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
-          <Picker
-            selectedValue={themeType}
-            onValueChange={(nextTheme) => setTheme(nextTheme as ThemeType)}
-            mode="dropdown"
-            dropdownIconColor={theme.colors.PICKER_ICON}
-            style={styles.settingsPicker}
-          >
-            {themeOptions.map((option) => (
-              <Picker.Item
-                key={option.value}
-                label={option.label}
-                value={option.value}
-                color={theme.colors.TEXT_SECONDARY}
-              />
-            ))}
-          </Picker>
-        </View>
-      </View>
-
-      <View style={styles.settingsGroup}>
-        <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{playbackSpeedText}</Text>
-        <View style={[styles.settingsPickerWrapper, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
-          <Picker
-            selectedValue={playbackRate}
-            onValueChange={(nextRate) => onPlaybackRateChange(Number(nextRate))}
-            mode="dropdown"
-            dropdownIconColor={theme.colors.PICKER_ICON}
-            style={styles.settingsPicker}
-          >
-            {speedOptions.map((option) => (
-              <Picker.Item
-                key={option.value}
-                label={option.label}
-                value={option.value}
-                color={theme.colors.TEXT_SECONDARY}
-              />
-            ))}
-          </Picker>
-        </View>
-      </View>
-
-      <View style={styles.settingsGroup}>
-        <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{translationText}</Text>
-        <View style={[styles.settingsPickerWrapper, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
-          <Picker
-            selectedValue={selectedTranslationAuthorId}
-            onValueChange={(nextAuthorId) => onTranslationChange(Number(nextAuthorId))}
-            mode="dropdown"
-            dropdownIconColor={theme.colors.PICKER_ICON}
-            style={styles.settingsPicker}
-          >
-            {translationOptionsForLanguage.map((option) => (
-              <Picker.Item
-                key={option.id}
-                label={option.label}
-                value={option.id}
-                color={theme.colors.TEXT_SECONDARY}
-              />
-            ))}
-          </Picker>
-        </View>
-      </View>
-
-      <View style={styles.settingsGroup}>
-        <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{quranFontText}</Text>
-        <View style={[styles.settingsPickerWrapper, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
-          <Picker
-            selectedValue={quranFontId}
-            onValueChange={(nextFontId) => onQuranFontChange(nextFontId as QuranFontId)}
-            mode="dropdown"
-            dropdownIconColor={theme.colors.PICKER_ICON}
-            style={styles.settingsPicker}
-          >
-            {quranFontOptions.map((option) => (
-              <Picker.Item
-                key={option.id}
-                label={`${option.label} • ${option.note[language]}`}
-                value={option.id}
-                color={theme.colors.TEXT_SECONDARY}
-              />
-            ))}
-          </Picker>
-        </View>
+        {renderSelectField('font', quranFontText, quranFontId, quranFontPickerOptions, onQuranFontChange)}
         <View style={[styles.fontPreviewCard, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
           <Text style={[styles.fontPreviewLabel, { color: theme.colors.TEXT_TERTIARY }]}>{fontPreviewText}</Text>
-          <Text style={[styles.fontPreviewArabic, { fontFamily: quranFontFamily, color: theme.colors.TEXT_PRIMARY }]}>
+          <Text
+            style={[
+              styles.fontPreviewArabic,
+              quranFontPreviewStyle,
+              { fontFamily: quranFontFamily, color: theme.colors.TEXT_PRIMARY }
+            ]}
+          >
             {quranFontPreview}
           </Text>
         </View>
@@ -211,6 +250,22 @@ export function SettingsPanel({
           <Switch
             value={autoScrollEnabled}
             onValueChange={onAutoScrollChange}
+            trackColor={{
+              false: theme.colors.BORDER_SECONDARY,
+              true: theme.colors.ACCENT_PRIMARY,
+            }}
+            thumbColor={theme.colors.TEXT_PRIMARY}
+          />
+        </View>
+      </View>
+
+      <View style={styles.settingsGroup}>
+        <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{ayahTrackingText}</Text>
+        <View style={[styles.switchRow, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
+          <Text style={[styles.switchValue, { color: theme.colors.TEXT_SECONDARY }]}>{ayahTrackingEnabled ? onText : offText}</Text>
+          <Switch
+            value={ayahTrackingEnabled}
+            onValueChange={onAyahTrackingChange}
             trackColor={{
               false: theme.colors.BORDER_SECONDARY,
               true: theme.colors.ACCENT_PRIMARY,
@@ -245,6 +300,61 @@ export function SettingsPanel({
           <Text style={[styles.footerButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{aboutText}</Text>
         </Pressable>
       </View>
+
+      <Modal visible={activeSelect !== null} transparent animationType="fade" onRequestClose={closeSelect}>
+        <Pressable style={styles.selectModalOverlay} onPress={closeSelect}>
+          <Pressable
+            onPress={() => undefined}
+            style={[
+              styles.selectModalCard,
+              { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }
+            ]}
+          >
+            <View style={[styles.selectModalHeader, { borderBottomColor: theme.colors.BORDER_PRIMARY }]}>
+              <Text style={[styles.selectModalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{activeSelectTitle}</Text>
+              <Pressable onPress={closeSelect} style={[styles.selectModalClose, { backgroundColor: theme.colors.CARD_BG }]}>
+                <Feather name="x" size={18} color={theme.colors.TEXT_PRIMARY} />
+              </Pressable>
+            </View>
+
+            <ScrollView contentContainerStyle={styles.selectOptions}>
+              {activeSelectOptions.map((option) => {
+                const isSelected = activeSelectValue === option.value;
+
+                return (
+                  <Pressable
+                    key={String(option.value)}
+                    onPress={() => {
+                      if (activeSelect === 'language') {
+                        onLanguageChange(option.value as LanguageCode);
+                      } else if (activeSelect === 'theme') {
+                        setTheme(option.value as ThemeType);
+                      } else if (activeSelect === 'speed') {
+                        onPlaybackRateChange(Number(option.value));
+                      } else if (activeSelect === 'translation') {
+                        onTranslationChange(Number(option.value));
+                      } else if (activeSelect === 'font') {
+                        onQuranFontChange(option.value as QuranFontId);
+                      }
+                      closeSelect();
+                    }}
+                    style={[
+                      styles.selectOptionButton,
+                      {
+                        backgroundColor: isSelected ? theme.colors.TERTIARY_BG : theme.colors.CARD_BG,
+                        borderColor: isSelected ? theme.colors.ACCENT_PRIMARY : theme.colors.BORDER_SECONDARY,
+                      }
+                    ]}
+                  >
+                    <Text style={[styles.selectOptionText, { color: theme.colors.TEXT_PRIMARY }]}>{option.label}</Text>
+                    {isSelected ? <Feather name="check" size={16} color={theme.colors.ACCENT_PRIMARY} /> : null}
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -286,6 +396,21 @@ const styles = StyleSheet.create({
       }
     }),
   },
+  themedSelectButton: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  themedSelectValue: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: '500',
+  },
   switchRow: {
     minHeight: 48,
     borderWidth: 1,
@@ -316,8 +441,6 @@ const styles = StyleSheet.create({
   fontPreviewArabic: {
     textAlign: 'right',
     writingDirection: 'rtl',
-    fontSize: 24,
-    lineHeight: 40,
   },
   footerButtons: {
     gap: 10,
@@ -336,5 +459,56 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
   },
+  selectModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.38)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  selectModalCard: {
+    maxHeight: '72%',
+    borderWidth: 1,
+    borderRadius: 18,
+    overflow: 'hidden',
+  },
+  selectModalHeader: {
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  selectModalTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    flex: 1,
+  },
+  selectModalClose: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  selectOptions: {
+    padding: 14,
+    gap: 10,
+  },
+  selectOptionButton: {
+    minHeight: 48,
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  selectOptionText: {
+    fontSize: 15,
+    fontWeight: '500',
+    flex: 1,
+  },
 });
-

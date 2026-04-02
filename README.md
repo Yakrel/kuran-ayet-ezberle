@@ -7,9 +7,9 @@ A concise, open-source Android-first Quran memorization app built with Expo and 
 - Surah and ayah selector
 - Play a range of ayahs (start, count) with optional repeat/loop
 - Arabic ayah text display alongside selectable translations (TR/EN)
-- Verse-by-verse audio streaming (Saad Al-Ghamdi) with local per-ayah caching for faster replay
+- Verse-by-verse audio playback (Saad Al-Ghamdi) with automatic per-ayah disk caching
 - Page-based swipe navigation and resume playback
-- Lightweight, stream-first design to minimize storage while allowing repeated listening
+- Stream-first listening with a reusable offline pack built on the same ayah cache
 
 ## Quick start
 

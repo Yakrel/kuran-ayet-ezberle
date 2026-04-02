@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { getPreferredSurahAudioUri } from '../services/surahAudioCache';
 import { getTrackPlayerModule, getTrackPlayerUnavailableReason } from '../services/trackPlayer';
+import { getVerseAudioForPlayback, prefetchVerseRange } from '../services/audioCache';
 import type { SurahDetail, Verse } from '../types/quran';
 
 type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped';
@@ -9,9 +9,17 @@ type PlaybackSession = {
   surahId: number;
   startVerseNumber: number;
   endVerseNumber: number;
-  startTimeMs: number;
-  endTimeMs: number;
   repeatCount: number;
+  tracks: VerseTrack[];
+  totalDurationMs: number;
+};
+
+type VerseTrack = {
+  id: string;
+  verse: Verse;
+  repeatIndex: number;
+  durationMs: number;
+  url: string;
 };
 
 type UseSegmentedPlayerOptions = {
@@ -35,7 +43,6 @@ type TrackPlayerApi = {
   play: () => Promise<void>;
   pause: () => Promise<void>;
   stop: () => Promise<void>;
-  seekTo: (positionSeconds: number) => Promise<void>;
   setRate: (rate: number) => Promise<void>;
   getProgress: () => Promise<{ position: number; duration: number; buffered: number }>;
   addEventListener: (event: unknown, listener: (payload: unknown) => void) => { remove: () => void };
@@ -56,7 +63,6 @@ function isTrackPlayerApi(value: unknown): value is TrackPlayerApi {
     typeof candidate.play === 'function' &&
     typeof candidate.pause === 'function' &&
     typeof candidate.stop === 'function' &&
-    typeof candidate.seekTo === 'function' &&
     typeof candidate.setRate === 'function' &&
     typeof candidate.getProgress === 'function' &&
     typeof candidate.addEventListener === 'function'
@@ -73,23 +79,14 @@ function getPlayerApi() {
   return isTrackPlayerApi(candidate) ? candidate : null;
 }
 
-function findVerseByTime(verses: Verse[], timeMs: number) {
-  return verses.find((verse) => {
-    if (!verse.timing) {
-      return false;
-    }
-
-    return timeMs >= verse.timing.time_from_ms && timeMs <= verse.timing.time_to_ms;
-  }) ?? null;
-}
-
-function findWordLocationAtTime(verse: Verse | null, timeMs: number) {
+function findWordLocationAtOffset(verse: Verse | null, offsetMs: number) {
   if (!verse?.timing) {
     return null;
   }
 
+  const absoluteTimeMs = verse.timing.time_from_ms + Math.max(0, offsetMs);
   const textWords = verse.words.filter((word) => !word.is_ayah_marker);
-  const segment = verse.timing.segments.find((item) => timeMs >= item[1] && timeMs <= item[2]);
+  const segment = verse.timing.segments.find((item) => absoluteTimeMs >= item[1] && absoluteTimeMs <= item[2]);
   if (!segment) {
     return null;
   }
@@ -115,6 +112,48 @@ function toPlaybackStatus(trackPlayerState: string | undefined): PlaybackStatus 
   }
 }
 
+function getVerseDurationMs(verse: Verse) {
+  return Math.max(verse.timing?.duration_ms ?? 0, 1);
+}
+
+async function buildPlaybackTracks(
+  surahDetail: SurahDetail,
+  startVerseNumber: number,
+  endVerseNumber: number,
+  repeatCount: number
+) {
+  const selectedVerses = surahDetail.verses.filter(
+    (verse) => verse.verse_number >= startVerseNumber && verse.verse_number <= endVerseNumber
+  );
+
+  const verseAudio = await Promise.all(
+    selectedVerses.map(async (verse) => ({
+      verse,
+      audio: await getVerseAudioForPlayback(verse.surah_id, verse.verse_number),
+    }))
+  );
+
+  const tracks: VerseTrack[] = [];
+
+  for (let repeatIndex = 1; repeatIndex <= repeatCount; repeatIndex += 1) {
+    for (const item of verseAudio) {
+      tracks.push({
+        id: `surah-${item.verse.surah_id}-verse-${item.verse.verse_number}-repeat-${repeatIndex}`,
+        verse: item.verse,
+        repeatIndex,
+        durationMs: getVerseDurationMs(item.verse),
+        url: item.audio.uri,
+      });
+    }
+  }
+
+  return {
+    selectedVerses,
+    tracks,
+    totalDurationMs: tracks.reduce((sum, track) => sum + track.durationMs, 0),
+  };
+}
+
 export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmentedPlayerOptions) {
   const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>('idle');
   const [currentTimeMs, setCurrentTimeMs] = useState(0);
@@ -125,20 +164,23 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
   const [loadedSurahId, setLoadedSurahId] = useState<number | null>(null);
   const [playbackRate, setPlaybackRateState] = useState(1.0);
 
-  const surahRef = useRef<SurahDetail | null>(null);
   const sessionRef = useRef<PlaybackSession | null>(null);
-  const currentRepeatRef = useRef(1);
+  const currentTrackIndexRef = useRef(0);
   const playbackRateRef = useRef(1.0);
   const setupPromiseRef = useRef<Promise<void> | null>(null);
-  const loadedAudioUriRef = useRef<string | null>(null);
-  const isHandlingLoopRef = useRef(false);
 
-  const syncActiveState = useCallback((positionMs: number, durationValueMs: number) => {
-    setCurrentTimeMs(positionMs);
-    setDurationMs(durationValueMs);
+  const syncActiveState = useCallback((positionMs: number, activeTrackDurationMs: number) => {
+    const session = sessionRef.current;
+    const activeTrack = session?.tracks[currentTrackIndexRef.current] ?? null;
+    const completedDurationMs = session?.tracks
+      .slice(0, currentTrackIndexRef.current)
+      .reduce((sum, track) => sum + track.durationMs, 0) ?? 0;
+    const sessionDurationMs = session?.totalDurationMs ?? activeTrackDurationMs;
 
-    const currentSurah = surahRef.current;
-    const nextActiveVerse = currentSurah ? findVerseByTime(currentSurah.verses, positionMs) : null;
+    setCurrentTimeMs(completedDurationMs + Math.max(0, positionMs));
+    setDurationMs(sessionDurationMs);
+
+    const nextActiveVerse = activeTrack?.verse ?? null;
     setActiveVerse((previous) => {
       if (
         previous?.surah_id === nextActiveVerse?.surah_id &&
@@ -150,7 +192,8 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
       onActiveVerseChange?.(nextActiveVerse);
       return nextActiveVerse;
     });
-    setActiveWordLocation(findWordLocationAtTime(nextActiveVerse, positionMs));
+    setActiveWordLocation(findWordLocationAtOffset(nextActiveVerse, positionMs));
+    setCurrentRepeat(activeTrack?.repeatIndex ?? 1);
   }, [onActiveVerseChange]);
 
   const setPlaybackRate = useCallback(async (rate: number) => {
@@ -207,7 +250,6 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
     return { playerModule, TrackPlayer };
   }, [onError]);
 
-
   useEffect(() => {
     let isMounted = true;
     const cleanups: Array<() => void> = [];
@@ -221,39 +263,11 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
         const progressSubscription = TrackPlayer.addEventListener(
           playerModule.Event.PlaybackProgressUpdated,
           (payload: unknown) => {
-            const progress = payload as { position?: number; duration?: number; buffered?: number };
-            const positionMs = Math.max(0, Math.round((progress.position ?? 0) * 1000));
-            const durationValueMs = Math.max(0, Math.round((progress.duration ?? 0) * 1000));
-            syncActiveState(positionMs, durationValueMs);
-
-            const session = sessionRef.current;
-            if (!session || isHandlingLoopRef.current || positionMs < Math.max(0, session.endTimeMs - 180)) {
-              return;
-            }
-
-            isHandlingLoopRef.current = true;
-            void (async () => {
-              try {
-                if (currentRepeatRef.current < session.repeatCount) {
-                  currentRepeatRef.current += 1;
-                  setCurrentRepeat(currentRepeatRef.current);
-                  await TrackPlayer.seekTo(session.startTimeMs / 1000);
-                  await TrackPlayer.play();
-                  syncActiveState(session.startTimeMs, durationValueMs);
-                } else {
-                  await TrackPlayer.pause();
-                  await TrackPlayer.seekTo(session.startTimeMs / 1000);
-                  currentRepeatRef.current = 1;
-                  setCurrentRepeat(1);
-                  setPlaybackStatus('stopped');
-                  syncActiveState(session.startTimeMs, durationValueMs);
-                }
-              } catch (error) {
-                onError(error instanceof Error ? error.message : 'Range loop failed.');
-              } finally {
-                isHandlingLoopRef.current = false;
-              }
-            })();
+            const progress = payload as { position?: number; duration?: number };
+            syncActiveState(
+              Math.max(0, Math.round((progress.position ?? 0) * 1000)),
+              Math.max(0, Math.round((progress.duration ?? 0) * 1000))
+            );
           }
         );
 
@@ -265,14 +279,36 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
           }
         );
 
+        const activeTrackSubscription = TrackPlayer.addEventListener(
+          playerModule.Event.PlaybackActiveTrackChanged,
+          (payload: unknown) => {
+            const nextEvent = payload as { index?: number };
+            const nextIndex = typeof nextEvent.index === 'number' ? nextEvent.index : 0;
+            currentTrackIndexRef.current = Math.max(0, nextIndex);
+            const activeTrack = sessionRef.current?.tracks[currentTrackIndexRef.current] ?? null;
+            if (activeTrack) {
+              setCurrentRepeat(activeTrack.repeatIndex);
+              setActiveVerse(activeTrack.verse);
+              setActiveWordLocation(null);
+              onActiveVerseChange?.(activeTrack.verse);
+            }
+          }
+        );
+
         const queueEndedSubscription = TrackPlayer.addEventListener(
           playerModule.Event.PlaybackQueueEnded,
           () => {
-            if (sessionRef.current) {
-              currentRepeatRef.current = 1;
-              setCurrentRepeat(1);
-              setPlaybackStatus('stopped');
+            const session = sessionRef.current;
+            if (!session) {
+              return;
             }
+
+            currentTrackIndexRef.current = 0;
+            setCurrentRepeat(1);
+            setPlaybackStatus('stopped');
+            setCurrentTimeMs(session.totalDurationMs);
+            setDurationMs(session.totalDurationMs);
+            setActiveWordLocation(null);
           }
         );
 
@@ -288,6 +324,7 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
         cleanups.push(() => {
           progressSubscription.remove();
           stateSubscription.remove();
+          activeTrackSubscription.remove();
           queueEndedSubscription.remove();
           errorSubscription.remove();
         });
@@ -302,41 +339,7 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
         cleanup();
       }
     };
-  }, [ensurePlayerSetup, onError, syncActiveState]);
-
-  const loadSurahTrack = useCallback(async (surahDetail: SurahDetail) => {
-    if (!surahDetail.audio) {
-      throw new Error('This surah has no audio manifest.');
-    }
-
-    const { TrackPlayer } = await ensurePlayerSetup();
-    const audioUri = await getPreferredSurahAudioUri(surahDetail.id, surahDetail.audio.url);
-
-    if (loadedSurahId === surahDetail.id && loadedAudioUriRef.current === audioUri) {
-      surahRef.current = surahDetail;
-      return { TrackPlayer, audioUri };
-    }
-
-    await TrackPlayer.reset();
-    await TrackPlayer.add({
-      id: `surah-${surahDetail.id}`,
-      url: audioUri,
-      title: surahDetail.name,
-      artist: 'Saad Al-Ghamdi',
-    });
-
-    surahRef.current = surahDetail;
-    loadedAudioUriRef.current = audioUri;
-    setLoadedSurahId(surahDetail.id);
-
-    const progress = await TrackPlayer.getProgress();
-    syncActiveState(
-      Math.max(0, Math.round((progress.position ?? 0) * 1000)),
-      Math.max(0, Math.round((progress.duration ?? 0) * 1000))
-    );
-
-    return { TrackPlayer, audioUri };
-  }, [ensurePlayerSetup, loadedSurahId, syncActiveState]);
+  }, [ensurePlayerSetup, onActiveVerseChange, onError, syncActiveState]);
 
   const startPlayback = useCallback(async ({
     surahDetail,
@@ -353,26 +356,54 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
     setPlaybackStatus('loading');
     onError(null);
 
-    const { TrackPlayer } = await loadSurahTrack(surahDetail);
-    const startTimeMs = startVerse.timing.time_from_ms;
-    const endTimeMs = endVerse.timing.time_to_ms;
+    const { TrackPlayer } = await ensurePlayerSetup();
+    const { selectedVerses, tracks, totalDurationMs } = await buildPlaybackTracks(
+      surahDetail,
+      startVerseNumber,
+      endVerseNumber,
+      repeatCount
+    );
+
+    if (tracks.length === 0) {
+      throw new Error('No playable ayahs found in the selected range.');
+    }
 
     sessionRef.current = {
       surahId: surahDetail.id,
       startVerseNumber,
       endVerseNumber,
-      startTimeMs,
-      endTimeMs,
       repeatCount,
+      tracks,
+      totalDurationMs,
     };
-    currentRepeatRef.current = 1;
+    currentTrackIndexRef.current = 0;
+    setLoadedSurahId(surahDetail.id);
     setCurrentRepeat(1);
+    setActiveVerse(tracks[0].verse);
+    setActiveWordLocation(null);
+    setCurrentTimeMs(0);
+    setDurationMs(totalDurationMs);
+    onActiveVerseChange?.(tracks[0].verse);
 
-    await TrackPlayer.seekTo(startTimeMs / 1000);
-    syncActiveState(startTimeMs, durationMs);
+    await TrackPlayer.reset();
+    await TrackPlayer.add(
+      tracks.map((track) => ({
+        id: track.id,
+        url: track.url,
+        title: `${surahDetail.name} ${track.verse.verse_number}`,
+        artist: 'Saad Al-Ghamdi',
+      }))
+    );
     await TrackPlayer.play();
     setPlaybackStatus('playing');
-  }, [durationMs, loadSurahTrack, onError, syncActiveState]);
+
+    void prefetchVerseRange(
+      selectedVerses.map((verse) => ({
+        surahId: verse.surah_id,
+        verseNumber: verse.verse_number,
+      }))
+    );
+  }, [ensurePlayerSetup, onActiveVerseChange, onError]);
 
   const pausePlayback = useCallback(async () => {
     const TrackPlayer = getPlayerApi();
@@ -396,37 +427,34 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
 
   const stopPlayback = useCallback(async () => {
     const TrackPlayer = getPlayerApi();
-    currentRepeatRef.current = 1;
+    currentTrackIndexRef.current = 0;
     setCurrentRepeat(1);
-    sessionRef.current = null;
+    setActiveWordLocation(null);
 
     if (!TrackPlayer) {
+      sessionRef.current = null;
       setPlaybackStatus('stopped');
       return;
     }
 
-    await TrackPlayer.pause().catch(() => undefined);
+    await TrackPlayer.stop().catch(() => undefined);
+    await TrackPlayer.reset().catch(() => undefined);
+    sessionRef.current = null;
     setPlaybackStatus('stopped');
   }, []);
 
   const seekToVerse = useCallback(async (surahDetail: SurahDetail, verseNumber: number, shouldPlay = true) => {
-    const verse = surahDetail.verses.find((item) => item.verse_number === verseNumber);
-    if (!verse?.timing) {
-      throw new Error('This verse has no timing information.');
-    }
+    await startPlayback({
+      surahDetail,
+      startVerseNumber: verseNumber,
+      endVerseNumber: verseNumber,
+      repeatCount: 1,
+    });
 
-    const { TrackPlayer } = await loadSurahTrack(surahDetail);
-    await TrackPlayer.seekTo(verse.timing.time_from_ms / 1000);
-    syncActiveState(verse.timing.time_from_ms, durationMs);
-
-    if (shouldPlay) {
-      await TrackPlayer.play();
-      setPlaybackStatus('playing');
-    } else {
-      await TrackPlayer.pause();
-      setPlaybackStatus('paused');
+    if (!shouldPlay) {
+      await pausePlayback();
     }
-  }, [durationMs, loadSurahTrack, syncActiveState]);
+  }, [pausePlayback, startPlayback]);
 
   const state = useMemo(() => ({
     playbackStatus,

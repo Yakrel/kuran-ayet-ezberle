@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Verse } from '../types/quran';
 import { useTheme } from '../hooks/useTheme';
@@ -6,6 +6,10 @@ import { useTheme } from '../hooks/useTheme';
 type VerseCardProps = {
   verse: Verse;
   quranFontFamily: string;
+  quranTextStyle: {
+    fontSize: number;
+    lineHeight: number;
+  };
   isCurrentVerse?: boolean;
   activeWordLocation?: string | null;
   onPress: (verse: Verse) => void;
@@ -15,25 +19,26 @@ type VerseCardProps = {
 export function VerseCard({
   verse,
   quranFontFamily,
+  quranTextStyle,
   isCurrentVerse,
   activeWordLocation,
   onPress,
   onLongPress,
 }: VerseCardProps) {
   const { theme } = useTheme();
-
-  const wordLines = useMemo(() => {
-    const lines = new Map<number, typeof verse.words>();
-    for (const word of verse.words) {
-      const current = lines.get(word.line_number) ?? [];
-      current.push(word);
-      lines.set(word.line_number, current);
+  const longPressTriggeredRef = useRef(false);
+  const highlightedVerseText = useMemo(() => {
+    if (!isCurrentVerse || !activeWordLocation) {
+      return verse.verse;
     }
 
-    return Array.from(lines.entries())
-      .sort((left, right) => left[0] - right[0])
-      .map(([, words]) => words);
-  }, [verse.words]);
+    const activeWord = verse.words.find((word) => word.location === activeWordLocation);
+    if (!activeWord) {
+      return verse.verse;
+    }
+
+    return verse.verse;
+  }, [activeWordLocation, isCurrentVerse, verse.verse, verse.words]);
 
   return (
     <Pressable
@@ -42,8 +47,18 @@ export function VerseCard({
         { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_PRIMARY },
         isCurrentVerse && { borderColor: theme.colors.ACCENT_PRIMARY, backgroundColor: theme.colors.TERTIARY_BG }
       ]}
-      onPress={() => onPress(verse)}
-      onLongPress={() => onLongPress(verse)}
+      onPress={() => {
+        if (longPressTriggeredRef.current) {
+          longPressTriggeredRef.current = false;
+          return;
+        }
+
+        onPress(verse);
+      }}
+      onLongPress={() => {
+        longPressTriggeredRef.current = true;
+        onLongPress(verse);
+      }}
       delayLongPress={500}
     >
       {isCurrentVerse ? <View style={[styles.activeMarker, { backgroundColor: theme.colors.ACCENT_PRIMARY }]} /> : null}
@@ -63,35 +78,15 @@ export function VerseCard({
       </View>
 
       <View style={styles.arabicBlock}>
-        {wordLines.length > 0 ? (
-          wordLines.map((lineWords, index) => (
-            <Text
-              key={`${verse.surah_id}-${verse.verse_number}-line-${index + 1}`}
-              style={[styles.arabicText, { fontFamily: quranFontFamily, color: theme.colors.TEXT_PRIMARY }]}
-            >
-              {lineWords.map((word, wordIndex) => {
-                const isActiveWord = activeWordLocation === word.location;
-                const wordStyle = word.is_ayah_marker
-                  ? { color: theme.colors.TEXT_TERTIARY }
-                  : isActiveWord
-                  ? { backgroundColor: theme.colors.ACCENT_PRIMARY + '38', color: theme.colors.ACCENT_PRIMARY }
-                  : undefined;
-
-                return (
-                  <Text
-                    key={word.location}
-                    style={wordStyle}
-                  >
-                    {word.text}
-                    {wordIndex === lineWords.length - 1 ? '' : ' '}
-                  </Text>
-                );
-              })}
-            </Text>
-          ))
-        ) : (
-          <Text style={[styles.arabicText, { fontFamily: quranFontFamily, color: theme.colors.TEXT_PRIMARY }]}>{verse.verse}</Text>
-        )}
+        <Text
+          style={[
+            styles.arabicText,
+            quranTextStyle,
+            { fontFamily: quranFontFamily, color: theme.colors.TEXT_PRIMARY }
+          ]}
+        >
+          {highlightedVerseText}
+        </Text>
       </View>
 
       <View style={[styles.translationBlock, { borderTopColor: theme.colors.BORDER_PRIMARY }]}>
@@ -145,8 +140,6 @@ const styles = StyleSheet.create({
   arabicText: {
     textAlign: 'right',
     writingDirection: 'rtl',
-    fontSize: 22,
-    lineHeight: 36,
     fontWeight: '400',
   },
   translationBlock: {

@@ -12,6 +12,10 @@ type VerseListProps = {
   currentVerse: Verse | null;
   activeWordLocation?: string | null;
   quranFontFamily: string;
+  quranTextStyle: {
+    fontSize: number;
+    lineHeight: number;
+  };
   sectionTitle: string;
   pageProgressText: string;
   swipeHintText: string;
@@ -27,6 +31,7 @@ export function VerseList({
   currentVerse,
   activeWordLocation,
   quranFontFamily,
+  quranTextStyle,
   sectionTitle,
   pageProgressText,
   swipeHintText,
@@ -80,7 +85,9 @@ export function VerseList({
         borderColor: themeType === 'DARK' ? 'rgba(148, 163, 184, 0.18)' : 'rgba(7, 54, 66, 0.12)'
       }
     ]}>
-      <PageHeader title={sectionTitle} pageProgressText={pageProgressText} />
+      {sectionTitle || pageProgressText ? (
+        <PageHeader title={sectionTitle} pageProgressText={pageProgressText} />
+      ) : null}
       <View style={styles.pageBody} {...panHandlers}>
         <FlatList
           key={`page-${pageProgressText}`}
@@ -105,6 +112,7 @@ export function VerseList({
               <VerseCard
                 verse={item}
                 quranFontFamily={quranFontFamily}
+                quranTextStyle={quranTextStyle}
                 isCurrentVerse={isCurrent}
                 activeWordLocation={isCurrent ? activeWordLocation : null}
                 onPress={onVerseTap}

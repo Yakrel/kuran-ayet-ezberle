@@ -1,13 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-export type BundleDownloadPhase = 'downloading' | 'unzipping' | 'moving';
-
-export type SavedBundleDownloadState = {
-  phase: BundleDownloadPhase;
-  current: number;
-  total: number;
-  percent: number;
-  resumable: Record<string, unknown> | null;
+export type PlaybackSessionSnapshot = {
+  surahId: number;
+  startVerseNumber: number;
+  endVerseNumber: number;
+  repeatCount: number;
+  currentTrackIndex: number;
+  queueLength: number;
+  playbackStatus: 'idle' | 'loading' | 'playing' | 'paused' | 'stopped';
 };
 
 const KEYS = {
@@ -16,10 +16,11 @@ const KEYS = {
   SELECTED_SURAH: '@app_selected_surah',
   SELECTED_TRANSLATION: '@app_selected_translation',
   AUTO_SCROLL: '@app_auto_scroll',
+  AYAH_TRACKING: '@app_ayah_tracking',
   LAST_VERSE: '@app_last_verse',
   DOWNLOAD_COMPLETE: '@app_full_download_complete',
   ONBOARDING_DONE: '@app_onboarding_done',
-  BUNDLE_DOWNLOAD_STATE: '@app_bundle_download_state',
+  PLAYBACK_SESSION: '@app_playback_session',
 };
 
 async function setBoolean(key: string, value: boolean) {
@@ -82,6 +83,13 @@ export const Storage = {
     return await getBoolean(KEYS.AUTO_SCROLL, true);
   },
 
+  async setAyahTracking(enabled: boolean) {
+    await setBoolean(KEYS.AYAH_TRACKING, enabled);
+  },
+  async getAyahTracking() {
+    return await getBoolean(KEYS.AYAH_TRACKING, false);
+  },
+
   async setLastVerse(surahId: number, verseNumber: number) {
     await AsyncStorage.setItem(KEYS.LAST_VERSE, JSON.stringify({ surahId, verseNumber }));
   },
@@ -103,43 +111,50 @@ export const Storage = {
     }
   },
 
-  async setBundleDownloadState(state: SavedBundleDownloadState) {
-    await AsyncStorage.setItem(KEYS.BUNDLE_DOWNLOAD_STATE, JSON.stringify(state));
+  async setPlaybackSession(session: PlaybackSessionSnapshot) {
+    await AsyncStorage.setItem(KEYS.PLAYBACK_SESSION, JSON.stringify(session));
   },
 
-  async getBundleDownloadState(): Promise<SavedBundleDownloadState | null> {
-    const val = await AsyncStorage.getItem(KEYS.BUNDLE_DOWNLOAD_STATE);
+  async getPlaybackSession(): Promise<PlaybackSessionSnapshot | null> {
+    const val = await AsyncStorage.getItem(KEYS.PLAYBACK_SESSION);
     if (!val) {
       return null;
     }
 
     try {
-      const parsed = JSON.parse(val) as Partial<SavedBundleDownloadState>;
+      const parsed = JSON.parse(val) as Partial<PlaybackSessionSnapshot>;
       if (
-        (parsed.phase !== 'downloading' && parsed.phase !== 'unzipping' && parsed.phase !== 'moving') ||
-        typeof parsed.current !== 'number' ||
-        typeof parsed.total !== 'number' ||
-        typeof parsed.percent !== 'number'
+        typeof parsed.surahId !== 'number' ||
+        typeof parsed.startVerseNumber !== 'number' ||
+        typeof parsed.endVerseNumber !== 'number' ||
+        typeof parsed.repeatCount !== 'number' ||
+        typeof parsed.currentTrackIndex !== 'number' ||
+        typeof parsed.queueLength !== 'number' ||
+        (parsed.playbackStatus !== 'idle' &&
+          parsed.playbackStatus !== 'loading' &&
+          parsed.playbackStatus !== 'playing' &&
+          parsed.playbackStatus !== 'paused' &&
+          parsed.playbackStatus !== 'stopped')
       ) {
         return null;
       }
 
       return {
-        phase: parsed.phase,
-        current: parsed.current,
-        total: parsed.total,
-        percent: parsed.percent,
-        resumable: parsed.resumable && typeof parsed.resumable === 'object'
-          ? parsed.resumable as Record<string, unknown>
-          : null,
+        surahId: parsed.surahId,
+        startVerseNumber: parsed.startVerseNumber,
+        endVerseNumber: parsed.endVerseNumber,
+        repeatCount: parsed.repeatCount,
+        currentTrackIndex: parsed.currentTrackIndex,
+        queueLength: parsed.queueLength,
+        playbackStatus: parsed.playbackStatus,
       };
     } catch {
       return null;
     }
   },
 
-  async clearBundleDownloadState() {
-    await AsyncStorage.removeItem(KEYS.BUNDLE_DOWNLOAD_STATE);
+  async clearPlaybackSession() {
+    await AsyncStorage.removeItem(KEYS.PLAYBACK_SESSION);
   },
 
   async setItem(key: string, value: string) {
@@ -148,5 +163,9 @@ export const Storage = {
 
   async getItem(key: string) {
     return await AsyncStorage.getItem(key);
+  },
+
+  async removeItem(key: string) {
+    await AsyncStorage.removeItem(key);
   },
 };

@@ -24,6 +24,7 @@ export type TranslationStrings = {
   nextPage: string;
   swipeHint: string;
   autoScroll: string;
+  ayahTracking: string;
   quranFont: string;
   fontPreview: string;
   readyToStart: string;
