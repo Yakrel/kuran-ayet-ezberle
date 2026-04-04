@@ -52,6 +52,7 @@ import {
   downloadAudioBundle,
   getAvailableSpaceMB,
   getCacheStats,
+  initializeAudioCache,
 } from './src/services/audioCache';
 import { clearAllSurahAudio } from './src/services/surahAudioCache';
 import { fetchPageVerses, fetchSurahDetail } from './src/services/quranService';
@@ -63,17 +64,6 @@ import { defaultTranslationAuthorByLanguage } from './src/utils/language';
 import { parsePositiveInt, parseSurahId } from './src/utils/parsers';
 
 void SplashScreen.preventAutoHideAsync();
-
-function formatDurationLabel(currentMs: number, durationMs: number) {
-  const toClock = (value: number) => {
-    const totalSeconds = Math.max(0, Math.floor(value / 1000));
-    const minutes = Math.floor(totalSeconds / 60);
-    const seconds = totalSeconds % 60;
-    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-  };
-
-  return `${toClock(currentMs)} / ${toClock(durationMs)}`;
-}
 
 function MainApp() {
   const [fontsLoaded] = useFonts({
@@ -105,7 +95,7 @@ function MainApp() {
   const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
   const [isAyahTrackingEnabled, setIsAyahTrackingEnabled] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [cacheStats, setCacheStats] = useState({ files: 0, megabytes: 0, readyVerses: 0, offlineReady: false });
+  const [cacheStats, setCacheStats] = useState({ files: 0, megabytes: 0, readyVerses: 0, totalVerses: 0, offlineReady: false });
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [downloadProgressLabel, setDownloadProgressLabel] = useState('');
 
@@ -130,11 +120,6 @@ function MainApp() {
     [language]
   );
 
-  const selectedSurah = useMemo(
-    () => surahs.find((surah) => surah.id === selectedSurahId) ?? null,
-    [selectedSurahId, surahs]
-  );
-
   const player = useSegmentedPlayer({
     onError: setErrorMessage,
     onActiveVerseChange: (verse) => {
@@ -154,7 +139,6 @@ function MainApp() {
     },
   });
   const currentPlayingVerse = player.activeVerse;
-  const trackedWordLocation = isAyahTrackingEnabled ? player.activeWordLocation : null;
 
   const pageNavigation = usePageNavigation(
     computed.allPages,
@@ -178,6 +162,7 @@ function MainApp() {
 
   useEffect(() => {
     async function loadPersistedState() {
+      await initializeAudioCache();
       const [savedFont, savedSurah, savedTranslation, savedAutoScroll, savedAyahTracking, lastVerse, stats] = await Promise.all([
         Storage.getQuranFont(),
         Storage.getSelectedSurah(),
@@ -458,6 +443,10 @@ function MainApp() {
       setCacheStats(await getCacheStats());
       setDownloadProgressLabel(text.downloadComplete);
     } catch (error) {
+      if (error instanceof Error && error.message === 'download_cancelled') {
+        setDownloadProgressLabel('');
+        return;
+      }
       setErrorMessage(error instanceof Error ? error.message : text.downloadError);
     } finally {
       setIsDownloadingAll(false);
@@ -472,6 +461,7 @@ function MainApp() {
         style: 'destructive',
         onPress: () => {
           void (async () => {
+            await player.stopPlayback();
             await clearAllDownloads();
             await clearAllSurahAudio();
             setCacheStats(await getCacheStats());
@@ -483,22 +473,6 @@ function MainApp() {
   };
 
   const currentVerse = currentPlayingVerse;
-  const currentVerseText = currentVerse
-    ? `${currentVerse.surah_id}:${currentVerse.verse_number} • ${player.currentRepeat}/${parsePositiveInt(repeatCountInput) ?? 1}`
-    : undefined;
-  const activeLocationVerse = currentVerse ?? visibleVerseLocation ?? computed.firstVerseOnCurrentPage;
-  const activeLocationText = selectedSurah
-    ? activeLocationVerse
-      ? `${selectedSurah.id}. ${selectedSurah.name} • ${activeLocationVerse.surah_id}:${activeLocationVerse.verse_number}`
-      : `${selectedSurah.id}. ${selectedSurah.name}`
-    : '-';
-  const resolvedRepeatCount = parsePositiveInt(repeatCountInput) ?? 1;
-  const resolvedRangeEnd = Math.min(
-    Number(endVerseInput || startVerseInput || '1'),
-    surahDetail?.verse_count ?? 1
-  );
-  const progressLabel = `${formatDurationLabel(player.currentTimeMs, player.durationMs)} • ${startVerseInput}-${resolvedRangeEnd}`;
-  const progressPercent = player.durationMs > 0 ? Math.round((player.currentTimeMs / player.durationMs) * 100) : 0;
 
   if (!fontsLoaded) {
     return null;
@@ -534,7 +508,6 @@ function MainApp() {
             currentVerse={currentVerse ?? undefined}
             currentRepeat={player.currentRepeat}
             totalRepeats={parsePositiveInt(repeatCountInput) ?? 1}
-            progressPercent={progressPercent}
             onStart={() => void handleStartPlayback()}
             onPause={() => void player.pausePlayback()}
             onResume={() => void player.resumePlayback()}
@@ -560,7 +533,6 @@ function MainApp() {
           <VerseList
             currentPageVerses={computed.currentPageVerses}
             currentVerse={currentVerse}
-            activeWordLocation={trackedWordLocation}
             quranFontFamily={selectedQuranFont.fontFamily}
             quranTextStyle={selectedQuranFont.verseTextStyle}
             sectionTitle=""
@@ -641,7 +613,7 @@ function MainApp() {
 
               <View style={styles.downloadCard}>
                 <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.storageUsed}: ${cacheStats.megabytes} MB`}</Text>
-                <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.readyVerses}: ${cacheStats.readyVerses}/6236`}</Text>
+                <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.readyVerses}: ${cacheStats.readyVerses}/${cacheStats.totalVerses}`}</Text>
                 <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.cachedFiles}: ${cacheStats.files} MP3`}</Text>
                 {downloadProgressLabel ? <Text style={[styles.downloadHint, { color: theme.colors.TEXT_MUTED }]}>{downloadProgressLabel}</Text> : null}
 

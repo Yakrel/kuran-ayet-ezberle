@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Verse } from '../types/quran';
 import { useTheme } from '../hooks/useTheme';
@@ -11,7 +11,6 @@ type VerseCardProps = {
     lineHeight: number;
   };
   isCurrentVerse?: boolean;
-  activeWordLocation?: string | null;
   onPress: (verse: Verse) => void;
   onLongPress: (verse: Verse) => void;
 };
@@ -21,24 +20,11 @@ export function VerseCard({
   quranFontFamily,
   quranTextStyle,
   isCurrentVerse,
-  activeWordLocation,
   onPress,
   onLongPress,
 }: VerseCardProps) {
   const { theme } = useTheme();
   const longPressTriggeredRef = useRef(false);
-  const highlightedVerseText = useMemo(() => {
-    if (!isCurrentVerse || !activeWordLocation) {
-      return verse.verse;
-    }
-
-    const activeWord = verse.words.find((word) => word.location === activeWordLocation);
-    if (!activeWord) {
-      return verse.verse;
-    }
-
-    return verse.verse;
-  }, [activeWordLocation, isCurrentVerse, verse.verse, verse.words]);
 
   return (
     <Pressable
@@ -85,7 +71,7 @@ export function VerseCard({
             { fontFamily: quranFontFamily, color: theme.colors.TEXT_PRIMARY }
           ]}
         >
-          {highlightedVerseText}
+          {verse.verse}
         </Text>
       </View>
 

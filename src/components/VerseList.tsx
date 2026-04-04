@@ -6,11 +6,11 @@ import { VerseCard } from './VerseCard';
 import { PageHeader } from './PageHeader';
 import { useTheme } from '../hooks/useTheme';
 import { UI_CONFIG } from '../constants/gestures';
+import { getAutoScrollTargetIndex } from '../utils/getAutoScrollTargetIndex';
 
 type VerseListProps = {
   currentPageVerses: Verse[];
   currentVerse: Verse | null;
-  activeWordLocation?: string | null;
   quranFontFamily: string;
   quranTextStyle: {
     fontSize: number;
@@ -29,7 +29,6 @@ type VerseListProps = {
 export function VerseList({
   currentPageVerses,
   currentVerse,
-  activeWordLocation,
   quranFontFamily,
   quranTextStyle,
   sectionTitle,
@@ -43,6 +42,8 @@ export function VerseList({
 }: VerseListProps) {
   const { theme, themeType } = useTheme();
   const verseListRef = useRef<FlatList<Verse> | null>(null);
+  const visibleIndexesRef = useRef<number[]>([]);
+  const lastAutoScrollIndexRef = useRef<number | null>(null);
   
   const viewabilityConfigRef = useRef({
     itemVisiblePercentThreshold: UI_CONFIG.VERSE_VISIBILITY_THRESHOLD,
@@ -53,20 +54,41 @@ export function VerseList({
     if (!autoScrollEnabled) {
       return;
     }
-    if (currentVerse && currentPageVerses.some(v => v.verse_number === currentVerse.verse_number)) {
-      const index = currentPageVerses.findIndex(v => v.verse_number === currentVerse.verse_number);
-      if (index !== -1) {
-        verseListRef.current?.scrollToIndex({
-          index,
-          animated: true,
-          viewPosition: 0.3, // Keep it near the top-middle
-        });
-      }
+
+    if (!currentVerse) {
+      return;
     }
+
+    const activeIndex = currentPageVerses.findIndex((verse) => verse.verse_number === currentVerse.verse_number);
+    if (activeIndex === -1) {
+      return;
+    }
+
+    const targetIndex = getAutoScrollTargetIndex(activeIndex, visibleIndexesRef.current);
+    if (targetIndex === null || lastAutoScrollIndexRef.current === targetIndex) {
+      return;
+    }
+
+    lastAutoScrollIndexRef.current = targetIndex;
+    verseListRef.current?.scrollToIndex({
+      index: targetIndex,
+      animated: false,
+      viewPosition: 0.3,
+    });
   }, [autoScrollEnabled, currentVerse, currentPageVerses]);
+
+  useEffect(() => {
+    visibleIndexesRef.current = [];
+    lastAutoScrollIndexRef.current = null;
+  }, [currentPageVerses]);
   
   const onViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
-    const firstVisible = viewableItems.find((item) => item.isViewable)?.item as Verse | undefined;
+    const visibleItems = viewableItems.filter((item) => item.isViewable);
+    visibleIndexesRef.current = visibleItems
+      .map((item) => item.index)
+      .filter((index): index is number => typeof index === 'number');
+
+    const firstVisible = visibleItems[0]?.item as Verse | undefined;
     if (!firstVisible) {
       return;
     }
@@ -114,7 +136,6 @@ export function VerseList({
                 quranFontFamily={quranFontFamily}
                 quranTextStyle={quranTextStyle}
                 isCurrentVerse={isCurrent}
-                activeWordLocation={isCurrent ? activeWordLocation : null}
                 onPress={onVerseTap}
                 onLongPress={onVerseLongPress}
               />

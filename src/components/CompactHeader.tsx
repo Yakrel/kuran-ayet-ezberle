@@ -37,7 +37,6 @@ type CompactHeaderProps = {
   currentVerse?: { surah_id: number; verse_number: number };
   currentRepeat?: number;
   totalRepeats?: number;
-  progressPercent: number;
   onStart: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -79,7 +78,6 @@ export function CompactHeader({
   currentVerse,
   currentRepeat,
   totalRepeats,
-  progressPercent,
   onStart,
   onPause,
   onResume,
@@ -101,7 +99,7 @@ export function CompactHeader({
     ? `${selectedSurah?.name || ''} • ${startVerseInput}-${endVerseInput} • ${repeatCountInput}×`
     : currentVerse
     ? `${currentVerse.surah_id}:${currentVerse.verse_number} • ${currentRepeat}/${totalRepeats}`
-    : '';
+    : `${selectedSurah?.name || ''} • ${startVerseInput}-${endVerseInput} • ${repeatCountInput}×`;
 
   return (
     <View style={styles.container}>
@@ -164,18 +162,11 @@ export function CompactHeader({
 
       {/* Row 2: Playback State + Range + Controls */}
       <View style={[styles.row2, { backgroundColor: themeType === 'DARK' ? 'rgba(5, 150, 105, 0.12)' : 'rgba(42, 161, 152, 0.12)', borderColor: theme.colors.BORDER_PRIMARY }]}>
-        {playbackLabel && (
-          <View style={styles.stateSection}>
-            <Text style={[styles.stateLabel, { color: theme.colors.TEXT_PRIMARY }]} numberOfLines={1}>
-              {playbackLabel}
-            </Text>
-            {!isIdle && (
-              <Text style={[styles.stateProgress, { color: theme.colors.ACCENT_PRIMARY }]} numberOfLines={1}>
-                {progressPercent}%
-              </Text>
-            )}
-          </View>
-        )}
+        <View style={styles.stateSection}>
+          <Text style={[styles.stateLabel, { color: theme.colors.TEXT_PRIMARY }]} numberOfLines={1}>
+            {playbackLabel}
+          </Text>
+        </View>
 
         <View style={styles.controlsSection}>
           <InlineRangeSelector
@@ -224,13 +215,6 @@ export function CompactHeader({
           </View>
         </View>
       </View>
-
-      {/* Progress Bar */}
-      {!isIdle && (
-        <View style={styles.progressBarContainer}>
-          <View style={[styles.progressBarFill, { width: `${progressPercent}%`, backgroundColor: theme.colors.ACCENT_PRIMARY }]} />
-        </View>
-      )}
 
       {/* Range Input Modals */}
       <RangeInputModal
@@ -351,11 +335,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     flex: 1,
   },
-  stateProgress: {
-    fontSize: 13,
-    fontWeight: '900',
-    letterSpacing: 0.3,
-  },
   controlsSection: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -365,7 +344,9 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
+    width: 86,
     gap: 6,
+    justifyContent: 'flex-end',
   },
   actionButton: {
     height: 34,
@@ -384,15 +365,5 @@ const styles = StyleSheet.create({
   actionButtonText: {
     fontSize: 13,
     fontWeight: '700',
-  },
-  progressBarContainer: {
-    height: UI_SIZES.PROGRESS_BAR_HEIGHT,
-    backgroundColor: 'rgba(0,0,0,0.08)',
-    width: '100%',
-    borderRadius: 1,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
   },
 });
