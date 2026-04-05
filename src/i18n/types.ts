@@ -20,6 +20,8 @@ export type TranslationStrings = {
   active: string;
   meal: string;
   translation: string;
+  reciter: string;
+  trackedReciter: string;
   previousPage: string;
   nextPage: string;
   swipeHint: string;
@@ -38,11 +40,18 @@ export type TranslationStrings = {
   initialRelease: string;
   manageDownloads: string;
   noAudioLogs: string;
+  audioDiagnostics: string;
   clearAudioLogs: string;
   downloadAll: string;
   downloadReady: string;
   clearDownloads: string;
   deleteDownloads: string;
+  downloadSelectedReciter: (reciter: string) => string;
+  downloadReadyForReciter: (reciter: string) => string;
+  clearReciterDownloads: (reciter: string) => string;
+  deleteReciterDownloads: (reciter: string) => string;
+  selectedReciterDownloads: (reciter: string) => string;
+  selectedReciterOnlyHint: (reciter: string) => string;
   storageUsed: string;
   readyVerses: string;
   downloadPromptTitle: string;
@@ -50,7 +59,9 @@ export type TranslationStrings = {
   downloadLater: string;
   downloadNow: string;
   downloadingAll: string;
+  downloadingSelectedReciter: (reciter: string) => string;
   downloadComplete: string;
+  downloadCompleteForReciter: (reciter: string) => string;
   downloadError: string;
   lowStorageWarning: string;
   cancel: string;

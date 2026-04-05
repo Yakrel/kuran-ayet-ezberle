@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
+import type { ReciterId } from '../constants/reciters';
 import { fetchSurahDetail } from '../services/quranService';
 import type { SurahDetail } from '../types/quran';
 
 export function useSurahDetail(
   surahId: number | null,
   translationAuthorId: number,
+  reciterId: ReciterId,
   loadingSurahDetailError: string
 ) {
   const [surahDetail, setSurahDetail] = useState<SurahDetail | null>(null);
@@ -24,7 +26,7 @@ export function useSurahDetail(
       setIsFetchingSurahDetail(true);
       setError(null);
       try {
-        const detail = await fetchSurahDetail(currentSurahId, translationAuthorId);
+        const detail = await fetchSurahDetail(currentSurahId, translationAuthorId, reciterId);
         if (isActive) {
           setSurahDetail(detail);
         }
@@ -44,7 +46,7 @@ export function useSurahDetail(
     return () => {
       isActive = false;
     };
-  }, [surahId, translationAuthorId, loadingSurahDetailError]);
+  }, [surahId, translationAuthorId, reciterId, loadingSurahDetailError]);
 
   return {
     surahDetail,

@@ -2,10 +2,42 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
-const RECITATION_ID = 13;
 const ROOT = process.cwd();
 const QURAN_DATA_PATH = resolve(ROOT, 'assets/data/quran.json');
-const OUTPUT_PATH = resolve(ROOT, `assets/data/qul-recitation-${RECITATION_ID}.json`);
+
+function parseArgs() {
+  const args = process.argv.slice(2);
+  let recitationId = 13;
+  let outputPath = `assets/data/recitations/qul-recitation-${recitationId}.json`;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === '--recitation-id') {
+      const nextValue = Number(args[index + 1]);
+      if (!Number.isFinite(nextValue) || nextValue <= 0) {
+        throw new Error('Expected a positive number after --recitation-id.');
+      }
+      recitationId = nextValue;
+      outputPath = `assets/data/recitations/qul-recitation-${recitationId}.json`;
+      index += 1;
+      continue;
+    }
+
+    if (arg === '--output') {
+      const nextValue = args[index + 1];
+      if (!nextValue) {
+        throw new Error('Expected a path after --output.');
+      }
+      outputPath = nextValue;
+      index += 1;
+    }
+  }
+
+  return {
+    recitationId,
+    outputPath: resolve(ROOT, outputPath),
+  };
+}
 
 function fetchJson(url) {
   const response = execFileSync('curl', ['-sfL', url], {
@@ -44,14 +76,14 @@ function fetchAllSurahWords(surahId, verseCount) {
   return verses;
 }
 
-function fetchAllSurahSegments(surahId, verseCount) {
+function fetchAllSurahSegments(recitationId, surahId, verseCount) {
   const segments = {};
   let audio = null;
   let nextVerse = 1;
 
   while (Object.keys(segments).length < verseCount) {
     const payload = fetchJson(
-      `https://qul.tarteel.ai/api/v1/audio/surah_segments/${RECITATION_ID}?surah=${surahId}&from=${nextVerse}`
+      `https://qul.tarteel.ai/api/v1/audio/surah_segments/${recitationId}?surah=${surahId}&from=${nextVerse}`
     );
 
     if (!audio && payload.audio) {
@@ -87,14 +119,14 @@ function fetchAllSurahSegments(surahId, verseCount) {
   return { audio, segments };
 }
 
-function buildDataset() {
+function buildDataset({ recitationId, outputPath }) {
   const quran = loadQuranData();
   const surahs = [];
 
   for (const surah of quran.surahs) {
-    console.log(`Fetching QUL dataset for surah ${surah.id}/${quran.surahs.length}...`);
+    console.log(`Fetching QUL dataset ${recitationId} for surah ${surah.id}/${quran.surahs.length}...`);
     const wordsVerses = fetchAllSurahWords(surah.id, surah.verse_count);
-    const { audio, segments } = fetchAllSurahSegments(surah.id, surah.verse_count);
+    const { audio, segments } = fetchAllSurahSegments(recitationId, surah.id, surah.verse_count);
 
     surahs.push({
       id: surah.id,
@@ -114,14 +146,14 @@ function buildDataset() {
     });
   }
 
-  mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
+  mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(
-    OUTPUT_PATH,
-    `${JSON.stringify({ recitation_id: RECITATION_ID, surahs })}\n`,
+    outputPath,
+    `${JSON.stringify({ recitation_id: recitationId, surahs })}\n`,
     'utf8'
   );
 
-  console.log(`Wrote ${OUTPUT_PATH}`);
+  console.log(`Wrote ${outputPath}`);
 }
 
-buildDataset();
+buildDataset(parseArgs());

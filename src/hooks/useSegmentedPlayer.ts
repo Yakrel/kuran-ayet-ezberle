@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getTrackPlayerModule, getTrackPlayerUnavailableReason } from '../services/trackPlayer';
-import { getVerseAudioForPlayback, retainVerseRangeForPlayback } from '../services/audioCache';
+import { getVerseAudioForPlayback, retainVerseRangeForPlaybackByReciter } from '../services/audioCache';
+import { getReciterOption, type ReciterId } from '../constants/reciters';
 import type { SurahDetail, Verse } from '../types/quran';
+import {
+  resolveActiveTrackIndex,
+  type ActiveTrackChangedPayload,
+} from '../utils/resolveActiveTrackIndex';
 
 type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped';
 
@@ -25,6 +30,7 @@ type VerseTrack = {
 type UseSegmentedPlayerOptions = {
   onError: (message: string | null) => void;
   onActiveVerseChange?: (verse: Verse | null) => void;
+  reciterId: ReciterId;
 };
 
 type StartPlaybackArgs = {
@@ -32,9 +38,10 @@ type StartPlaybackArgs = {
   startVerseNumber: number;
   endVerseNumber: number;
   repeatCount: number;
+  reciterId: ReciterId;
 };
 
-type AudioCacheLease = Awaited<ReturnType<typeof retainVerseRangeForPlayback>>;
+type AudioCacheLease = Awaited<ReturnType<typeof retainVerseRangeForPlaybackByReciter>>;
 
 type TrackPlayerApi = {
   setupPlayer: () => Promise<void>;
@@ -102,6 +109,7 @@ function getVerseDurationMs(verse: Verse) {
 }
 
 async function buildPlaybackTracks(
+  reciterId: ReciterId,
   surahDetail: SurahDetail,
   startVerseNumber: number,
   endVerseNumber: number,
@@ -113,7 +121,7 @@ async function buildPlaybackTracks(
 
   const verseAudio = await mapWithConcurrency(selectedVerses, 3, async (verse) => ({
     verse,
-    audio: await getVerseAudioForPlayback(verse.surah_id, verse.verse_number),
+    audio: await getVerseAudioForPlayback(reciterId, verse.surah_id, verse.verse_number),
   }));
 
   const tracks: VerseTrack[] = [];
@@ -157,7 +165,7 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
-export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmentedPlayerOptions) {
+export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: UseSegmentedPlayerOptions) {
   const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>('idle');
   const [currentRepeat, setCurrentRepeat] = useState(1);
   const [activeVerse, setActiveVerse] = useState<Verse | null>(null);
@@ -281,8 +289,14 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
         const activeTrackSubscription = TrackPlayer.addEventListener(
           playerModule.Event.PlaybackActiveTrackChanged,
           (payload: unknown) => {
-            const nextEvent = payload as { index?: number };
-            const nextIndex = typeof nextEvent.index === 'number' ? nextEvent.index : 0;
+            const nextEvent = payload as ActiveTrackChangedPayload;
+            const tracks = sessionRef.current?.tracks ?? [];
+            const nextIndex = resolveActiveTrackIndex(nextEvent, tracks);
+
+            if (nextIndex === null) {
+              return;
+            }
+
             currentTrackIndexRef.current = Math.max(0, nextIndex);
             const activeTrack = sessionRef.current?.tracks[currentTrackIndexRef.current] ?? null;
             if (activeTrack) {
@@ -345,14 +359,10 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
     startVerseNumber,
     endVerseNumber,
     repeatCount,
+    reciterId: startReciterId,
   }: StartPlaybackArgs) => {
     const requestId = playbackRequestIdRef.current + 1;
     playbackRequestIdRef.current = requestId;
-    const startVerse = surahDetail.verses.find((verse) => verse.verse_number === startVerseNumber);
-    const endVerse = surahDetail.verses.find((verse) => verse.verse_number === endVerseNumber);
-    if (!startVerse?.timing || !endVerse?.timing) {
-      throw new Error('Selected range has no timing information.');
-    }
 
     pendingPlayTransitionRef.current = true;
     setPlaybackStatus('loading');
@@ -361,7 +371,8 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
     const selectedVerses = surahDetail.verses.filter(
       (verse) => verse.verse_number >= startVerseNumber && verse.verse_number <= endVerseNumber
     );
-    const nextLease = await retainVerseRangeForPlayback(
+    const nextLease = await retainVerseRangeForPlaybackByReciter(
+      startReciterId,
       selectedVerses.map((verse) => ({
         surahId: verse.surah_id,
         verseNumber: verse.verse_number,
@@ -370,7 +381,9 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
 
     try {
       const { TrackPlayer } = await ensurePlayerSetup();
+      const reciter = getReciterOption(startReciterId);
       const { tracks, totalDurationMs } = await buildPlaybackTracks(
+        startReciterId,
         surahDetail,
         startVerseNumber,
         endVerseNumber,
@@ -413,7 +426,7 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
           id: track.id,
           url: track.url,
           title: `${surahDetail.name} ${track.verse.verse_number}`,
-          artist: 'Saad Al-Ghamdi',
+          artist: reciter.artist,
         }))
       );
       await TrackPlayer.play();
@@ -480,6 +493,7 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
 
   const seekToVerse = useCallback(async (surahDetail: SurahDetail, verseNumber: number, shouldPlay = true) => {
     await startPlayback({
+      reciterId,
       surahDetail,
       startVerseNumber: verseNumber,
       endVerseNumber: verseNumber,
@@ -489,7 +503,7 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmente
     if (!shouldPlay) {
       await pausePlayback();
     }
-  }, [pausePlayback, startPlayback]);
+  }, [pausePlayback, reciterId, startPlayback]);
 
   const state = useMemo(() => ({
     playbackStatus,

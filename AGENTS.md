@@ -3,6 +3,7 @@
 - Never run local builds in this repository. Do not run commands such as `expo run:*`, `npx expo prebuild`, `./gradlew`, `assemble*`, `bundle*`, or any other local build/install pipeline, because they crash the terminal and destabilize the system.
 - CI/CD builds are allowed and should be used for verification instead of local builds.
 - After UI/code changes that affect the running app, restart Metro on port `19000` so the latest changes are visible immediately instead of relying on hot reload alone.
+- Do not add silent fallback behavior for core features or data sources. If the primary implementation is unavailable, surface a clear unsupported/error state instead of substituting another reciter, dataset, endpoint, or legacy path behind the scenes.
 
 # Product Direction Notes
 

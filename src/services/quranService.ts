@@ -1,4 +1,5 @@
 import { SURAH_LIST } from '../constants/surahList';
+import { getReciterOption, type ReciterId } from '../constants/reciters';
 import type { SurahAudioAsset, SurahDetail, SurahSummary, Verse, WordSegment, WordToken } from '../types/quran';
 
 type RawTranslationMap = Record<string, string>;
@@ -58,13 +59,18 @@ type QulDataset = {
   surahs: RawQulSurah[];
 };
 
+type ReciterTrackingBundle = {
+  recitationId: number | null;
+  dataset: QulDataset | null;
+};
+
 const AYAH_MARKER_PATTERN = /^[٠-٩١٢٣٤٥٦٧٨٩]+$/;
 
 let cachedQuranData: QuranData | null = null;
-let cachedQulDataset: QulDataset | null = null;
+const cachedQulDatasets = new Map<ReciterId, QulDataset>();
 let cachedSurahsById = new Map<number, RawSurah>();
-let cachedQulSurahsById = new Map<number, RawQulSurah>();
-let cachedVersesByPage = new Map<number, Verse[]>();
+const cachedQulSurahsByIdByReciter = new Map<ReciterId, Map<number, RawQulSurah>>();
+const cachedVersesByPageByReciter = new Map<ReciterId, Map<number, Verse[]>>();
 
 function normalizeArabicVerseText(text: string): string {
   return text.normalize('NFC');
@@ -131,20 +137,26 @@ function mapVerse(
   };
 }
 
-function buildIndexes(quranData: QuranData, qulDataset: QulDataset) {
-  if (cachedSurahsById.size > 0 || cachedVersesByPage.size > 0 || cachedQulSurahsById.size > 0) {
+function buildIndexes(reciterId: ReciterId, quranData: QuranData, qulDataset: QulDataset | null) {
+  if (cachedSurahsById.size === 0) {
+    cachedSurahsById = new Map<number, RawSurah>();
+
+    for (const surah of quranData.surahs) {
+      cachedSurahsById.set(surah.id, surah);
+    }
+  }
+
+  if (
+    cachedQulSurahsByIdByReciter.has(reciterId) &&
+    cachedVersesByPageByReciter.has(reciterId)
+  ) {
     return;
   }
 
-  cachedSurahsById = new Map<number, RawSurah>();
-  cachedQulSurahsById = new Map<number, RawQulSurah>();
-  cachedVersesByPage = new Map<number, Verse[]>();
+  const cachedQulSurahsById = new Map<number, RawQulSurah>();
+  const cachedVersesByPage = new Map<number, Verse[]>();
 
-  for (const surah of quranData.surahs) {
-    cachedSurahsById.set(surah.id, surah);
-  }
-
-  for (const qulSurah of qulDataset.surahs) {
+  for (const qulSurah of qulDataset?.surahs ?? []) {
     cachedQulSurahsById.set(qulSurah.id, qulSurah);
   }
 
@@ -162,6 +174,9 @@ function buildIndexes(quranData: QuranData, qulDataset: QulDataset) {
       cachedVersesByPage.set(verse.page, currentPageVerses);
     }
   }
+
+  cachedQulSurahsByIdByReciter.set(reciterId, cachedQulSurahsById);
+  cachedVersesByPageByReciter.set(reciterId, cachedVersesByPage);
 }
 
 async function getQuranData(): Promise<QuranData> {
@@ -172,12 +187,42 @@ async function getQuranData(): Promise<QuranData> {
   return cachedQuranData;
 }
 
-async function getQulDataset(): Promise<QulDataset> {
-  if (!cachedQulDataset) {
-    cachedQulDataset = require('../../assets/data/qul-recitation-13.json') as QulDataset;
+function loadQulDatasetAsset(reciterId: ReciterId): QulDataset | null {
+  const reciter = getReciterOption(reciterId);
+  if (reciter.trackingSupport !== 'embedded') {
+    return null;
   }
 
-  return cachedQulDataset;
+  switch (reciter.qulDatasetAsset) {
+    case 'assets/data/recitations/qul-recitation-13.json':
+      return require('../../assets/data/recitations/qul-recitation-13.json') as QulDataset;
+    default:
+      throw new Error(`Missing embedded tracking dataset for reciter: ${reciterId}`);
+  }
+}
+
+async function getTrackingBundle(reciterId: ReciterId): Promise<ReciterTrackingBundle> {
+  const cachedDataset = cachedQulDatasets.get(reciterId);
+  if (cachedDataset) {
+    return {
+      recitationId: cachedDataset.recitation_id,
+      dataset: cachedDataset,
+    };
+  }
+
+  const dataset = loadQulDatasetAsset(reciterId);
+  if (!dataset) {
+    return {
+      recitationId: null,
+      dataset: null,
+    };
+  }
+
+  cachedQulDatasets.set(reciterId, dataset);
+  return {
+    recitationId: dataset.recitation_id,
+    dataset,
+  };
 }
 
 export async function fetchSurahs(): Promise<SurahSummary[]> {
@@ -186,12 +231,15 @@ export async function fetchSurahs(): Promise<SurahSummary[]> {
 
 export async function fetchSurahDetail(
   surahId: number,
-  translationAuthorId: number = 6
+  translationAuthorId: number = 6,
+  reciterId: ReciterId = 'ghamdi'
 ): Promise<SurahDetail> {
-  const [quranData, qulDataset] = await Promise.all([getQuranData(), getQulDataset()]);
-  buildIndexes(quranData, qulDataset);
+  const [quranData, trackingBundle] = await Promise.all([getQuranData(), getTrackingBundle(reciterId)]);
+  buildIndexes(reciterId, quranData, trackingBundle.dataset);
 
   const surah = cachedSurahsById.get(surahId);
+  const reciter = getReciterOption(reciterId);
+  const cachedQulSurahsById = cachedQulSurahsByIdByReciter.get(reciterId) ?? new Map<number, RawQulSurah>();
   const qulSurah = cachedQulSurahsById.get(surahId);
   if (!surah) {
     throw new Error('Surah not found in local data');
@@ -206,6 +254,7 @@ export async function fetchSurahDetail(
     name: surah.name,
     verse_count: surah.verse_count,
     audio: mapAudioAsset(qulSurah),
+    recitation_id: reciter.qulRecitationId ?? trackingBundle.recitationId,
     verses: surah.verses.map((verse) =>
       mapVerse(surah, verse, qulVerseMap.get(`${surah.id}:${verse.verse_number}`), translationAuthorId)
     ),
@@ -214,11 +263,14 @@ export async function fetchSurahDetail(
 
 export async function fetchPageVerses(
   pageNumber: number,
-  translationAuthorId: number = 6
+  translationAuthorId: number = 6,
+  reciterId: ReciterId = 'ghamdi'
 ): Promise<Verse[]> {
-  const [quranData, qulDataset] = await Promise.all([getQuranData(), getQulDataset()]);
-  buildIndexes(quranData, qulDataset);
+  const [quranData, trackingBundle] = await Promise.all([getQuranData(), getTrackingBundle(reciterId)]);
+  buildIndexes(reciterId, quranData, trackingBundle.dataset);
 
+  const cachedVersesByPage = cachedVersesByPageByReciter.get(reciterId) ?? new Map<number, Verse[]>();
+  const cachedQulSurahsById = cachedQulSurahsByIdByReciter.get(reciterId) ?? new Map<number, RawQulSurah>();
   const pageVerses = cachedVersesByPage.get(pageNumber) ?? [];
   if (translationAuthorId === 6) {
     return pageVerses;
@@ -239,7 +291,7 @@ export async function fetchPageVerses(
   });
 }
 
-export async function getRecitationId() {
-  const dataset = await getQulDataset();
-  return dataset.recitation_id;
+export async function getRecitationId(reciterId: ReciterId = 'ghamdi') {
+  const trackingBundle = await getTrackingBundle(reciterId);
+  return trackingBundle.recitationId;
 }

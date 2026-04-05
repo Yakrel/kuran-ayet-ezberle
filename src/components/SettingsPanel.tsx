@@ -4,6 +4,7 @@ import { Picker } from '@react-native-picker/picker';
 import { Feather } from '@expo/vector-icons';
 import type { TranslationOption, LanguageCode } from '../types/quran';
 import type { QuranFontId, QuranFontOption } from '../constants/quranFonts';
+import { hasEmbeddedTracking, type ReciterId, type ReciterOption } from '../constants/reciters';
 import { useTheme } from '../hooks/useTheme';
 import { ThemeType } from '../constants/colors';
 
@@ -13,9 +14,13 @@ type SettingsPanelProps = {
   selectedTranslationAuthorId: number;
   translationOptionsForLanguage: TranslationOption[];
   onTranslationChange: (authorId: number) => void;
+  selectedReciterId: ReciterId;
+  reciterOptions: ReciterOption[];
+  onReciterChange: (reciterId: ReciterId) => void;
   autoScrollEnabled: boolean;
   onAutoScrollChange: (enabled: boolean) => void;
   ayahTrackingEnabled: boolean;
+  ayahTrackingAvailable: boolean;
   onAyahTrackingChange: (enabled: boolean) => void;
   quranFontId: QuranFontId;
   quranFontOptions: QuranFontOption[];
@@ -32,6 +37,8 @@ type SettingsPanelProps = {
   };
   languageText: string;
   translationText: string;
+  reciterText: string;
+  trackedReciterText: string;
   autoScrollText: string;
   ayahTrackingText: string;
   themeText: string;
@@ -49,7 +56,7 @@ type SelectOption<T extends string | number> = {
   label: string;
 };
 
-type ActiveSelectKey = 'language' | 'theme' | 'speed' | 'translation' | 'font' | null;
+type ActiveSelectKey = 'language' | 'theme' | 'speed' | 'translation' | 'reciter' | 'font' | null;
 
 export function SettingsPanel({
   language,
@@ -57,9 +64,13 @@ export function SettingsPanel({
   selectedTranslationAuthorId,
   translationOptionsForLanguage,
   onTranslationChange,
+  selectedReciterId,
+  reciterOptions,
+  onReciterChange,
   autoScrollEnabled,
   onAutoScrollChange,
   ayahTrackingEnabled,
+  ayahTrackingAvailable,
   onAyahTrackingChange,
   quranFontId,
   quranFontOptions,
@@ -73,6 +84,8 @@ export function SettingsPanel({
   quranFontPreviewStyle,
   languageText,
   translationText,
+  reciterText,
+  trackedReciterText,
   autoScrollText,
   ayahTrackingText,
   themeText,
@@ -116,6 +129,17 @@ export function SettingsPanel({
     [translationOptionsForLanguage]
   );
 
+  const reciterPickerOptions = useMemo<Array<SelectOption<ReciterId>>>(
+    () =>
+      reciterOptions.map((option) => ({
+        value: option.id,
+        label: hasEmbeddedTracking(option.id)
+          ? `${option.label} (${trackedReciterText})`
+          : option.label,
+      })),
+    [reciterOptions, trackedReciterText]
+  );
+
   const quranFontPickerOptions = useMemo<Array<SelectOption<QuranFontId>>>(
     () =>
       quranFontOptions.map((option) => ({
@@ -133,6 +157,8 @@ export function SettingsPanel({
     ? playbackSpeedText
     : activeSelect === 'translation'
     ? translationText
+    : activeSelect === 'reciter'
+    ? reciterText
     : activeSelect === 'font'
     ? quranFontText
     : '';
@@ -145,6 +171,8 @@ export function SettingsPanel({
     ? speedOptions
     : activeSelect === 'translation'
     ? translationPickerOptions
+    : activeSelect === 'reciter'
+    ? reciterPickerOptions
     : activeSelect === 'font'
     ? quranFontPickerOptions
     : [];
@@ -157,6 +185,8 @@ export function SettingsPanel({
     ? playbackRate
     : activeSelect === 'translation'
     ? selectedTranslationAuthorId
+    : activeSelect === 'reciter'
+    ? selectedReciterId
     : activeSelect === 'font'
     ? quranFontId
     : null;
@@ -226,6 +256,7 @@ export function SettingsPanel({
       {renderSelectField('theme', themeText, themeType, themeOptions, (nextTheme) => setTheme(nextTheme as ThemeType))}
       {renderSelectField('speed', playbackSpeedText, playbackRate, speedOptions, (nextRate) => onPlaybackRateChange(Number(nextRate)))}
       {renderSelectField('translation', translationText, selectedTranslationAuthorId, translationPickerOptions, (nextAuthorId) => onTranslationChange(Number(nextAuthorId)))}
+      {renderSelectField('reciter', reciterText, selectedReciterId, reciterPickerOptions, onReciterChange)}
 
       <View style={styles.settingsGroup}>
         {renderSelectField('font', quranFontText, quranFontId, quranFontPickerOptions, onQuranFontChange)}
@@ -266,6 +297,7 @@ export function SettingsPanel({
           <Switch
             value={ayahTrackingEnabled}
             onValueChange={onAyahTrackingChange}
+            disabled={!ayahTrackingAvailable}
             trackColor={{
               false: theme.colors.BORDER_SECONDARY,
               true: theme.colors.ACCENT_PRIMARY,
@@ -333,6 +365,8 @@ export function SettingsPanel({
                         onPlaybackRateChange(Number(option.value));
                       } else if (activeSelect === 'translation') {
                         onTranslationChange(Number(option.value));
+                      } else if (activeSelect === 'reciter') {
+                        onReciterChange(option.value as ReciterId);
                       } else if (activeSelect === 'font') {
                         onQuranFontChange(option.value as QuranFontId);
                       }

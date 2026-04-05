@@ -55,6 +55,7 @@ export type SurahDetail = {
   name: string;
   verse_count: number;
   audio: SurahAudioAsset | null;
+  recitation_id: number | null;
   verses: Verse[];
 };
 
