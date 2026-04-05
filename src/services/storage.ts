@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { ReciterId } from '../constants/reciters';
 
 export type PlaybackSessionSnapshot = {
   surahId: number;
@@ -15,10 +16,11 @@ const KEYS = {
   QURAN_FONT: '@app_quran_font',
   SELECTED_SURAH: '@app_selected_surah',
   SELECTED_TRANSLATION: '@app_selected_translation',
+  SELECTED_RECITER: '@app_selected_reciter',
   AUTO_SCROLL: '@app_auto_scroll',
   AYAH_TRACKING: '@app_ayah_tracking',
   LAST_VERSE: '@app_last_verse',
-  DOWNLOAD_COMPLETE: '@app_full_download_complete',
+  DOWNLOAD_COMPLETE_PREFIX: '@app_full_download_complete',
   ONBOARDING_DONE: '@app_onboarding_done',
   PLAYBACK_SESSION: '@app_playback_session',
 };
@@ -33,11 +35,11 @@ async function getBoolean(key: string, fallback = false) {
 }
 
 export const Storage = {
-  async setDownloadComplete(complete: boolean) {
-    await setBoolean(KEYS.DOWNLOAD_COMPLETE, complete);
+  async setDownloadComplete(reciterId: ReciterId, complete: boolean) {
+    await setBoolean(`${KEYS.DOWNLOAD_COMPLETE_PREFIX}:${reciterId}`, complete);
   },
-  async getDownloadComplete() {
-    return await getBoolean(KEYS.DOWNLOAD_COMPLETE);
+  async getDownloadComplete(reciterId: ReciterId) {
+    return await getBoolean(`${KEYS.DOWNLOAD_COMPLETE_PREFIX}:${reciterId}`);
   },
 
   async setOnboardingDone(done: boolean) {
@@ -74,6 +76,16 @@ export const Storage = {
   async getSelectedTranslation() {
     const val = await AsyncStorage.getItem(KEYS.SELECTED_TRANSLATION);
     return val ? Number(val) : null;
+  },
+
+  async setSelectedReciter(reciterId: ReciterId) {
+    await AsyncStorage.setItem(KEYS.SELECTED_RECITER, reciterId);
+  },
+  async getSelectedReciter() {
+    const val = await AsyncStorage.getItem(KEYS.SELECTED_RECITER);
+    return val === 'ghamdi' || val === 'mishary' || val === 'maher' || val === 'minshawy'
+      ? (val as ReciterId)
+      : null;
   },
 
   async setAutoScroll(enabled: boolean) {

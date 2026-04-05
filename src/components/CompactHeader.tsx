@@ -32,11 +32,7 @@ type CompactHeaderProps = {
   onRepeatCountChange: (value: string) => void;
   maxVerseInSurah?: number;
   
-  // Playback
   playbackStatus: 'idle' | 'loading' | 'playing' | 'paused' | 'stopped';
-  currentVerse?: { surah_id: number; verse_number: number };
-  currentRepeat?: number;
-  totalRepeats?: number;
   onStart: () => void;
   onPause: () => void;
   onResume: () => void;
@@ -75,9 +71,6 @@ export function CompactHeader({
   onRepeatCountChange,
   maxVerseInSurah,
   playbackStatus,
-  currentVerse,
-  currentRepeat,
-  totalRepeats,
   onStart,
   onPause,
   onResume,
@@ -91,15 +84,6 @@ export function CompactHeader({
   const isPlaying = playbackStatus === 'playing';
   const isPaused = playbackStatus === 'paused';
   const isLoading = playbackStatus === 'loading';
-  const isIdle = playbackStatus === 'idle' || playbackStatus === 'stopped';
-
-  const selectedSurah = surahs.find((s) => s.id === selectedSurahId);
-
-  const playbackLabel = isIdle
-    ? `${selectedSurah?.name || ''} • ${startVerseInput}-${endVerseInput} • ${repeatCountInput}×`
-    : currentVerse
-    ? `${currentVerse.surah_id}:${currentVerse.verse_number} • ${currentRepeat}/${totalRepeats}`
-    : `${selectedSurah?.name || ''} • ${startVerseInput}-${endVerseInput} • ${repeatCountInput}×`;
 
   return (
     <View style={styles.container}>
@@ -162,12 +146,6 @@ export function CompactHeader({
 
       {/* Row 2: Playback State + Range + Controls */}
       <View style={[styles.row2, { backgroundColor: themeType === 'DARK' ? 'rgba(5, 150, 105, 0.12)' : 'rgba(42, 161, 152, 0.12)', borderColor: theme.colors.BORDER_PRIMARY }]}>
-        <View style={styles.stateSection}>
-          <Text style={[styles.stateLabel, { color: theme.colors.TEXT_PRIMARY }]} numberOfLines={1}>
-            {playbackLabel}
-          </Text>
-        </View>
-
         <View style={styles.controlsSection}>
           <InlineRangeSelector
             startVerse={startVerseInput}

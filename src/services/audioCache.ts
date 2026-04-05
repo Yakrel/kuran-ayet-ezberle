@@ -1,21 +1,18 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import { appendAudioDiagnosticLog } from './audioDiagnostics';
 import { Storage } from './storage';
+import { DEFAULT_RECITER_ID, getReciterOption, type ReciterId } from '../constants/reciters';
 import { buildVerseFileName } from '../utils/formatters';
 
-const DEFAULT_AUDIO_URL = 'https://everyayah.com/data/Ghamadi_40kbps';
 const CONFIGURED_MIRROR_URL = process.env.EXPO_PUBLIC_AUDIO_MIRROR_URL?.trim();
-const AUDIO_SOURCE_URLS = [CONFIGURED_MIRROR_URL, DEFAULT_AUDIO_URL]
-  .filter((value): value is string => Boolean(value))
-  .map((value) => value.replace(/\/+$/, ''))
-  .filter((value, index, values) => values.indexOf(value) === index);
-
 const CACHE_DIR_NAME = 'ayah-audio-cache/';
-const CACHE_INDEX_KEY = '@app_ayah_audio_cache_index_v2';
+const LEGACY_CACHE_INDEX_KEY = '@app_ayah_audio_cache_index_v2';
+const CACHE_INDEX_KEY_PREFIX = '@app_ayah_audio_cache_index_v3';
 const LIVE_CACHE_LIMIT_BYTES = 256 * 1024 * 1024;
 const LIVE_CACHE_PRUNE_TARGET_BYTES = 192 * 1024 * 1024;
 const PARTIAL_FILE_SUFFIX = '.part';
 
-type VerseRef = {
+export type VerseRef = {
   surahId: number;
   verseNumber: number;
 };
@@ -41,6 +38,7 @@ export type AudioBundleDownloadProgress = {
   current: number;
   total: number;
   percent: number;
+  reciterId: ReciterId;
 };
 
 type CachedVerseAudio = {
@@ -54,22 +52,41 @@ type DownloadJobController = {
 };
 
 type DownloadOptions = {
+  reciterId: ReciterId;
   pinnedOffline: boolean;
   controller?: DownloadJobController | null;
 };
 
-let cacheIndexPromise: Promise<AudioCacheIndex> | null = null;
+type InflightDownload = {
+  fileName: string;
+  fileUri: string;
+  partialUri: string;
+  promise: Promise<string>;
+  resumable: FileSystem.DownloadResumable | null;
+  pinnedOfflineRequested: boolean;
+  controllerIds: Set<string>;
+  passiveConsumers: number;
+};
+
+export type AudioCacheLease = {
+  release: () => Promise<void>;
+};
+
+const cacheIndexPromises = new Map<ReciterId, Promise<AudioCacheIndex>>();
 let activeOfflineDownloadPromise: Promise<void> | null = null;
 let activeOfflineProgress: AudioBundleDownloadProgress | null = null;
 let activeOfflineController: DownloadJobController | null = null;
+let activeOfflineReciterId: ReciterId | null = null;
 let controllerSequence = 0;
+let cacheMutationChain = Promise.resolve();
+const startupMaintenancePromises = new Map<ReciterId, Promise<void>>();
 
-const inflightDownloads = new Map<string, Promise<string>>();
-const activeResumables = new Map<string, FileSystem.DownloadResumable>();
+const inflightDownloads = new Map<string, InflightDownload>();
 const activeTaskPromises = new Set<Promise<unknown>>();
 const activeControllers = new Set<DownloadJobController>();
+const leasedFiles = new Map<string, number>();
 
-function getCacheDir(): string {
+function getRootCacheDir(): string {
   const base = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
   if (!base) {
     throw new Error('Audio cache directory is unavailable on this device.');
@@ -78,12 +95,36 @@ function getCacheDir(): string {
   return `${base}${CACHE_DIR_NAME}`;
 }
 
-function getCacheFileUri(fileName: string) {
-  return `${getCacheDir()}${fileName}`;
+function getCacheDir(reciterId: ReciterId): string {
+  return `${getRootCacheDir()}${reciterId}/`;
 }
 
-function getPartialFileUri(fileName: string) {
-  return `${getCacheFileUri(fileName)}${PARTIAL_FILE_SUFFIX}`;
+function getScopedFileKey(reciterId: ReciterId, fileName: string) {
+  return `${reciterId}:${fileName}`;
+}
+
+function getCacheIndexKey(reciterId: ReciterId) {
+  return `${CACHE_INDEX_KEY_PREFIX}:${reciterId}`;
+}
+
+function getCacheFileUri(reciterId: ReciterId, fileName: string) {
+  return `${getCacheDir(reciterId)}${fileName}`;
+}
+
+function getPartialFileUri(reciterId: ReciterId, fileName: string) {
+  return `${getCacheFileUri(reciterId, fileName)}${PARTIAL_FILE_SUFFIX}`;
+}
+
+function getAudioSourceUrls(reciterId: ReciterId) {
+  const sources = [
+    reciterId === DEFAULT_RECITER_ID ? CONFIGURED_MIRROR_URL : null,
+    getReciterOption(reciterId).verseBaseUrl,
+  ];
+
+  return sources
+    .filter((value): value is string => Boolean(value))
+    .map((value) => value.replace(/\/+$/, ''))
+    .filter((value, index, values) => values.indexOf(value) === index);
 }
 
 function createController(): DownloadJobController {
@@ -115,16 +156,12 @@ function trackTaskPromise<T>(promise: Promise<T>): Promise<T> {
   });
 }
 
-async function ensureCacheDir() {
-  const dir = getCacheDir();
-  const info = await FileSystem.getInfoAsync(dir);
-  if (!info.exists) {
-    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
-  }
+function getQuranData() {
+  return require('../../assets/data/quran.json') as { surahs: Array<{ id: number; verse_count: number }> };
 }
 
 function listAllVerseRefs(): VerseRef[] {
-  const quranData = require('../../assets/data/quran.json') as { surahs: Array<{ id: number; verse_count: number }> };
+  const quranData = getQuranData();
   return quranData.surahs.flatMap((surah) =>
     Array.from({ length: surah.verse_count }, (_, index) => ({
       surahId: surah.id,
@@ -133,10 +170,35 @@ function listAllVerseRefs(): VerseRef[] {
   );
 }
 
-async function readCacheIndex(): Promise<AudioCacheIndex> {
-  if (!cacheIndexPromise) {
-    cacheIndexPromise = (async () => {
-      const raw = await Storage.getItem(CACHE_INDEX_KEY);
+function getTotalVerseCount() {
+  return getQuranData().surahs.reduce((sum, surah) => sum + surah.verse_count, 0);
+}
+
+async function withCacheMutationLock<T>(task: () => Promise<T>): Promise<T> {
+  const next = cacheMutationChain.then(task, task);
+  cacheMutationChain = next.then(() => undefined, () => undefined);
+  return await next;
+}
+
+async function ensureCacheDir(reciterId: ReciterId) {
+  const rootDir = getRootCacheDir();
+  const rootInfo = await FileSystem.getInfoAsync(rootDir);
+  if (!rootInfo.exists) {
+    await FileSystem.makeDirectoryAsync(rootDir, { intermediates: true });
+  }
+
+  const dir = getCacheDir(reciterId);
+  const info = await FileSystem.getInfoAsync(dir);
+  if (!info.exists) {
+    await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
+  }
+}
+
+async function readCacheIndex(reciterId: ReciterId): Promise<AudioCacheIndex> {
+  const cached = cacheIndexPromises.get(reciterId);
+  if (!cached) {
+    const nextPromise = (async () => {
+      const raw = await Storage.getItem(getCacheIndexKey(reciterId));
       if (!raw) {
         return {};
       }
@@ -148,28 +210,20 @@ async function readCacheIndex(): Promise<AudioCacheIndex> {
         return {};
       }
     })();
+    cacheIndexPromises.set(reciterId, nextPromise);
   }
 
-  return await cacheIndexPromise;
+  return await (cacheIndexPromises.get(reciterId) as Promise<AudioCacheIndex>);
 }
 
-async function writeCacheIndex(index: AudioCacheIndex) {
-  cacheIndexPromise = Promise.resolve(index);
-  await Storage.setItem(CACHE_INDEX_KEY, JSON.stringify(index));
+async function writeCacheIndex(reciterId: ReciterId, index: AudioCacheIndex) {
+  cacheIndexPromises.set(reciterId, Promise.resolve(index));
+  await Storage.setItem(getCacheIndexKey(reciterId), JSON.stringify(index));
 }
 
-async function mutateCacheIndex(
-  updater: (current: AudioCacheIndex) => AudioCacheIndex | Promise<AudioCacheIndex>
-) {
-  const current = await readCacheIndex();
-  const next = await updater({ ...current });
-  await writeCacheIndex(next);
-  return next;
-}
-
-async function clearCacheIndex() {
-  cacheIndexPromise = Promise.resolve({});
-  await Storage.removeItem(CACHE_INDEX_KEY);
+async function clearCacheIndex(reciterId: ReciterId) {
+  cacheIndexPromises.set(reciterId, Promise.resolve({}));
+  await Storage.removeItem(getCacheIndexKey(reciterId));
 }
 
 async function getFileInfo(fileUri: string) {
@@ -188,21 +242,7 @@ async function removeFileIfExists(fileUri: string) {
   }
 }
 
-async function cleanupPartialFiles() {
-  const dir = getCacheDir();
-  const info = await FileSystem.getInfoAsync(dir);
-  if (!info.exists) {
-    return;
-  }
-
-  const files = await FileSystem.readDirectoryAsync(dir);
-  const partials = files.filter((file) => file.endsWith(PARTIAL_FILE_SUFFIX));
-  for (const file of partials) {
-    await removeFileIfExists(`${dir}${file}`);
-  }
-}
-
-async function syncIndexWithFilesystem(index: AudioCacheIndex) {
+async function syncIndexWithFilesystemUnsafe(reciterId: ReciterId, index: AudioCacheIndex) {
   const next = { ...index };
 
   for (const [fileName, entry] of Object.entries(index)) {
@@ -211,14 +251,8 @@ async function syncIndexWithFilesystem(index: AudioCacheIndex) {
       continue;
     }
 
-    const fileInfo = await getFileInfo(getCacheFileUri(fileName));
-    if (!fileInfo) {
-      delete next[fileName];
-      continue;
-    }
-
-    if ((fileInfo.size ?? 0) <= 0) {
-      await removeFileIfExists(getCacheFileUri(fileName));
+    const fileInfo = await getFileInfo(getCacheFileUri(reciterId, fileName));
+    if (!fileInfo || (fileInfo.size ?? 0) <= 0) {
       delete next[fileName];
       continue;
     }
@@ -232,23 +266,14 @@ async function syncIndexWithFilesystem(index: AudioCacheIndex) {
   }
 
   if (JSON.stringify(next) !== JSON.stringify(index)) {
-    await writeCacheIndex(next);
+    await writeCacheIndex(reciterId, next);
   }
 
   return next;
 }
 
-function buildRemoteVerseAudioUrl(surahId: number, verseNumber: number): string {
-  const fileName = buildVerseFileName(surahId, verseNumber);
-  const baseUrl = AUDIO_SOURCE_URLS[0];
-  if (!baseUrl) {
-    throw new Error('No audio source URL is configured.');
-  }
-
-  return `${baseUrl}/${fileName}`;
-}
-
-async function setReadyEntry(params: {
+async function setReadyEntryUnsafe(params: {
+  reciterId: ReciterId;
   fileName: string;
   surahId: number;
   verseNumber: number;
@@ -260,54 +285,341 @@ async function setReadyEntry(params: {
     throw new Error(`Downloaded audio file is invalid: ${params.fileName}`);
   }
 
-  await mutateCacheIndex((current) => {
-    const previous = current[params.fileName];
-    current[params.fileName] = {
-      fileName: params.fileName,
-      surahId: params.surahId,
-      verseNumber: params.verseNumber,
-      sizeBytes: info.size ?? 0,
-      lastAccessedAt: Date.now(),
-      pinnedOffline: params.pinnedOffline || previous?.pinnedOffline || false,
-      status: 'ready',
-    };
-    return current;
-  });
+  const current = await readCacheIndex(params.reciterId);
+  const next = { ...current };
+  const previous = next[params.fileName];
+  next[params.fileName] = {
+    fileName: params.fileName,
+    surahId: params.surahId,
+    verseNumber: params.verseNumber,
+    sizeBytes: info.size ?? 0,
+    lastAccessedAt: Date.now(),
+    pinnedOffline: params.pinnedOffline || previous?.pinnedOffline || false,
+    status: 'ready',
+  };
+  await writeCacheIndex(params.reciterId, next);
 }
 
-async function removeIndexEntry(fileName: string) {
-  await mutateCacheIndex((current) => {
-    delete current[fileName];
-    return current;
-  });
-}
-
-async function pruneLiveCacheIfNeeded() {
-  const index = await syncIndexWithFilesystem(await readCacheIndex());
-  const entries = Object.values(index);
-  const totalBytes = entries.reduce((sum, entry) => sum + entry.sizeBytes, 0);
-  if (totalBytes <= LIVE_CACHE_LIMIT_BYTES) {
+async function removeIndexEntryUnsafe(reciterId: ReciterId, fileName: string) {
+  const current = await readCacheIndex(reciterId);
+  if (!(fileName in current)) {
     return;
   }
 
-  const removable = entries
-    .filter((entry) => !entry.pinnedOffline)
-    .sort((left, right) => left.lastAccessedAt - right.lastAccessedAt);
+  const next = { ...current };
+  delete next[fileName];
+  await writeCacheIndex(reciterId, next);
+}
 
-  let nextTotalBytes = totalBytes;
-  const nextIndex = { ...index };
+function buildRemoteVerseAudioUrl(baseUrl: string, surahId: number, verseNumber: number): string {
+  const fileName = buildVerseFileName(surahId, verseNumber);
+  return `${baseUrl}/${fileName}`;
+}
 
-  for (const entry of removable) {
-    if (nextTotalBytes <= LIVE_CACHE_PRUNE_TARGET_BYTES) {
-      break;
-    }
+function registerLease(reciterId: ReciterId, fileName: string) {
+  const scopedKey = getScopedFileKey(reciterId, fileName);
+  leasedFiles.set(scopedKey, (leasedFiles.get(scopedKey) ?? 0) + 1);
+}
 
-    await removeFileIfExists(getCacheFileUri(entry.fileName));
-    delete nextIndex[entry.fileName];
-    nextTotalBytes -= entry.sizeBytes;
+function unregisterLease(reciterId: ReciterId, fileName: string) {
+  const scopedKey = getScopedFileKey(reciterId, fileName);
+  const current = leasedFiles.get(scopedKey) ?? 0;
+  if (current <= 1) {
+    leasedFiles.delete(scopedKey);
+    return;
   }
 
-  await writeCacheIndex(nextIndex);
+  leasedFiles.set(scopedKey, current - 1);
+}
+
+function hasProtectedConsumer(reciterId: ReciterId, fileName: string) {
+  const scopedKey = getScopedFileKey(reciterId, fileName);
+  return leasedFiles.has(scopedKey) || inflightDownloads.has(scopedKey);
+}
+
+async function pruneLiveCacheIfNeeded(reciterId: ReciterId) {
+  await withCacheMutationLock(async () => {
+    const index = await syncIndexWithFilesystemUnsafe(reciterId, await readCacheIndex(reciterId));
+    const entries = Object.values(index);
+    const totalBytes = entries.reduce((sum, entry) => sum + entry.sizeBytes, 0);
+    if (totalBytes <= LIVE_CACHE_LIMIT_BYTES) {
+      return;
+    }
+
+    const removable = entries
+      .filter((entry) => !entry.pinnedOffline && !hasProtectedConsumer(reciterId, entry.fileName))
+      .sort((left, right) => left.lastAccessedAt - right.lastAccessedAt);
+
+    let nextTotalBytes = totalBytes;
+    const nextIndex = { ...index };
+
+    for (const entry of removable) {
+      if (nextTotalBytes <= LIVE_CACHE_PRUNE_TARGET_BYTES) {
+        break;
+      }
+
+      await removeFileIfExists(getCacheFileUri(reciterId, entry.fileName));
+      delete nextIndex[entry.fileName];
+      nextTotalBytes -= entry.sizeBytes;
+    }
+
+    await writeCacheIndex(reciterId, nextIndex);
+  });
+}
+
+async function reconcileOfflineReadyFlag(reciterId: ReciterId, index?: AudioCacheIndex) {
+  const syncedIndex = index ?? await withCacheMutationLock(async () =>
+    await syncIndexWithFilesystemUnsafe(reciterId, await readCacheIndex(reciterId))
+  );
+  const shouldBeComplete = Object.keys(syncedIndex).length === getTotalVerseCount();
+  const current = await Storage.getDownloadComplete(reciterId);
+  if (current !== shouldBeComplete) {
+    await Storage.setDownloadComplete(reciterId, shouldBeComplete);
+  }
+  return shouldBeComplete;
+}
+
+async function cleanupOrphanPartialFiles(reciterId: ReciterId) {
+  if (inflightDownloads.size > 0) {
+    return;
+  }
+
+  await ensureCacheDir(reciterId);
+  const dir = getCacheDir(reciterId);
+  const files = await FileSystem.readDirectoryAsync(dir);
+  const partials = files.filter((file) => file.endsWith(PARTIAL_FILE_SUFFIX));
+  await Promise.all(partials.map(async (file) => {
+    await removeFileIfExists(`${dir}${file}`);
+  }));
+}
+
+async function migrateLegacyGhamdiCacheIfNeeded() {
+  const rootDir = getRootCacheDir();
+  const legacyIndexRaw = await Storage.getItem(LEGACY_CACHE_INDEX_KEY);
+  const nextIndexRaw = await Storage.getItem(getCacheIndexKey(DEFAULT_RECITER_ID));
+  const ghamdiDir = getCacheDir(DEFAULT_RECITER_ID);
+
+  if (!legacyIndexRaw && nextIndexRaw) {
+    return;
+  }
+
+  await ensureCacheDir(DEFAULT_RECITER_ID);
+  const rootFiles = await FileSystem.readDirectoryAsync(rootDir).catch(() => []);
+  const legacyFiles = rootFiles.filter((file) => file.endsWith('.mp3'));
+
+  if (!nextIndexRaw && legacyIndexRaw) {
+    await Storage.setItem(getCacheIndexKey(DEFAULT_RECITER_ID), legacyIndexRaw);
+  }
+  if (legacyIndexRaw) {
+    await Storage.removeItem(LEGACY_CACHE_INDEX_KEY);
+  }
+
+  if (legacyFiles.length === 0) {
+    return;
+  }
+
+  for (const file of legacyFiles) {
+    const from = `${rootDir}${file}`;
+    const to = `${ghamdiDir}${file}`;
+    const targetInfo = await FileSystem.getInfoAsync(to);
+    if (!targetInfo.exists) {
+      await FileSystem.moveAsync({ from, to });
+    } else {
+      await removeFileIfExists(from);
+    }
+  }
+}
+
+export async function initializeAudioCache(reciterId: ReciterId = DEFAULT_RECITER_ID) {
+  if (!startupMaintenancePromises.has(reciterId)) {
+    const promise = (async () => {
+      if (reciterId === DEFAULT_RECITER_ID) {
+        await migrateLegacyGhamdiCacheIfNeeded();
+      }
+      await cleanupOrphanPartialFiles(reciterId);
+      const syncedIndex = await withCacheMutationLock(async () =>
+        await syncIndexWithFilesystemUnsafe(reciterId, await readCacheIndex(reciterId))
+      );
+      await reconcileOfflineReadyFlag(reciterId, syncedIndex);
+    })().finally(() => {
+      startupMaintenancePromises.delete(reciterId);
+    });
+    startupMaintenancePromises.set(reciterId, promise);
+  }
+
+  await (startupMaintenancePromises.get(reciterId) as Promise<void>);
+}
+
+function addConsumerToInflight(inflight: InflightDownload, options: DownloadOptions) {
+  inflight.pinnedOfflineRequested ||= options.pinnedOffline;
+  if (options.controller) {
+    inflight.controllerIds.add(options.controller.id);
+  } else {
+    inflight.passiveConsumers += 1;
+  }
+}
+
+function removeConsumerFromInflight(inflight: InflightDownload, options: DownloadOptions) {
+  if (options.controller) {
+    inflight.controllerIds.delete(options.controller.id);
+  } else {
+    inflight.passiveConsumers = Math.max(0, inflight.passiveConsumers - 1);
+  }
+}
+
+function hasConsumers(inflight: InflightDownload) {
+  return inflight.controllerIds.size > 0 || inflight.passiveConsumers > 0;
+}
+
+async function pauseInflightIfUnused(inflight: InflightDownload) {
+  if (hasConsumers(inflight) || !inflight.resumable) {
+    return;
+  }
+
+  try {
+    await inflight.resumable.pauseAsync();
+  } catch {
+    // Best-effort cancellation.
+  }
+}
+
+async function getReadyFileUri(
+  reciterId: ReciterId,
+  fileName: string,
+  surahId: number,
+  verseNumber: number,
+  pinnedOffline: boolean
+) {
+  const fileUri = getCacheFileUri(reciterId, fileName);
+  const result = await withCacheMutationLock(async () => {
+    const index = await syncIndexWithFilesystemUnsafe(reciterId, await readCacheIndex(reciterId));
+    const entry = index[fileName];
+    const existing = await getFileInfo(fileUri);
+    if (!existing || !isReadyEntry(entry)) {
+      return null;
+    }
+
+    await setReadyEntryUnsafe({ reciterId, fileName, surahId, verseNumber, fileUri, pinnedOffline });
+    return fileUri;
+  });
+
+  if (result) {
+    await appendAudioDiagnosticLog('cache_hit', { reciterId, surahId, verseNumber, pinnedOffline });
+    await reconcileOfflineReadyFlag(reciterId);
+  }
+  return result;
+}
+
+async function createInflightDownload(
+  surahId: number,
+  verseNumber: number,
+  options: DownloadOptions
+) {
+  const { reciterId } = options;
+  const fileName = buildVerseFileName(surahId, verseNumber);
+  const scopedFileKey = getScopedFileKey(reciterId, fileName);
+  const fileUri = getCacheFileUri(reciterId, fileName);
+  const partialUri = getPartialFileUri(reciterId, fileName);
+
+  const inflight: InflightDownload = {
+    fileName,
+    fileUri,
+    partialUri,
+    promise: Promise.resolve(fileUri),
+    resumable: null,
+    pinnedOfflineRequested: options.pinnedOffline,
+    controllerIds: new Set<string>(),
+    passiveConsumers: 0,
+  };
+  addConsumerToInflight(inflight, options);
+  let completed = false;
+
+  const promise = trackTaskPromise((async () => {
+    await ensureCacheDir(reciterId);
+    await removeFileIfExists(partialUri);
+    await appendAudioDiagnosticLog('download_start', { reciterId, surahId, verseNumber, pinnedOffline: options.pinnedOffline });
+
+    await withCacheMutationLock(async () => {
+      await removeFileIfExists(fileUri);
+      await removeIndexEntryUnsafe(reciterId, fileName);
+    });
+    let lastError: unknown = null;
+
+    for (const baseUrl of getAudioSourceUrls(reciterId)) {
+      if (!hasConsumers(inflight)) {
+        throw new Error('download_cancelled');
+      }
+
+      const resumable = FileSystem.createDownloadResumable(
+        buildRemoteVerseAudioUrl(baseUrl, surahId, verseNumber),
+        partialUri,
+        {}
+      );
+      inflight.resumable = resumable;
+
+      try {
+        const result = await resumable.downloadAsync();
+        if (!result || result.status !== 200) {
+          throw new Error(`Audio download failed for ${fileName}.`);
+        }
+
+        const existingFinal = await getFileInfo(fileUri);
+        if (!existingFinal) {
+          await removeFileIfExists(fileUri);
+          await FileSystem.moveAsync({ from: partialUri, to: fileUri });
+        } else {
+          await removeFileIfExists(partialUri);
+        }
+
+        await withCacheMutationLock(async () => {
+          await setReadyEntryUnsafe({
+            reciterId,
+            fileName,
+            surahId,
+            verseNumber,
+            fileUri,
+            pinnedOffline: inflight.pinnedOfflineRequested,
+          });
+        });
+        if (!inflight.pinnedOfflineRequested) {
+          await pruneLiveCacheIfNeeded(reciterId);
+        }
+        await appendAudioDiagnosticLog('download_complete', { reciterId, surahId, verseNumber, pinnedOffline: inflight.pinnedOfflineRequested });
+        await reconcileOfflineReadyFlag(reciterId);
+        completed = true;
+        return fileUri;
+      } catch (error) {
+        lastError = error;
+        await removeFileIfExists(partialUri);
+
+        const cancelled = error instanceof Error && error.message === 'download_cancelled';
+        if (cancelled || !hasConsumers(inflight)) {
+          throw new Error('download_cancelled');
+        }
+      } finally {
+        inflight.resumable = null;
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error(`Audio download failed for ${fileName}.`);
+  })()).catch(async (error) => {
+    if (!completed) {
+      await withCacheMutationLock(async () => {
+        await removeFileIfExists(partialUri);
+        await removeFileIfExists(fileUri);
+        await removeIndexEntryUnsafe(reciterId, fileName);
+      });
+      await reconcileOfflineReadyFlag(reciterId);
+    }
+
+    throw error;
+  }).finally(() => {
+    inflightDownloads.delete(scopedFileKey);
+  });
+
+  inflight.promise = promise;
+  inflightDownloads.set(scopedFileKey, inflight);
+  return inflight;
 }
 
 async function downloadVerseToCache(
@@ -315,76 +627,40 @@ async function downloadVerseToCache(
   verseNumber: number,
   options: DownloadOptions
 ): Promise<string> {
-  const { pinnedOffline, controller } = options;
+  const { pinnedOffline, controller, reciterId } = options;
   const fileName = buildVerseFileName(surahId, verseNumber);
-  const inflightKey = `${fileName}:${pinnedOffline ? 'offline' : 'live'}`;
-  const inflight = inflightDownloads.get(inflightKey);
-  if (inflight) {
-    return await inflight;
+  const scopedFileKey = getScopedFileKey(reciterId, fileName);
+
+  assertNotCancelled(controller);
+
+  const readyFileUri = await getReadyFileUri(reciterId, fileName, surahId, verseNumber, pinnedOffline);
+  if (readyFileUri) {
+    return readyFileUri;
   }
 
-  const promise = trackTaskPromise((async () => {
-    await ensureCacheDir();
-    await cleanupPartialFiles();
+  await appendAudioDiagnosticLog('cache_miss', { reciterId, surahId, verseNumber, pinnedOffline });
+
+  let inflight = inflightDownloads.get(scopedFileKey);
+  const createdNew = !inflight;
+  if (!inflight) {
+    inflight = await createInflightDownload(surahId, verseNumber, options);
+  } else {
+    await appendAudioDiagnosticLog('inflight_reuse', { reciterId, surahId, verseNumber, pinnedOffline });
+    addConsumerToInflight(inflight, options);
+  }
+
+  try {
+    const fileUri = await inflight.promise;
     assertNotCancelled(controller);
-
-    const fileUri = getCacheFileUri(fileName);
-    const partialUri = getPartialFileUri(fileName);
-    const index = await syncIndexWithFilesystem(await readCacheIndex());
-    const entry = index[fileName];
-    const existing = await getFileInfo(fileUri);
-    if (existing && isReadyEntry(entry)) {
-      await setReadyEntry({ fileName, surahId, verseNumber, fileUri, pinnedOffline });
-      return fileUri;
+    return fileUri;
+  } finally {
+    if (!createdNew) {
+      removeConsumerFromInflight(inflight, options);
     }
-
-    await removeFileIfExists(fileUri);
-    await removeFileIfExists(partialUri);
-    await removeIndexEntry(fileName);
-    assertNotCancelled(controller);
-
-    const remoteUrl = buildRemoteVerseAudioUrl(surahId, verseNumber);
-    const resumableKey = controller ? `${controller.id}:${fileName}` : fileName;
-    const downloadResumable = FileSystem.createDownloadResumable(remoteUrl, partialUri, {});
-    activeResumables.set(resumableKey, downloadResumable);
-
-    try {
-      const result = await downloadResumable.downloadAsync();
-      assertNotCancelled(controller);
-      if (!result || result.status !== 200) {
-        throw new Error(`Audio download failed for ${fileName}.`);
-      }
-
-      await removeFileIfExists(fileUri);
-      await FileSystem.moveAsync({ from: partialUri, to: fileUri });
-      await setReadyEntry({ fileName, surahId, verseNumber, fileUri, pinnedOffline });
-      if (!pinnedOffline) {
-        await pruneLiveCacheIfNeeded();
-      }
-
-      return fileUri;
-    } catch (error) {
-      await removeFileIfExists(partialUri);
-      await removeFileIfExists(fileUri);
-      await removeIndexEntry(fileName);
-      if (error instanceof Error && error.message === 'download_cancelled') {
-        throw error;
-      }
-
-      if (controller?.cancelled) {
-        throw new Error('download_cancelled');
-      }
-
-      throw error;
-    } finally {
-      activeResumables.delete(resumableKey);
+    if (controller?.cancelled) {
+      await pauseInflightIfUnused(inflight);
     }
-  })()).finally(() => {
-    inflightDownloads.delete(inflightKey);
-  });
-
-  inflightDownloads.set(inflightKey, promise);
-  return await promise;
+  }
 }
 
 async function cancelController(controller: DownloadJobController | null) {
@@ -393,17 +669,15 @@ async function cancelController(controller: DownloadJobController | null) {
   }
 
   controller.cancelled = true;
-  const resumables = Array.from(activeResumables.entries())
-    .filter(([key]) => key.startsWith(`${controller.id}:`))
-    .map(([, resumable]) => resumable);
 
   await Promise.allSettled(
-    resumables.map(async (resumable) => {
-      try {
-        await resumable.pauseAsync();
-      } catch {
-        // Best-effort cancellation.
+    Array.from(inflightDownloads.values()).map(async (inflight) => {
+      if (!inflight.controllerIds.has(controller.id)) {
+        return;
       }
+
+      inflight.controllerIds.delete(controller.id);
+      await pauseInflightIfUnused(inflight);
     })
   );
 }
@@ -413,53 +687,97 @@ async function cancelAllControllers() {
   await Promise.all(controllers.map((controller) => cancelController(controller)));
 }
 
-export async function getPreferredVerseAudioUri(surahId: number, verseNumber: number): Promise<string> {
-  const { uri } = await getVerseAudioForPlayback(surahId, verseNumber);
+export async function retainVerseRangeForPlayback(verses: VerseRef[]): Promise<AudioCacheLease> {
+  const reciterId = DEFAULT_RECITER_ID;
+  const fileNames = verses.map((verse) => buildVerseFileName(verse.surahId, verse.verseNumber));
+  for (const fileName of fileNames) {
+    registerLease(reciterId, fileName);
+  }
+
+  let released = false;
+  return {
+    release: async () => {
+      if (released) {
+        return;
+      }
+
+      released = true;
+      for (const fileName of fileNames) {
+        unregisterLease(reciterId, fileName);
+      }
+    },
+  };
+}
+
+export async function retainVerseRangeForPlaybackByReciter(reciterId: ReciterId, verses: VerseRef[]): Promise<AudioCacheLease> {
+  const fileNames = verses.map((verse) => buildVerseFileName(verse.surahId, verse.verseNumber));
+  for (const fileName of fileNames) {
+    registerLease(reciterId, fileName);
+  }
+
+  let released = false;
+  return {
+    release: async () => {
+      if (released) {
+        return;
+      }
+
+      released = true;
+      for (const fileName of fileNames) {
+        unregisterLease(reciterId, fileName);
+      }
+    },
+  };
+}
+
+export async function getPreferredVerseAudioUri(
+  reciterId: ReciterId,
+  surahId: number,
+  verseNumber: number
+): Promise<string> {
+  const { uri } = await getVerseAudioForPlayback(reciterId, surahId, verseNumber);
   return uri;
 }
 
-export async function getVerseAudioForPlayback(surahId: number, verseNumber: number): Promise<CachedVerseAudio> {
+export async function getVerseAudioForPlayback(
+  reciterId: ReciterId,
+  surahId: number,
+  verseNumber: number
+): Promise<CachedVerseAudio> {
   const fileName = buildVerseFileName(surahId, verseNumber);
-  const fileUri = getCacheFileUri(fileName);
-  const index = await syncIndexWithFilesystem(await readCacheIndex());
-  const entry = index[fileName];
-  const fileInfo = await getFileInfo(fileUri);
-  if (!fileInfo || !isReadyEntry(entry)) {
-    const localUri = await downloadVerseToCache(surahId, verseNumber, { pinnedOffline: false });
-    return { uri: localUri, isLocal: true };
+  const fileUri = await getReadyFileUri(reciterId, fileName, surahId, verseNumber, false);
+  if (fileUri) {
+    return { uri: fileUri, isLocal: true };
   }
 
-  await setReadyEntry({
-    fileName,
-    surahId,
-    verseNumber,
-    fileUri,
-    pinnedOffline: false,
-  });
-  return { uri: fileUri, isLocal: true };
+  const localUri = await downloadVerseToCache(surahId, verseNumber, { reciterId, pinnedOffline: false });
+  return { uri: localUri, isLocal: true };
 }
 
 export async function prefetchVerseAudio(
+  reciterId: ReciterId,
   surahId: number,
   verseNumber: number,
   pinnedOffline = false,
   controller?: DownloadJobController | null
 ): Promise<string> {
-  return await downloadVerseToCache(surahId, verseNumber, { pinnedOffline, controller });
+  return await downloadVerseToCache(surahId, verseNumber, { reciterId, pinnedOffline, controller });
 }
 
 export async function prefetchVerseRange(
+  reciterId: ReciterId,
   verses: VerseRef[],
   pinnedOffline = false,
   controller?: DownloadJobController | null
 ) {
   for (const verse of verses) {
     assertNotCancelled(controller);
-    await prefetchVerseAudio(verse.surahId, verse.verseNumber, pinnedOffline, controller);
+    await prefetchVerseAudio(reciterId, verse.surahId, verse.verseNumber, pinnedOffline, controller);
   }
 }
 
 export async function downloadSurahAudio(
+  reciterId: ReciterId,
   surahId: number,
   verseCount: number,
   onProgress?: (current: number, total: number) => void
@@ -467,7 +785,8 @@ export async function downloadSurahAudio(
   const controller = createController();
   try {
     for (let verseNumber = 1; verseNumber <= verseCount; verseNumber += 1) {
-      await downloadVerseToCache(surahId, verseNumber, { pinnedOffline: true, controller });
+      assertNotCancelled(controller);
+      await downloadVerseToCache(surahId, verseNumber, { reciterId, pinnedOffline: true, controller });
       onProgress?.(verseNumber, verseCount);
     }
   } finally {
@@ -476,6 +795,7 @@ export async function downloadSurahAudio(
 }
 
 export async function downloadAudioBundle(
+  reciterId: ReciterId,
   onProgress?: (progress: AudioBundleDownloadProgress) => void
 ): Promise<'completed'> {
   if (activeOfflineDownloadPromise) {
@@ -485,16 +805,18 @@ export async function downloadAudioBundle(
 
   const verses = listAllVerseRefs();
   const controller = createController();
+  activeOfflineReciterId = reciterId;
   activeOfflineController = controller;
   activeOfflineDownloadPromise = trackTaskPromise((async () => {
     const total = verses.length;
     let current = 0;
-    activeOfflineProgress = { phase: 'downloading', current, total, percent: 0 };
+    activeOfflineProgress = { phase: 'downloading', current, total, percent: 0, reciterId };
     onProgress?.(activeOfflineProgress);
 
     for (const verse of verses) {
       assertNotCancelled(controller);
       await downloadVerseToCache(verse.surahId, verse.verseNumber, {
+        reciterId,
         pinnedOffline: true,
         controller,
       });
@@ -504,11 +826,16 @@ export async function downloadAudioBundle(
         current,
         total,
         percent: Math.round((current / total) * 100),
+        reciterId,
       };
       onProgress?.(activeOfflineProgress);
     }
 
-    await Storage.setDownloadComplete(true);
+    const syncedIndex = await withCacheMutationLock(async () =>
+      await syncIndexWithFilesystemUnsafe(reciterId, await readCacheIndex(reciterId))
+    );
+    const completed = Object.keys(syncedIndex).length === total;
+    await Storage.setDownloadComplete(reciterId, completed);
   })());
 
   try {
@@ -518,20 +845,23 @@ export async function downloadAudioBundle(
       current: verses.length,
       total: verses.length,
       percent: 100,
+      reciterId,
     };
     onProgress?.(activeOfflineProgress);
     return 'completed';
   } finally {
     releaseController(controller);
     activeOfflineController = null;
+    activeOfflineReciterId = null;
     activeOfflineDownloadPromise = null;
   }
 }
 
 export async function resumeAudioBundleDownload(
+  reciterId: ReciterId,
   onProgress?: (progress: AudioBundleDownloadProgress) => void
 ): Promise<'completed'> {
-  return await downloadAudioBundle(onProgress);
+  return await downloadAudioBundle(reciterId, onProgress);
 }
 
 export async function getPendingAudioBundleDownload(): Promise<AudioBundleDownloadProgress | null> {
@@ -550,56 +880,63 @@ export async function cancelAudioBundleDownload(): Promise<void> {
 
   activeOfflineProgress = activeOfflineProgress
     ? { ...activeOfflineProgress, phase: 'cancelling' }
-    : { phase: 'cancelling', current: 0, total: 0, percent: 0 };
+    : { phase: 'cancelling', current: 0, total: 0, percent: 0, reciterId: activeOfflineReciterId ?? DEFAULT_RECITER_ID };
 
   await cancelAllControllers();
   await Promise.allSettled(Array.from(activeTaskPromises));
   activeOfflineProgress = null;
 }
 
-export async function clearAllDownloads(): Promise<void> {
+export async function clearAllDownloads(reciterId: ReciterId): Promise<void> {
   await cancelAudioBundleDownload();
 
-  const dir = getCacheDir();
+  const dir = getCacheDir(reciterId);
   const info = await FileSystem.getInfoAsync(dir);
   if (info.exists) {
     await FileSystem.deleteAsync(dir, { idempotent: true });
   }
 
   activeOfflineProgress = null;
-  await clearCacheIndex();
-  await Storage.setDownloadComplete(false);
+  await clearCacheIndex(reciterId);
+  await Storage.setDownloadComplete(reciterId, false);
 }
 
-export async function getCachedAudioFileNames(): Promise<Set<string>> {
-  const index = await syncIndexWithFilesystem(await readCacheIndex());
+export async function getCachedAudioFileNames(reciterId: ReciterId): Promise<Set<string>> {
+  const index = await withCacheMutationLock(async () =>
+    await syncIndexWithFilesystemUnsafe(reciterId, await readCacheIndex(reciterId))
+  );
   return new Set(Object.keys(index));
 }
 
-export async function getCacheStats(): Promise<{
+export async function getCacheStats(reciterId: ReciterId): Promise<{
   bytes: number;
   files: number;
   megabytes: number;
   readyVerses: number;
+  totalVerses: number;
   offlineReady: boolean;
 }> {
-  await ensureCacheDir();
-  await cleanupPartialFiles();
-  const index = await syncIndexWithFilesystem(await readCacheIndex());
+  await ensureCacheDir(reciterId);
+  const index = await withCacheMutationLock(async () =>
+    await syncIndexWithFilesystemUnsafe(reciterId, await readCacheIndex(reciterId))
+  );
   const entries = Object.values(index);
   const totalBytes = entries.reduce((sum, entry) => sum + entry.sizeBytes, 0);
+  const totalVerses = getTotalVerseCount();
+  const offlineReady = await reconcileOfflineReadyFlag(reciterId, index);
 
   return {
     bytes: totalBytes,
     files: entries.length,
     megabytes: Number((totalBytes / (1024 * 1024)).toFixed(1)),
     readyVerses: entries.length,
-    offlineReady: await Storage.getDownloadComplete(),
+    totalVerses,
+    offlineReady,
   };
 }
 
-export async function getCacheSize(): Promise<number> {
-  const stats = await getCacheStats();
+export async function getCacheSize(reciterId: ReciterId): Promise<number> {
+  const stats = await getCacheStats(reciterId);
   return stats.megabytes;
 }
 

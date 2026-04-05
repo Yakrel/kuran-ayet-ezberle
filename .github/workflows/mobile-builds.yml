@@ -6,8 +6,8 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  android-build:
-    name: Android dev client build
+  android-development-build:
+    name: Android development APK build
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -25,6 +25,9 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Run unit tests
+        run: npm test
 
       - name: Setup Java
         uses: actions/setup-java@v5
@@ -50,20 +53,20 @@ jobs:
       - name: Run Expo prebuild
         run: CI=1 npx expo prebuild --platform android --no-install
 
-      - name: Build Android debug APK
+      - name: Build Android development APK
         working-directory: android
         run: ./gradlew :app:assembleDebug --stacktrace --warning-mode all
 
-      - name: Upload Android APK
+      - name: Upload Android development APK
         uses: actions/upload-artifact@v6
         with:
-          name: android-dev-client-apk
+          name: android-development-apk
           path: android/app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
-  ios-build:
-    name: iOS release simulator build
-    runs-on: macos-latest
+  android-production-build:
+    name: Android production AAB build
+    runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
@@ -81,33 +84,73 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Select latest Xcode
-        uses: maxim-lobanov/setup-xcode@v1
-        with:
-          xcode-version: latest-stable
+      - name: Run unit tests
+        run: npm test
 
       - name: Run Expo prebuild
-        run: CI=1 npx expo prebuild --platform ios --no-install
+        run: CI=1 npx expo prebuild --platform android --no-install
 
-      - name: Install CocoaPods dependencies
-        working-directory: ios
-        run: pod install --repo-update
+      - name: Build Android production AAB
+        working-directory: android
+        run: ./gradlew :app:bundleRelease --stacktrace --warning-mode all
 
-      - name: Build iOS release app for simulator
-        run: |
-          xcodebuild \
-            -workspace ios/KuranAyetEzberle.xcworkspace \
-            -scheme KuranAyetEzberle \
-            -configuration Release \
-            -sdk iphonesimulator \
-            -destination 'platform=iOS Simulator,name=iPhone 16' \
-            -derivedDataPath ios/build \
-            CODE_SIGNING_ALLOWED=NO \
-            build
-
-      - name: Upload iOS release app bundle
+      - name: Upload Android production AAB
         uses: actions/upload-artifact@v6
         with:
-          name: ios-release-simulator-app
-          path: ios/build/Build/Products/Release-iphonesimulator/*.app
+          name: android-production-aab
+          path: android/app/build/outputs/bundle/release/*.aab
           if-no-files-found: error
+
+  # ios-build:
+  #   name: iOS release simulator build
+  #   runs-on: macos-latest
+  #   permissions:
+  #     contents: read
+  #   env:
+  #     NODE_OPTIONS: --max_old_space_size=4096
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v5
+  #
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v5
+  #       with:
+  #         node-version: '20.20.1'
+  #         cache: 'npm'
+  #
+  #     - name: Install dependencies
+  #       run: npm ci
+  #
+  #     - name: Run unit tests
+  #       run: npm test
+  #
+  #     - name: Select latest Xcode
+  #       uses: maxim-lobanov/setup-xcode@v1
+  #       with:
+  #         xcode-version: latest-stable
+  #
+  #     - name: Run Expo prebuild
+  #       run: CI=1 npx expo prebuild --platform ios --no-install
+  #
+  #     - name: Install CocoaPods dependencies
+  #       working-directory: ios
+  #       run: pod install --repo-update
+  #
+  #     - name: Build iOS release app for simulator
+  #       run: |
+  #         xcodebuild \
+  #           -workspace ios/KuranAyetEzberle.xcworkspace \
+  #           -scheme KuranAyetEzberle \
+  #           -configuration Release \
+  #           -sdk iphonesimulator \
+  #           -destination 'platform=iOS Simulator,name=iPhone 16' \
+  #           -derivedDataPath ios/build \
+  #           CODE_SIGNING_ALLOWED=NO \
+  #           build
+  #
+  #     - name: Upload iOS release app bundle
+  #       uses: actions/upload-artifact@v6
+  #       with:
+  #         name: ios-release-simulator-app
+  #         path: ios/build/Build/Products/Release-iphonesimulator/*.app
+  #         if-no-files-found: error
