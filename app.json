@@ -47,6 +47,7 @@
       "expo-localization",
       "expo-font",
       "expo-dev-client",
+      "./plugins/with-android-release-signing",
       [
         "expo-build-properties",
         {

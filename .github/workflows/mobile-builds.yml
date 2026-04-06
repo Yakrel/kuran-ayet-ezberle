@@ -65,12 +65,15 @@ jobs:
           if-no-files-found: error
 
   android-production-build:
-    name: Android production AAB build
+    name: Android production APK build
     runs-on: ubuntu-latest
     permissions:
       contents: read
     env:
       NODE_OPTIONS: --max_old_space_size=4096
+      ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+      ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+      ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -87,18 +90,32 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      - name: Validate Android release signing secrets
+        run: |
+          test -n "$ANDROID_SIGNING_STORE_PASSWORD" || { echo "Missing secret: ANDROID_SIGNING_STORE_PASSWORD" >&2; exit 1; }
+          test -n "$ANDROID_SIGNING_KEY_ALIAS" || { echo "Missing secret: ANDROID_SIGNING_KEY_ALIAS" >&2; exit 1; }
+          test -n "$ANDROID_SIGNING_KEY_PASSWORD" || { echo "Missing secret: ANDROID_SIGNING_KEY_PASSWORD" >&2; exit 1; }
+          test -n "${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}" || { echo "Missing secret: ANDROID_SIGNING_KEYSTORE_BASE64" >&2; exit 1; }
+
+      - name: Restore Android release keystore
+        run: |
+          echo "${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+          test -s "$RUNNER_TEMP/release.keystore" || { echo "Decoded keystore file is empty" >&2; exit 1; }
+
       - name: Run Expo prebuild
         run: CI=1 npx expo prebuild --platform android --no-install
 
-      - name: Build Android production AAB
+      - name: Build Android production APK
         working-directory: android
-        run: ./gradlew :app:bundleRelease --stacktrace --warning-mode all
+        env:
+          ANDROID_SIGNING_STORE_FILE: ${{ runner.temp }}/release.keystore
+        run: ./gradlew :app:assembleRelease --stacktrace --warning-mode all
 
-      - name: Upload Android production AAB
+      - name: Upload Android production APK
         uses: actions/upload-artifact@v6
         with:
-          name: android-production-aab
-          path: android/app/build/outputs/bundle/release/*.aab
+          name: android-production-apk
+          path: android/app/build/outputs/apk/release/*.apk
           if-no-files-found: error
 
   # ios-build:
