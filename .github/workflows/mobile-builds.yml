@@ -90,6 +90,27 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Ensure Android SDK packages
+        run: |
+          {
+            echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin"
+            echo "$ANDROID_SDK_ROOT/platform-tools"
+          } >> "$GITHUB_PATH"
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+          yes | sdkmanager --licenses >/dev/null
+          sdkmanager \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;27.1.12297006"
+
       - name: Validate Android release signing secrets
         run: |
           test -n "$ANDROID_SIGNING_STORE_PASSWORD" || { echo "Missing secret: ANDROID_SIGNING_STORE_PASSWORD" >&2; exit 1; }
