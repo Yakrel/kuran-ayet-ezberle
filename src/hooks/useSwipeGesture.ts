@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { PanResponder, type GestureResponderHandlers } from 'react-native';
 import { GESTURE_THRESHOLDS } from '../constants/gestures';
+import { resolveSwipeDirection } from './resolveSwipeDirection';
 
 export function useSwipeGesture(
   goToNextPage: () => void,
@@ -13,14 +14,14 @@ export function useSwipeGesture(
           Math.abs(gestureState.dx) > GESTURE_THRESHOLDS.MIN_SWIPE_DISTANCE &&
           Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * GESTURE_THRESHOLDS.SWIPE_ANGLE_RATIO,
         onPanResponderRelease: (_, gestureState) => {
-          if (Math.abs(gestureState.dx) < GESTURE_THRESHOLDS.MIN_SWIPE_EXECUTE_DISTANCE) {
-            return;
-          }
-          if (gestureState.dx < 0) {
+          const direction = resolveSwipeDirection(gestureState.dx);
+          if (direction === 'next') {
             goToNextPage();
             return;
           }
-          goToPreviousPage();
+          if (direction === 'previous') {
+            goToPreviousPage();
+          }
         },
       }),
     [goToNextPage, goToPreviousPage]

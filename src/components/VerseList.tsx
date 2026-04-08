@@ -9,6 +9,7 @@ import { UI_CONFIG } from '../constants/gestures';
 import { getAutoScrollTargetIndex } from '../utils/getAutoScrollTargetIndex';
 
 type VerseListProps = {
+  currentPage: number;
   currentPageVerses: Verse[];
   currentVerse: Verse | null;
   quranFontFamily: string;
@@ -27,6 +28,7 @@ type VerseListProps = {
 };
 
 export function VerseList({
+  currentPage,
   currentPageVerses,
   currentVerse,
   quranFontFamily,
@@ -40,7 +42,7 @@ export function VerseList({
   onVisibleVerseChange,
   panHandlers,
 }: VerseListProps) {
-  const { theme, themeType } = useTheme();
+  const { theme } = useTheme();
   const verseListRef = useRef<FlatList<Verse> | null>(null);
   const visibleIndexesRef = useRef<number[]>([]);
   const lastAutoScrollIndexRef = useRef<number | null>(null);
@@ -100,19 +102,13 @@ export function VerseList({
   });
 
   return (
-    <View style={[
-      styles.listContainer, 
-      { 
-        backgroundColor: themeType === 'DARK' ? 'rgba(8, 15, 28, 0.86)' : 'rgba(255, 252, 245, 0.84)',
-        borderColor: themeType === 'DARK' ? 'rgba(148, 163, 184, 0.18)' : 'rgba(7, 54, 66, 0.12)'
-      }
-    ]}>
+    <View style={styles.listContainer}>
       {sectionTitle || pageProgressText ? (
         <PageHeader title={sectionTitle} pageProgressText={pageProgressText} />
       ) : null}
       <View style={styles.pageBody} {...panHandlers}>
         <FlatList
-          key={`page-${pageProgressText}`}
+          key={`page-${currentPage}`}
           ref={verseListRef}
           data={currentPageVerses}
           keyExtractor={(item) => `${item.surah_id}-${item.verse_number}`}
@@ -152,20 +148,13 @@ const styles = StyleSheet.create({
   listContainer: {
     flex: 1,
     marginTop: 8,
-    marginHorizontal: 16,
     marginBottom: 16,
-    borderRadius: 22,
-    borderWidth: 1,
-    paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 16,
-    overflow: 'hidden',
   },
   pageBody: {
     flex: 1,
-    borderRadius: 16,
   },
   listContent: {
+    paddingHorizontal: 8,
     paddingBottom: 24,
     gap: 12,
     paddingTop: 2,
@@ -173,7 +162,7 @@ const styles = StyleSheet.create({
   pageHint: {
     marginTop: 8,
     fontSize: 10,
-    marginLeft: 4,
+    marginHorizontal: 12,
     letterSpacing: 0.2,
   },
 });

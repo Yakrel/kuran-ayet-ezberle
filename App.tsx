@@ -139,7 +139,7 @@ function MainApp() {
         verse_number: verse.verse_number,
         page: verse.page,
       });
-      if (verse.surah_id === selectedSurahId) {
+      if (verse.surah_id === selectedSurahId && verse.page !== currentPage) {
         setCurrentPage(verse.page);
       }
       void Storage.setLastVerse(verse.surah_id, verse.verse_number);
@@ -572,6 +572,7 @@ function MainApp() {
           </View>
         ) : (
           <VerseList
+            currentPage={currentPage}
             currentPageVerses={computed.currentPageVerses}
             currentVerse={currentVerse}
             quranFontFamily={selectedQuranFont.fontFamily}
