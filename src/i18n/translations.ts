@@ -5,6 +5,8 @@ export const TRANSLATIONS: Translations = {
   tr: {
     appName: APP_NAME,
     surah: 'Sure',
+    searchSurah: 'Sure ara',
+    noSurahResults: 'Eşleşen sure bulunamadı.',
     settings: 'Ayarlar',
     startVerse: 'Başlangıç',
     endVerse: 'Bitiş',
@@ -99,6 +101,8 @@ export const TRANSLATIONS: Translations = {
   en: {
     appName: APP_NAME,
     surah: 'Surah',
+    searchSurah: 'Search surah',
+    noSurahResults: 'No matching surah found.',
     settings: 'Settings',
     startVerse: 'Start Verse',
     endVerse: 'End Verse',

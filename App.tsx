@@ -203,7 +203,7 @@ function MainApp() {
       if (savedAyahTracking && lastVerse) {
         pendingPageJumpRef.current = {
           surahId: lastVerse.surahId,
-          page: 0,
+          page: 1,
           verseNumber: lastVerse.verseNumber,
         };
       }
@@ -221,7 +221,13 @@ function MainApp() {
   }, [selectedReciterId]);
 
   useEffect(() => {
-    setCurrentPageInput(String(currentPage));
+    const normalizedCurrentPage = Math.max(1, currentPage);
+    if (normalizedCurrentPage !== currentPage) {
+      setCurrentPage(normalizedCurrentPage);
+      return;
+    }
+
+    setCurrentPageInput(String(normalizedCurrentPage));
   }, [currentPage]);
 
   useEffect(() => {

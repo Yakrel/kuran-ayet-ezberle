@@ -3,6 +3,8 @@ export type LanguageCode = 'tr' | 'en';
 export type TranslationStrings = {
   appName: string;
   surah: string;
+  searchSurah: string;
+  noSurahResults: string;
   settings: string;
   startVerse: string;
   endVerse: string;

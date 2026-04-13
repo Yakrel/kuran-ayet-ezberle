@@ -2,22 +2,19 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getTrackPlayerModule, getTrackPlayerUnavailableReason } from '../services/trackPlayer';
 import { getVerseAudioForPlayback, retainVerseRangeForPlaybackByReciter } from '../services/audioCache';
 import { getReciterOption, type ReciterId } from '../constants/reciters';
+import { getPreferredSurahAudioUri } from '../services/surahAudioCache';
 import type { SurahDetail, Verse } from '../types/quran';
 import {
   resolveActiveTrackIndex,
   type ActiveTrackChangedPayload,
 } from '../utils/resolveActiveTrackIndex';
+import {
+  resolveContinuousRepeatStep,
+  resolveContinuousVerseIndex,
+  type ContinuousBoundary,
+} from '../utils/continuousPlayback';
 
 type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped';
-
-type PlaybackSession = {
-  surahId: number;
-  startVerseNumber: number;
-  endVerseNumber: number;
-  repeatCount: number;
-  tracks: VerseTrack[];
-  totalDurationMs: number;
-};
 
 type VerseTrack = {
   id: string;
@@ -26,6 +23,37 @@ type VerseTrack = {
   durationMs: number;
   url: string;
 };
+
+type ContinuousVerseBoundary = ContinuousBoundary & {
+  verse: Verse;
+};
+
+type QueuePlaybackSession = {
+  mode: 'queue';
+  surahId: number;
+  startVerseNumber: number;
+  endVerseNumber: number;
+  repeatCount: number;
+  tracks: VerseTrack[];
+  totalDurationMs: number;
+};
+
+type ContinuousPlaybackSession = {
+  mode: 'continuous';
+  surahId: number;
+  startVerseNumber: number;
+  endVerseNumber: number;
+  repeatCount: number;
+  trackId: string;
+  surahAudioUrl: string;
+  boundaries: ContinuousVerseBoundary[];
+  rangeStartMs: number;
+  rangeEndMs: number;
+  rangeDurationMs: number;
+  totalDurationMs: number;
+};
+
+type PlaybackSession = QueuePlaybackSession | ContinuousPlaybackSession;
 
 type UseSegmentedPlayerOptions = {
   onError: (message: string | null) => void;
@@ -43,6 +71,12 @@ type StartPlaybackArgs = {
 
 type AudioCacheLease = Awaited<ReturnType<typeof retainVerseRangeForPlaybackByReciter>>;
 
+type TrackPlayerProgress = {
+  position: number;
+  duration: number;
+  buffered: number;
+};
+
 type TrackPlayerApi = {
   setupPlayer: () => Promise<void>;
   updateOptions: (options: unknown) => Promise<void>;
@@ -52,9 +86,13 @@ type TrackPlayerApi = {
   play: () => Promise<void>;
   pause: () => Promise<void>;
   stop: () => Promise<void>;
+  seekTo: (positionSeconds: number) => Promise<void>;
+  getProgress: () => Promise<TrackPlayerProgress>;
   setRate: (rate: number) => Promise<void>;
   addEventListener: (event: unknown, listener: (payload: unknown) => void) => { remove: () => void };
 };
+
+const ENABLE_GHAMDI_CONTINUOUS_PLAYBACK = false;
 
 function isTrackPlayerApi(value: unknown): value is TrackPlayerApi {
   if (!value || typeof value !== 'object') {
@@ -71,6 +109,8 @@ function isTrackPlayerApi(value: unknown): value is TrackPlayerApi {
     typeof candidate.play === 'function' &&
     typeof candidate.pause === 'function' &&
     typeof candidate.stop === 'function' &&
+    typeof candidate.seekTo === 'function' &&
+    typeof candidate.getProgress === 'function' &&
     typeof candidate.setRate === 'function' &&
     typeof candidate.addEventListener === 'function'
   );
@@ -108,16 +148,34 @@ function getVerseDurationMs(verse: Verse) {
   return Math.max(verse.timing?.duration_ms ?? 0, 1);
 }
 
-async function buildPlaybackTracks(
+function getSelectedVerses(
+  surahDetail: SurahDetail,
+  startVerseNumber: number,
+  endVerseNumber: number
+) {
+  return surahDetail.verses.filter(
+    (verse) => verse.verse_number >= startVerseNumber && verse.verse_number <= endVerseNumber
+  );
+}
+
+function supportsContinuousPlayback(reciterId: ReciterId, surahDetail: SurahDetail, verses: Verse[]) {
+  return (
+    ENABLE_GHAMDI_CONTINUOUS_PLAYBACK &&
+    reciterId === 'ghamdi' &&
+    Boolean(surahDetail.audio?.url) &&
+    verses.length > 0 &&
+    verses.every((verse) => Boolean(verse.timing))
+  );
+}
+
+async function buildQueuePlaybackSession(
   reciterId: ReciterId,
   surahDetail: SurahDetail,
   startVerseNumber: number,
   endVerseNumber: number,
   repeatCount: number
-) {
-  const selectedVerses = surahDetail.verses.filter(
-    (verse) => verse.verse_number >= startVerseNumber && verse.verse_number <= endVerseNumber
-  );
+): Promise<QueuePlaybackSession> {
+  const selectedVerses = getSelectedVerses(surahDetail, startVerseNumber, endVerseNumber);
 
   const verseAudio = await mapWithConcurrency(selectedVerses, 3, async (verse) => ({
     verse,
@@ -139,9 +197,61 @@ async function buildPlaybackTracks(
   }
 
   return {
-    selectedVerses,
+    mode: 'queue',
+    surahId: surahDetail.id,
+    startVerseNumber,
+    endVerseNumber,
+    repeatCount,
     tracks,
     totalDurationMs: tracks.reduce((sum, track) => sum + track.durationMs, 0),
+  };
+}
+
+async function buildContinuousPlaybackSession(
+  surahDetail: SurahDetail,
+  startVerseNumber: number,
+  endVerseNumber: number,
+  repeatCount: number
+): Promise<ContinuousPlaybackSession> {
+  if (!surahDetail.audio?.url) {
+    throw new Error('Continuous playback is unavailable because the surah audio is missing.');
+  }
+
+  const selectedVerses = getSelectedVerses(surahDetail, startVerseNumber, endVerseNumber);
+  const boundaries = selectedVerses.map((verse) => {
+    if (!verse.timing) {
+      throw new Error(`Continuous playback is unavailable for ayah ${verse.verse_number}.`);
+    }
+
+    return {
+      verse,
+      startTimeMs: verse.timing.time_from_ms,
+      endTimeMs: verse.timing.time_to_ms,
+    };
+  });
+
+  if (boundaries.length === 0) {
+    throw new Error('No playable ayahs found in the selected range.');
+  }
+
+  const rangeStartMs = boundaries[0].startTimeMs;
+  const rangeEndMs = boundaries[boundaries.length - 1].endTimeMs;
+  const rangeDurationMs = Math.max(rangeEndMs - rangeStartMs, 1);
+  const surahAudioUrl = await getPreferredSurahAudioUri(surahDetail.id, surahDetail.audio.url);
+
+  return {
+    mode: 'continuous',
+    surahId: surahDetail.id,
+    startVerseNumber,
+    endVerseNumber,
+    repeatCount,
+    trackId: `surah-${surahDetail.id}-continuous`,
+    surahAudioUrl,
+    boundaries,
+    rangeStartMs,
+    rangeEndMs,
+    rangeDurationMs,
+    totalDurationMs: rangeDurationMs * repeatCount,
   };
 }
 
@@ -174,11 +284,15 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
 
   const sessionRef = useRef<PlaybackSession | null>(null);
   const currentTrackIndexRef = useRef(0);
+  const currentRepeatRef = useRef(1);
+  const continuousVerseIndexRef = useRef(0);
   const playbackRateRef = useRef(1.0);
   const setupPromiseRef = useRef<Promise<void> | null>(null);
   const playbackLeaseRef = useRef<AudioCacheLease | null>(null);
   const playbackRequestIdRef = useRef(0);
   const pendingPlayTransitionRef = useRef(false);
+  const continuousBoundaryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const continuousTransitionInFlightRef = useRef(false);
 
   const releasePlaybackLease = useCallback(async () => {
     const lease = playbackLeaseRef.current;
@@ -188,9 +302,16 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     }
   }, []);
 
-  const syncActiveState = useCallback(() => {
-    const activeTrack = sessionRef.current?.tracks[currentTrackIndexRef.current] ?? null;
-    const nextActiveVerse = activeTrack?.verse ?? null;
+  const clearContinuousBoundaryTimer = useCallback(() => {
+    if (continuousBoundaryTimerRef.current) {
+      clearTimeout(continuousBoundaryTimerRef.current);
+      continuousBoundaryTimerRef.current = null;
+    }
+  }, []);
+
+  const syncVisibleState = useCallback((nextActiveVerse: Verse | null, repeatIndex: number) => {
+    currentRepeatRef.current = repeatIndex;
+    setCurrentRepeat(repeatIndex);
     setActiveVerse((previous) => {
       if (
         previous?.surah_id === nextActiveVerse?.surah_id &&
@@ -202,23 +323,32 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
       onActiveVerseChange?.(nextActiveVerse);
       return nextActiveVerse;
     });
-    setCurrentRepeat(activeTrack?.repeatIndex ?? 1);
   }, [onActiveVerseChange]);
 
-  const setPlaybackRate = useCallback(async (rate: number) => {
-    const TrackPlayer = getPlayerApi();
-    if (!TrackPlayer) {
+  const syncQueueActiveState = useCallback(() => {
+    const session = sessionRef.current;
+    if (!session || session.mode !== 'queue') {
       return;
     }
 
-    try {
-      await TrackPlayer.setRate(rate);
-      playbackRateRef.current = rate;
-      setPlaybackRateState(rate);
-    } catch (error) {
-      onError(error instanceof Error ? error.message : 'Failed to set playback rate.');
+    const activeTrack = session.tracks[currentTrackIndexRef.current] ?? null;
+    syncVisibleState(activeTrack?.verse ?? null, activeTrack?.repeatIndex ?? 1);
+  }, [syncVisibleState]);
+
+  const syncContinuousActiveState = useCallback((positionMs: number) => {
+    const session = sessionRef.current;
+    if (!session || session.mode !== 'continuous') {
+      return;
     }
-  }, [onError]);
+
+    const nextVerseIndex = resolveContinuousVerseIndex(session.boundaries, positionMs);
+    if (continuousVerseIndexRef.current === nextVerseIndex) {
+      return;
+    }
+
+    continuousVerseIndexRef.current = nextVerseIndex;
+    syncVisibleState(session.boundaries[nextVerseIndex]?.verse ?? null, currentRepeatRef.current);
+  }, [syncVisibleState]);
 
   const ensurePlayerSetup = useCallback(async () => {
     const playerModule = getTrackPlayerModule();
@@ -242,9 +372,10 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
         }
 
         await TrackPlayer.updateOptions({
-          capabilities: [Capability.Play, Capability.Pause, Capability.Stop],
+          capabilities: [Capability.Play, Capability.Pause, Capability.Stop, Capability.SeekTo],
           compactCapabilities: [Capability.Play, Capability.Pause, Capability.Stop],
-          notificationCapabilities: [Capability.Play, Capability.Pause, Capability.Stop],
+          notificationCapabilities: [Capability.Play, Capability.Pause, Capability.Stop, Capability.SeekTo],
+          progressUpdateEventInterval: 0.1,
         });
         await TrackPlayer.setRepeatMode(RepeatMode.Off);
         await TrackPlayer.setRate(playbackRateRef.current);
@@ -257,6 +388,112 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     await setupPromiseRef.current;
     return { playerModule, TrackPlayer };
   }, [onError]);
+
+  const completeActiveSession = useCallback(async (resetPlayer = true) => {
+    clearContinuousBoundaryTimer();
+    continuousTransitionInFlightRef.current = false;
+    currentTrackIndexRef.current = 0;
+    continuousVerseIndexRef.current = 0;
+    currentRepeatRef.current = 1;
+    setCurrentRepeat(1);
+    pendingPlayTransitionRef.current = false;
+
+    const TrackPlayer = getPlayerApi();
+    if (resetPlayer && TrackPlayer) {
+      await TrackPlayer.stop().catch(() => undefined);
+      await TrackPlayer.reset().catch(() => undefined);
+    }
+
+    sessionRef.current = null;
+    await releasePlaybackLease();
+  }, [clearContinuousBoundaryTimer, releasePlaybackLease]);
+
+  const scheduleContinuousBoundaryTimer = useCallback(async (remainingMs?: number) => {
+    const session = sessionRef.current;
+    if (!session || session.mode !== 'continuous') {
+      return;
+    }
+
+    clearContinuousBoundaryTimer();
+
+    const TrackPlayer = getPlayerApi();
+    if (!TrackPlayer) {
+      return;
+    }
+
+    let nextRemainingMs = remainingMs;
+    if (nextRemainingMs === undefined) {
+      const progress = await TrackPlayer.getProgress();
+      const positionMs = Math.round(progress.position * 1000);
+      nextRemainingMs = Math.max(session.rangeEndMs - positionMs, 0);
+    }
+
+    const playbackRateValue = Math.max(playbackRateRef.current, 0.1);
+    const timeoutMs = Math.max(Math.ceil(nextRemainingMs / playbackRateValue), 0);
+
+    continuousBoundaryTimerRef.current = setTimeout(() => {
+      const run = async () => {
+        if (continuousTransitionInFlightRef.current) {
+          return;
+        }
+
+        const currentSession = sessionRef.current;
+        if (!currentSession || currentSession.mode !== 'continuous') {
+          return;
+        }
+
+        const currentPlayer = getPlayerApi();
+        if (!currentPlayer) {
+          return;
+        }
+
+        continuousTransitionInFlightRef.current = true;
+        clearContinuousBoundaryTimer();
+
+        try {
+          const repeatStep = resolveContinuousRepeatStep(currentRepeatRef.current, currentSession.repeatCount);
+          if (repeatStep.action === 'repeat') {
+            continuousVerseIndexRef.current = 0;
+            syncVisibleState(currentSession.boundaries[0]?.verse ?? null, repeatStep.nextRepeat);
+            await currentPlayer.seekTo(currentSession.rangeStartMs / 1000);
+            await scheduleContinuousBoundaryTimer(currentSession.rangeDurationMs);
+            return;
+          }
+
+          await completeActiveSession();
+          setPlaybackStatus('stopped');
+        } catch (error) {
+          await completeActiveSession();
+          setPlaybackStatus('stopped');
+          onError(error instanceof Error ? error.message : 'Playback failed.');
+        } finally {
+          continuousTransitionInFlightRef.current = false;
+        }
+      };
+
+      void run();
+    }, timeoutMs);
+  }, [clearContinuousBoundaryTimer, completeActiveSession, onError, syncVisibleState]);
+
+  const setPlaybackRate = useCallback(async (rate: number) => {
+    const TrackPlayer = getPlayerApi();
+    if (!TrackPlayer) {
+      return;
+    }
+
+    try {
+      await TrackPlayer.setRate(rate);
+      playbackRateRef.current = rate;
+      setPlaybackRateState(rate);
+
+      const session = sessionRef.current;
+      if (session?.mode === 'continuous' && playbackStatus === 'playing') {
+        await scheduleContinuousBoundaryTimer();
+      }
+    } catch (error) {
+      onError(error instanceof Error ? error.message : 'Failed to set playback rate.');
+    }
+  }, [onError, playbackStatus, scheduleContinuousBoundaryTimer]);
 
   useEffect(() => {
     let isMounted = true;
@@ -278,6 +515,17 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
               return;
             }
 
+            if (nextStatus === 'playing') {
+              const session = sessionRef.current;
+              if (session?.mode === 'continuous') {
+                void scheduleContinuousBoundaryTimer();
+              }
+            }
+
+            if (nextStatus === 'paused' || nextStatus === 'stopped' || nextStatus === 'idle') {
+              clearContinuousBoundaryTimer();
+            }
+
             if (nextStatus === 'playing' || nextStatus === 'stopped' || nextStatus === 'idle') {
               pendingPlayTransitionRef.current = false;
             }
@@ -289,19 +537,34 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
         const activeTrackSubscription = TrackPlayer.addEventListener(
           playerModule.Event.PlaybackActiveTrackChanged,
           (payload: unknown) => {
+            const session = sessionRef.current;
+            if (!session || session.mode !== 'queue') {
+              return;
+            }
+
             const nextEvent = payload as ActiveTrackChangedPayload;
-            const tracks = sessionRef.current?.tracks ?? [];
-            const nextIndex = resolveActiveTrackIndex(nextEvent, tracks);
+            const nextIndex = resolveActiveTrackIndex(nextEvent, session.tracks);
 
             if (nextIndex === null) {
               return;
             }
 
             currentTrackIndexRef.current = Math.max(0, nextIndex);
-            const activeTrack = sessionRef.current?.tracks[currentTrackIndexRef.current] ?? null;
-            if (activeTrack) {
-              syncActiveState();
+            syncQueueActiveState();
+          }
+        );
+
+        const progressSubscription = TrackPlayer.addEventListener(
+          playerModule.Event.PlaybackProgressUpdated,
+          (payload: unknown) => {
+            const session = sessionRef.current;
+            if (!session || session.mode !== 'continuous') {
+              return;
             }
+
+            const nextProgress = payload as Partial<TrackPlayerProgress>;
+            const positionMs = Math.round((nextProgress.position ?? 0) * 1000);
+            syncContinuousActiveState(positionMs);
           }
         );
 
@@ -309,16 +572,14 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
           playerModule.Event.PlaybackQueueEnded,
           () => {
             const session = sessionRef.current;
-            if (!session) {
+            if (!session || session.mode !== 'queue') {
               return;
             }
 
-            currentTrackIndexRef.current = 0;
-            setCurrentRepeat(1);
-            pendingPlayTransitionRef.current = false;
-            setPlaybackStatus('stopped');
-            sessionRef.current = null;
-            void releasePlaybackLease();
+            void (async () => {
+              await completeActiveSession(false);
+              setPlaybackStatus('stopped');
+            })();
           }
         );
 
@@ -326,17 +587,19 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
           playerModule.Event.PlaybackError,
           (payload: unknown) => {
             const nextError = payload as { message?: string };
-            onError(nextError.message ?? 'Playback failed.');
-            sessionRef.current = null;
-            pendingPlayTransitionRef.current = false;
-            setPlaybackStatus('stopped');
-            void releasePlaybackLease();
+
+            void (async () => {
+              await completeActiveSession(false);
+              setPlaybackStatus('stopped');
+              onError(nextError.message ?? 'Playback failed.');
+            })();
           }
         );
 
         cleanups.push(() => {
           stateSubscription.remove();
           activeTrackSubscription.remove();
+          progressSubscription.remove();
           queueEndedSubscription.remove();
           errorSubscription.remove();
         });
@@ -347,12 +610,22 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
 
     return () => {
       isMounted = false;
+      clearContinuousBoundaryTimer();
       void releasePlaybackLease();
       for (const cleanup of cleanups) {
         cleanup();
       }
     };
-  }, [ensurePlayerSetup, onActiveVerseChange, onError, releasePlaybackLease, syncActiveState]);
+  }, [
+    clearContinuousBoundaryTimer,
+    completeActiveSession,
+    ensurePlayerSetup,
+    onError,
+    releasePlaybackLease,
+    scheduleContinuousBoundaryTimer,
+    syncContinuousActiveState,
+    syncQueueActiveState,
+  ]);
 
   const startPlayback = useCallback(async ({
     surahDetail,
@@ -367,69 +640,72 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     pendingPlayTransitionRef.current = true;
     setPlaybackStatus('loading');
     onError(null);
+    clearContinuousBoundaryTimer();
 
-    const selectedVerses = surahDetail.verses.filter(
-      (verse) => verse.verse_number >= startVerseNumber && verse.verse_number <= endVerseNumber
-    );
-    const nextLease = await retainVerseRangeForPlaybackByReciter(
-      startReciterId,
-      selectedVerses.map((verse) => ({
-        surahId: verse.surah_id,
-        verseNumber: verse.verse_number,
-      }))
-    );
+    const selectedVerses = getSelectedVerses(surahDetail, startVerseNumber, endVerseNumber);
 
     try {
       const { TrackPlayer } = await ensurePlayerSetup();
       const reciter = getReciterOption(startReciterId);
-      const { tracks, totalDurationMs } = await buildPlaybackTracks(
-        startReciterId,
-        surahDetail,
-        startVerseNumber,
-        endVerseNumber,
-        repeatCount
-      );
+      const nextSession = supportsContinuousPlayback(startReciterId, surahDetail, selectedVerses)
+        ? await buildContinuousPlaybackSession(surahDetail, startVerseNumber, endVerseNumber, repeatCount)
+        : await buildQueuePlaybackSession(startReciterId, surahDetail, startVerseNumber, endVerseNumber, repeatCount);
+
+      let nextLease: AudioCacheLease | null = null;
+      if (nextSession.mode === 'queue') {
+        nextLease = await retainVerseRangeForPlaybackByReciter(
+          startReciterId,
+          selectedVerses.map((verse) => ({
+            surahId: verse.surah_id,
+            verseNumber: verse.verse_number,
+          }))
+        );
+      }
 
       if (requestId !== playbackRequestIdRef.current) {
         pendingPlayTransitionRef.current = false;
-        await nextLease.release();
-        if (playbackLeaseRef.current === nextLease) {
-          playbackLeaseRef.current = null;
-        }
+        await nextLease?.release();
         return;
       }
 
-      if (tracks.length === 0) {
-        throw new Error('No playable ayahs found in the selected range.');
-      }
-
-      await releasePlaybackLease();
+      await completeActiveSession();
       playbackLeaseRef.current = nextLease;
-
-      sessionRef.current = {
-        surahId: surahDetail.id,
-        startVerseNumber,
-        endVerseNumber,
-        repeatCount,
-        tracks,
-        totalDurationMs,
-      };
+      sessionRef.current = nextSession;
       currentTrackIndexRef.current = 0;
+      continuousVerseIndexRef.current = 0;
       setLoadedSurahId(surahDetail.id);
-      setCurrentRepeat(1);
-      setActiveVerse(tracks[0].verse);
-      onActiveVerseChange?.(tracks[0].verse);
 
-      await TrackPlayer.reset();
-      await TrackPlayer.add(
-        tracks.map((track) => ({
-          id: track.id,
-          url: track.url,
-          title: `${surahDetail.name} ${track.verse.verse_number}`,
+      if (nextSession.mode === 'continuous') {
+        syncVisibleState(nextSession.boundaries[0]?.verse ?? null, 1);
+
+        await TrackPlayer.reset();
+        await TrackPlayer.add({
+          id: nextSession.trackId,
+          url: nextSession.surahAudioUrl,
+          title: `${surahDetail.name} ${startVerseNumber}-${endVerseNumber}`,
           artist: reciter.artist,
-        }))
-      );
-      await TrackPlayer.play();
+        });
+        await TrackPlayer.seekTo(nextSession.rangeStartMs / 1000);
+        await TrackPlayer.play();
+        await scheduleContinuousBoundaryTimer(nextSession.rangeDurationMs);
+      } else {
+        if (nextSession.tracks.length === 0) {
+          throw new Error('No playable ayahs found in the selected range.');
+        }
+
+        syncVisibleState(nextSession.tracks[0].verse, 1);
+
+        await TrackPlayer.reset();
+        await TrackPlayer.add(
+          nextSession.tracks.map((track) => ({
+            id: track.id,
+            url: track.url,
+            title: `${surahDetail.name} ${track.verse.verse_number}`,
+            artist: reciter.artist,
+          }))
+        );
+        await TrackPlayer.play();
+      }
 
       if (requestId === playbackRequestIdRef.current) {
         pendingPlayTransitionRef.current = false;
@@ -437,16 +713,11 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
       }
     } catch (error) {
       pendingPlayTransitionRef.current = false;
-      if (playbackLeaseRef.current === nextLease) {
-        await releasePlaybackLease();
-      } else {
-        await nextLease.release();
-      }
-      sessionRef.current = null;
+      await completeActiveSession();
       setPlaybackStatus('stopped');
       throw error;
     }
-  }, [ensurePlayerSetup, onActiveVerseChange, onError, releasePlaybackLease]);
+  }, [clearContinuousBoundaryTimer, completeActiveSession, ensurePlayerSetup, onError, scheduleContinuousBoundaryTimer, syncVisibleState]);
 
   const pausePlayback = useCallback(async () => {
     const TrackPlayer = getPlayerApi();
@@ -454,9 +725,10 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
       return;
     }
 
+    clearContinuousBoundaryTimer();
     await TrackPlayer.pause();
     setPlaybackStatus('paused');
-  }, []);
+  }, [clearContinuousBoundaryTimer]);
 
   const resumePlayback = useCallback(async () => {
     const TrackPlayer = getPlayerApi();
@@ -467,29 +739,20 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     pendingPlayTransitionRef.current = true;
     await TrackPlayer.play();
     pendingPlayTransitionRef.current = false;
-    setPlaybackStatus('playing');
-  }, []);
 
-  const stopPlayback = useCallback(async () => {
-    const TrackPlayer = getPlayerApi();
-    playbackRequestIdRef.current += 1;
-    pendingPlayTransitionRef.current = false;
-    currentTrackIndexRef.current = 0;
-    setCurrentRepeat(1);
-
-    if (!TrackPlayer) {
-      sessionRef.current = null;
-      await releasePlaybackLease();
-      setPlaybackStatus('stopped');
-      return;
+    const session = sessionRef.current;
+    if (session?.mode === 'continuous') {
+      await scheduleContinuousBoundaryTimer();
     }
 
-    await TrackPlayer.stop().catch(() => undefined);
-    await TrackPlayer.reset().catch(() => undefined);
-    sessionRef.current = null;
-    await releasePlaybackLease();
+    setPlaybackStatus('playing');
+  }, [scheduleContinuousBoundaryTimer]);
+
+  const stopPlayback = useCallback(async () => {
+    playbackRequestIdRef.current += 1;
+    await completeActiveSession();
     setPlaybackStatus('stopped');
-  }, [releasePlaybackLease]);
+  }, [completeActiveSession]);
 
   const seekToVerse = useCallback(async (surahDetail: SurahDetail, verseNumber: number, shouldPlay = true) => {
     await startPlayback({

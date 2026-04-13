@@ -1,8 +1,9 @@
-import { useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { SurahSummary } from '../types/quran';
 import { useTheme } from '../hooks/useTheme';
+import { useI18n } from '../hooks/useI18n';
 
 type SurahPickerProps = {
   surahs: SurahSummary[];
@@ -12,6 +13,14 @@ type SurahPickerProps = {
   label?: string;
 };
 
+function normalizeSearchText(value: string) {
+  return value
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
 export function SurahPicker({
   surahs,
   selectedSurahId,
@@ -20,12 +29,33 @@ export function SurahPicker({
   label,
 }: SurahPickerProps) {
   const { theme, themeType } = useTheme();
+  const { text } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState('');
 
   const selectedSurah = useMemo(
     () => surahs.find((surah) => surah.id === selectedSurahId) ?? null,
     [selectedSurahId, surahs]
   );
+
+  const filteredSurahs = useMemo(() => {
+    const normalizedQuery = normalizeSearchText(query.trim());
+    if (!normalizedQuery) {
+      return surahs;
+    }
+
+    return surahs.filter((surah) => {
+      const idMatch = String(surah.id).includes(normalizedQuery);
+      const nameMatch = normalizeSearchText(surah.name).includes(normalizedQuery);
+      return idMatch || nameMatch;
+    });
+  }, [query, surahs]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setQuery('');
+    }
+  }, [isOpen]);
 
   if (isFetchingSurahs) {
     return (
@@ -62,8 +92,24 @@ export function SurahPicker({
               </Pressable>
             </View>
 
+            <View style={[styles.searchWrap, { borderBottomColor: theme.colors.BORDER_SECONDARY }]}>
+              <View style={[styles.searchInputWrap, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}>
+                <Feather name="search" size={16} color={theme.colors.TEXT_MUTED} />
+                <TextInput
+                  value={query}
+                  onChangeText={setQuery}
+                  placeholder={text.searchSurah}
+                  placeholderTextColor={theme.colors.TEXT_PLACEHOLDER}
+                  style={[styles.searchInput, { color: theme.colors.TEXT_PRIMARY }]}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  clearButtonMode="while-editing"
+                />
+              </View>
+            </View>
+
             <ScrollView contentContainerStyle={styles.options}>
-              {surahs.map((surah) => {
+              {filteredSurahs.map((surah) => {
                 const isSelected = surah.id === selectedSurahId;
 
                 return (
@@ -96,6 +142,11 @@ export function SurahPicker({
                   </Pressable>
                 );
               })}
+              {filteredSurahs.length === 0 ? (
+                <View style={[styles.emptyState, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}>
+                  <Text style={[styles.emptyStateText, { color: theme.colors.TEXT_MUTED }]}>{text.noSurahResults}</Text>
+                </View>
+              ) : null}
             </ScrollView>
           </View>
         </View>
@@ -171,6 +222,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  searchWrap: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 4,
+    borderBottomWidth: 1,
+  },
+  searchInputWrap: {
+    minHeight: 44,
+    borderRadius: 14,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    paddingVertical: 0,
+  },
   options: {
     padding: 12,
     gap: 8,
@@ -200,5 +271,17 @@ const styles = StyleSheet.create({
   },
   optionMeta: {
     fontSize: 14,
+  },
+  emptyState: {
+    minHeight: 64,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  emptyStateText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
 });

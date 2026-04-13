@@ -8,6 +8,7 @@ import type { SurahSummary } from '../types/quran';
 import { useTheme } from '../hooks/useTheme';
 import { onlyDigits } from '../utils/parsers';
 import { UI_SIZES } from '../constants/spacing';
+import { TOTAL_QURAN_PAGES } from '../constants/defaults';
 
 type CompactHeaderProps = {
   // Surah & Page
@@ -80,6 +81,7 @@ export function CompactHeader({
 }: CompactHeaderProps) {
   const { theme, themeType } = useTheme();
   const [rangeModalType, setRangeModalType] = useState<'start' | 'end' | 'repeat' | null>(null);
+  const normalizedCurrentPageInput = currentPageInput === '0' ? '1' : currentPageInput;
 
   const isPlaying = playbackStatus === 'playing';
   const isPaused = playbackStatus === 'paused';
@@ -113,14 +115,14 @@ export function CompactHeader({
 
           <View style={[styles.pageInputWrap, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}>
             <TextInput
-              value={currentPageInput}
+              value={normalizedCurrentPageInput}
               onChangeText={(text) => onCurrentPageChange(onlyDigits(text))}
               onSubmitEditing={onCurrentPageSubmit}
               keyboardType="number-pad"
               style={[styles.pageInput, { color: theme.colors.TEXT_PRIMARY }]}
               selectTextOnFocus
             />
-            <Text style={[styles.pageTotal, { color: theme.colors.TEXT_MUTED }]}>/604</Text>
+            <Text style={[styles.pageTotal, { color: theme.colors.TEXT_MUTED }]}>/{TOTAL_QURAN_PAGES}</Text>
           </View>
 
           <Pressable
