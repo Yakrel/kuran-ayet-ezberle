@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getTrackPlayerModule, getTrackPlayerUnavailableReason } from '../services/trackPlayer';
 import { getVerseAudioForPlayback, retainVerseRangeForPlaybackByReciter } from '../services/audioCache';
 import { getReciterOption, type ReciterId } from '../constants/reciters';
+import { appendAudioDiagnosticLog } from '../services/audioDiagnostics';
 import { getPreferredSurahAudioUri } from '../services/surahAudioCache';
 import type { SurahDetail, Verse } from '../types/quran';
 import {
@@ -92,7 +93,9 @@ type TrackPlayerApi = {
   addEventListener: (event: unknown, listener: (payload: unknown) => void) => { remove: () => void };
 };
 
-const ENABLE_GHAMDI_CONTINUOUS_PLAYBACK = false;
+// Ghamdi has per-ayah timing metadata plus full-surah audio, so use a single
+// continuous track to avoid decoder/network gaps between individual ayah files.
+const ENABLE_GHAMDI_CONTINUOUS_PLAYBACK = true;
 
 function isTrackPlayerApi(value: unknown): value is TrackPlayerApi {
   if (!value || typeof value !== 'object') {
@@ -375,6 +378,9 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
           capabilities: [Capability.Play, Capability.Pause, Capability.Stop, Capability.SeekTo],
           compactCapabilities: [Capability.Play, Capability.Pause, Capability.Stop],
           notificationCapabilities: [Capability.Play, Capability.Pause, Capability.Stop, Capability.SeekTo],
+          android: {
+            appKilledPlaybackBehavior: playerModule.AppKilledPlaybackBehavior.StopPlaybackAndRemoveNotification,
+          },
           progressUpdateEventInterval: 0.1,
         });
         await TrackPlayer.setRepeatMode(RepeatMode.Off);
@@ -396,6 +402,8 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     continuousVerseIndexRef.current = 0;
     currentRepeatRef.current = 1;
     setCurrentRepeat(1);
+    setActiveVerse(null);
+    setLoadedSurahId(null);
     pendingPlayTransitionRef.current = false;
 
     const TrackPlayer = getPlayerApi();
@@ -669,11 +677,25 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
       }
 
       await completeActiveSession();
+      if (requestId !== playbackRequestIdRef.current) {
+        pendingPlayTransitionRef.current = false;
+        await nextLease?.release();
+        return;
+      }
+
       playbackLeaseRef.current = nextLease;
       sessionRef.current = nextSession;
       currentTrackIndexRef.current = 0;
       continuousVerseIndexRef.current = 0;
       setLoadedSurahId(surahDetail.id);
+      void appendAudioDiagnosticLog('playback_start', {
+        mode: nextSession.mode,
+        surahId: surahDetail.id,
+        startVerseNumber,
+        endVerseNumber,
+        repeatCount,
+        reciterId: startReciterId,
+      });
 
       if (nextSession.mode === 'continuous') {
         syncVisibleState(nextSession.boundaries[0]?.verse ?? null, 1);
@@ -727,12 +749,14 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
 
     clearContinuousBoundaryTimer();
     await TrackPlayer.pause();
+    void appendAudioDiagnosticLog('playback_pause');
     setPlaybackStatus('paused');
   }, [clearContinuousBoundaryTimer]);
 
   const resumePlayback = useCallback(async () => {
     const TrackPlayer = getPlayerApi();
-    if (!TrackPlayer) {
+    const session = sessionRef.current;
+    if (!TrackPlayer || !session) {
       return;
     }
 
@@ -740,17 +764,21 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     await TrackPlayer.play();
     pendingPlayTransitionRef.current = false;
 
-    const session = sessionRef.current;
     if (session?.mode === 'continuous') {
       await scheduleContinuousBoundaryTimer();
     }
 
+    void appendAudioDiagnosticLog('playback_resume', {
+      surahId: session?.surahId ?? null,
+      mode: session?.mode ?? null,
+    });
     setPlaybackStatus('playing');
   }, [scheduleContinuousBoundaryTimer]);
 
   const stopPlayback = useCallback(async () => {
     playbackRequestIdRef.current += 1;
     await completeActiveSession();
+    void appendAudioDiagnosticLog('playback_stop');
     setPlaybackStatus('stopped');
   }, [completeActiveSession]);
 

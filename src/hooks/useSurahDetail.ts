@@ -16,6 +16,8 @@ export function useSurahDetail(
   useEffect(() => {
     if (surahId === null) {
       setSurahDetail(null);
+      setIsFetchingSurahDetail(false);
+      setError(null);
       return;
     }
 
@@ -23,6 +25,7 @@ export function useSurahDetail(
     let isActive = true;
 
     async function loadSurahDetail(): Promise<void> {
+      setSurahDetail(null);
       setIsFetchingSurahDetail(true);
       setError(null);
       try {

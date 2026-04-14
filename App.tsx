@@ -1,8 +1,9 @@
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFonts } from 'expo-font';
 import {
   ActivityIndicator,
+  AppState,
   Alert,
   KeyboardAvoidingView,
   Modal,
@@ -43,7 +44,6 @@ import {
 } from './src/constants/quranFonts';
 import { useComputedState } from './src/hooks/useComputedState';
 import { useI18n } from './src/hooks/useI18n';
-import { usePageNavigation } from './src/hooks/usePageNavigation';
 import { useSegmentedPlayer } from './src/hooks/useSegmentedPlayer';
 import { useSurahDetail } from './src/hooks/useSurahDetail';
 import { useSurahs } from './src/hooks/useSurahs';
@@ -56,7 +56,11 @@ import {
   getCacheStats,
   initializeAudioCache,
 } from './src/services/audioCache';
-import { clearAudioDiagnosticLog, getAudioDiagnosticLog } from './src/services/audioDiagnostics';
+import {
+  appendAudioDiagnosticLog,
+  clearAudioDiagnosticLog,
+  getAudioDiagnosticLog,
+} from './src/services/audioDiagnostics';
 import { clearAllSurahAudio } from './src/services/surahAudioCache';
 import { fetchPageVerses } from './src/services/quranService';
 import { commonStyles } from './src/styles/common';
@@ -67,6 +71,20 @@ import { defaultTranslationAuthorByLanguage } from './src/utils/language';
 import { parsePositiveInt, parseSurahId } from './src/utils/parsers';
 
 void SplashScreen.preventAutoHideAsync();
+
+type PendingNavigationIntent =
+  | {
+      type: 'jump_to_verse';
+      surahId: number;
+      verseNumber: number;
+      syncRange: boolean;
+    }
+  | {
+      type: 'boundary';
+      surahId: number;
+      boundary: 'first' | 'last';
+      syncRange: boolean;
+    };
 
 function MainApp() {
   const [fontsLoaded] = useFonts({
@@ -104,10 +122,12 @@ function MainApp() {
   const [downloadProgressLabel, setDownloadProgressLabel] = useState('');
   const [audioDiagnosticLog, setAudioDiagnosticLog] = useState('');
 
-  const pendingPageJumpRef = useRef<{ surahId: number; page: number; verseNumber: number } | null>(null);
+  const pendingNavigationIntentRef = useRef<PendingNavigationIntent | null>(null);
+  const didHydrateRef = useRef(false);
+  const previousReciterIdRef = useRef<ReciterId | null>(null);
 
   const { surahs, isFetchingSurahs, error: surahsError } = useSurahs(text.loadingSurahsError);
-  const { surahDetail, error: surahDetailError } = useSurahDetail(
+  const { surahDetail, isFetchingSurahDetail, error: surahDetailError } = useSurahDetail(
     selectedSurahId,
     selectedTranslationAuthorId,
     selectedReciterId,
@@ -149,25 +169,36 @@ function MainApp() {
   const selectedReciter = useMemo(() => getReciterOption(selectedReciterId), [selectedReciterId]);
   const ayahTrackingAvailable = useMemo(() => hasEmbeddedTracking(selectedReciterId), [selectedReciterId]);
 
-  const pageNavigation = usePageNavigation(
-    computed.allPages,
-    computed.currentPageIndex,
-    selectedSurahId,
-    surahDetail,
-    surahs,
-    computed.surahIndex,
-    currentPage,
-    setCurrentPage,
-    () => undefined,
-    setVisibleVerseLocation,
-    setSelectedSurahId,
-    player.stopPlayback
-  );
+  const logUiEvent = useCallback((step: string, payload?: Record<string, unknown>) => {
+    void appendAudioDiagnosticLog(step, payload);
+  }, []);
 
-  const pageSwipeResponder = useSwipeGesture(
-    pageNavigation.goToNextPage,
-    pageNavigation.goToPreviousPage
-  );
+  const getCurrentRangeSize = useCallback(() => {
+    const startVerse = parsePositiveInt(startVerseInput) ?? 1;
+    const endVerse = parsePositiveInt(endVerseInput) ?? startVerse;
+    return Math.max(endVerse - startVerse, 0);
+  }, [endVerseInput, startVerseInput]);
+
+  const applyViewportToVerse = useCallback((verse: Verse) => {
+    setCurrentPage(verse.page);
+    setVisibleVerseLocation({
+      surah_id: verse.surah_id,
+      verse_number: verse.verse_number,
+      page: verse.page,
+    });
+  }, []);
+
+  const syncRangeFromAnchor = useCallback((anchorVerseNumber: number, verseCount: number) => {
+    const rangeSize = getCurrentRangeSize();
+    const nextStartVerse = Math.min(Math.max(anchorVerseNumber, 1), verseCount);
+    const nextEndVerse = Math.min(nextStartVerse + rangeSize, verseCount);
+    setStartVerseInput(String(nextStartVerse));
+    setEndVerseInput(String(nextEndVerse));
+    return {
+      startVerse: nextStartVerse,
+      endVerse: nextEndVerse,
+    };
+  }, [getCurrentRangeSize]);
 
   useEffect(() => {
     async function loadPersistedState() {
@@ -201,12 +232,15 @@ function MainApp() {
         setIsAyahTrackingEnabled(savedAyahTracking);
       }
       if (savedAyahTracking && lastVerse) {
-        pendingPageJumpRef.current = {
+        pendingNavigationIntentRef.current = {
+          type: 'jump_to_verse',
           surahId: lastVerse.surahId,
-          page: 1,
           verseNumber: lastVerse.verseNumber,
+          syncRange: true,
         };
       }
+
+      didHydrateRef.current = true;
     }
 
     void loadPersistedState();
@@ -219,6 +253,18 @@ function MainApp() {
       setAudioDiagnosticLog(await getAudioDiagnosticLog());
     })();
   }, [selectedReciterId]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background') {
+        void player.stopPlayback();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [player.stopPlayback]);
 
   useEffect(() => {
     const normalizedCurrentPage = Math.max(1, currentPage);
@@ -289,6 +335,25 @@ function MainApp() {
   }, [selectedReciterId]);
 
   useEffect(() => {
+    if (!didHydrateRef.current) {
+      previousReciterIdRef.current = selectedReciterId;
+      return;
+    }
+
+    const previousReciterId = previousReciterIdRef.current;
+    previousReciterIdRef.current = selectedReciterId;
+
+    if (previousReciterId && previousReciterId !== selectedReciterId) {
+      logUiEvent('ui_reciter_changed', {
+        from: previousReciterId,
+        to: selectedReciterId,
+        playbackStatus: player.playbackStatus,
+      });
+      void player.stopPlayback();
+    }
+  }, [logUiEvent, player.playbackStatus, player.stopPlayback, selectedReciterId]);
+
+  useEffect(() => {
     if (!isDownloadManagerOpen) {
       return;
     }
@@ -308,65 +373,120 @@ function MainApp() {
       return;
     }
 
-    const pending = pendingPageJumpRef.current;
-    const targetVerse = pending?.surahId === surahDetail.id
-      ? surahDetail.verses.find((verse) => verse.verse_number === pending.verseNumber)
-      : null;
-    const initialVerse = targetVerse ?? surahDetail.verses[0] ?? null;
+    const pendingIntent = pendingNavigationIntentRef.current;
+    let targetVerse: Verse | null = null;
 
-    if (!initialVerse) {
+    if (pendingIntent?.surahId === surahDetail.id) {
+      if (pendingIntent.type === 'jump_to_verse') {
+        targetVerse = surahDetail.verses.find((verse) => verse.verse_number === pendingIntent.verseNumber) ?? null;
+      } else {
+        targetVerse =
+          pendingIntent.boundary === 'first'
+            ? (surahDetail.verses[0] ?? null)
+            : (surahDetail.verses[surahDetail.verses.length - 1] ?? null);
+      }
+    } else if (visibleVerseLocation?.surah_id === surahDetail.id) {
+      targetVerse =
+        surahDetail.verses.find((verse) => verse.verse_number === visibleVerseLocation.verse_number) ?? null;
+    } else if (computed.currentPageVerses.length > 0) {
+      targetVerse = computed.currentPageVerses[0] ?? null;
+    } else {
+      targetVerse = surahDetail.verses[0] ?? null;
+    }
+
+    if (!targetVerse) {
       return;
     }
 
-    pendingPageJumpRef.current = null;
-    setCurrentPage(targetVerse?.page ?? initialVerse.page);
-    setVisibleVerseLocation({
-      surah_id: initialVerse.surah_id,
-      verse_number: initialVerse.verse_number,
-      page: targetVerse?.page ?? initialVerse.page,
-    });
-    setStartVerseInput(String(targetVerse?.verse_number ?? initialVerse.verse_number));
-    setEndVerseInput(String(Math.min(surahDetail.verse_count, (targetVerse?.verse_number ?? initialVerse.verse_number) + DEFAULT_RANGE_SIZE - 1)));
-  }, [surahDetail]);
+    applyViewportToVerse(targetVerse);
 
-  const resolveRange = useMemo(() => {
-    return (overrideStartVerse?: number) => {
-      if (!surahDetail) {
-        throw new Error(text.surahNotReady);
-      }
+    if (pendingIntent?.surahId === surahDetail.id && pendingIntent.syncRange) {
+      syncRangeFromAnchor(targetVerse.verse_number, surahDetail.verse_count);
+      pendingNavigationIntentRef.current = null;
+      return;
+    }
 
-      const startVerse = overrideStartVerse ?? parsePositiveInt(startVerseInput);
-      const requestedEndVerse = parsePositiveInt(endVerseInput);
-      const repeatCount = parsePositiveInt(repeatCountInput);
+    pendingNavigationIntentRef.current = null;
 
-      if (startVerse === null || requestedEndVerse === null || repeatCount === null) {
-        throw new Error(text.rangeInputError);
-      }
-      if (startVerse > surahDetail.verse_count) {
-        throw new Error(text.verseOutOfRange(surahDetail.verse_count));
-      }
-      if (requestedEndVerse < startVerse) {
-        throw new Error(text.rangeInputError);
-      }
+    const currentStartVerse = parsePositiveInt(startVerseInput);
+    const currentEndVerse = parsePositiveInt(endVerseInput);
+    if (currentStartVerse === null || currentEndVerse === null) {
+      syncRangeFromAnchor(targetVerse.verse_number, surahDetail.verse_count);
+      return;
+    }
 
-      const endVerse = Math.min(surahDetail.verse_count, requestedEndVerse);
-      return { startVerse, endVerse, repeatCount };
-    };
-  }, [endVerseInput, repeatCountInput, startVerseInput, surahDetail, text]);
+    if (currentStartVerse > surahDetail.verse_count) {
+      syncRangeFromAnchor(targetVerse.verse_number, surahDetail.verse_count);
+      return;
+    }
+
+    if (currentEndVerse > surahDetail.verse_count) {
+      setEndVerseInput(String(surahDetail.verse_count));
+    }
+  }, [
+    applyViewportToVerse,
+    computed.currentPageVerses,
+    endVerseInput,
+    startVerseInput,
+    surahDetail,
+    syncRangeFromAnchor,
+    visibleVerseLocation,
+  ]);
+
+  const getReadySurahDetail = useCallback(() => {
+    if (isFetchingSurahDetail || !surahDetail) {
+      throw new Error(text.surahNotReady);
+    }
+
+    if (selectedSurahId !== null && surahDetail.id !== selectedSurahId) {
+      throw new Error(text.surahNotReady);
+    }
+
+    return surahDetail;
+  }, [isFetchingSurahDetail, selectedSurahId, surahDetail, text.surahNotReady]);
+
+  const resolveRangeForSurah = useCallback((detail: typeof surahDetail, overrideStartVerse?: number) => {
+    if (!detail) {
+      throw new Error(text.surahNotReady);
+    }
+
+    const startVerse = overrideStartVerse ?? parsePositiveInt(startVerseInput);
+    const requestedEndVerse = parsePositiveInt(endVerseInput);
+    const repeatCount = parsePositiveInt(repeatCountInput);
+
+    if (startVerse === null || requestedEndVerse === null || repeatCount === null) {
+      throw new Error(text.rangeInputError);
+    }
+    if (startVerse > detail.verse_count) {
+      throw new Error(text.verseOutOfRange(detail.verse_count));
+    }
+    if (requestedEndVerse < startVerse) {
+      throw new Error(text.rangeInputError);
+    }
+
+    const endVerse = Math.min(detail.verse_count, requestedEndVerse);
+    return { startVerse, endVerse, repeatCount };
+  }, [endVerseInput, repeatCountInput, startVerseInput, text]);
 
   const handleStartPlayback = async (overrideStartVerse?: number) => {
     try {
-      if (!surahDetail) {
-        throw new Error(text.surahNotReady);
-      }
+      const readySurahDetail = getReadySurahDetail();
 
-      const { startVerse, endVerse, repeatCount } = resolveRange(overrideStartVerse);
+      const { startVerse, endVerse, repeatCount } = resolveRangeForSurah(readySurahDetail, overrideStartVerse);
       setErrorMessage(null);
       setStartVerseInput(String(startVerse));
       setEndVerseInput(String(endVerse));
+      logUiEvent('ui_start_playback', {
+        surahId: readySurahDetail.id,
+        page: currentPage,
+        startVerse,
+        endVerse,
+        repeatCount,
+        reciterId: selectedReciterId,
+      });
       await player.startPlayback({
         reciterId: selectedReciterId,
-        surahDetail,
+        surahDetail: readySurahDetail,
         startVerseNumber: startVerse,
         endVerseNumber: endVerse,
         repeatCount,
@@ -376,6 +496,70 @@ function MainApp() {
     }
   };
 
+  const goToAdjacentPage = useCallback((direction: 'next' | 'previous') => {
+    if (computed.allPages.length === 0 || selectedSurahId === null) {
+      return;
+    }
+
+    const nextPageIndex =
+      direction === 'next' ? computed.currentPageIndex + 1 : computed.currentPageIndex - 1;
+
+    if (nextPageIndex >= 0 && nextPageIndex < computed.allPages.length) {
+      const nextPage = computed.allPages[nextPageIndex];
+      const firstVerse = surahDetail?.verses.find((verse) => verse.page === nextPage);
+      if (!firstVerse || !surahDetail) {
+        return;
+      }
+
+      applyViewportToVerse(firstVerse);
+      syncRangeFromAnchor(firstVerse.verse_number, surahDetail.verse_count);
+      logUiEvent('ui_page_changed_same_surah', {
+        direction,
+        page: nextPage,
+        surahId: firstVerse.surah_id,
+        verseNumber: firstVerse.verse_number,
+        playbackStatus: player.playbackStatus,
+      });
+      return;
+    }
+
+    const targetSurahIndex = direction === 'next' ? computed.surahIndex + 1 : computed.surahIndex - 1;
+    if (targetSurahIndex < 0 || targetSurahIndex >= surahs.length) {
+      return;
+    }
+
+    const targetSurahId = surahs[targetSurahIndex].id;
+    pendingNavigationIntentRef.current = {
+      type: 'boundary',
+      surahId: targetSurahId,
+      boundary: direction === 'next' ? 'first' : 'last',
+      syncRange: true,
+    };
+    setSelectedSurahId(targetSurahId);
+    logUiEvent('ui_page_changed_cross_surah', {
+      direction,
+      targetSurahId,
+      playbackStatus: player.playbackStatus,
+    });
+  }, [
+    applyViewportToVerse,
+    computed.allPages,
+    computed.currentPageIndex,
+    computed.surahIndex,
+    logUiEvent,
+    player.playbackStatus,
+    selectedSurahId,
+    setSelectedSurahId,
+    surahDetail,
+    surahs,
+    syncRangeFromAnchor,
+  ]);
+
+  const pageSwipeResponder = useSwipeGesture(
+    () => goToAdjacentPage('next'),
+    () => goToAdjacentPage('previous')
+  );
+
   const handleSurahChange = async (nextSurahId: number | string) => {
     const normalizedSurahId = parseSurahId(nextSurahId);
     if (normalizedSurahId === null) {
@@ -383,8 +567,18 @@ function MainApp() {
       return;
     }
 
+    pendingNavigationIntentRef.current = {
+      type: 'boundary',
+      surahId: normalizedSurahId,
+      boundary: 'first',
+      syncRange: true,
+    };
     await player.stopPlayback();
     setSelectedSurahId(normalizedSurahId);
+    logUiEvent('ui_surah_changed', {
+      surahId: normalizedSurahId,
+      playbackStatus: player.playbackStatus,
+    });
   };
 
   const handlePageChange = async (page: number) => {
@@ -393,12 +587,14 @@ function MainApp() {
     }
 
     const currentSurahVerse = surahDetail?.verses.find((verse) => verse.page === page);
-    if (currentSurahVerse) {
-      setCurrentPage(page);
-      setVisibleVerseLocation({
-        surah_id: currentSurahVerse.surah_id,
-        verse_number: currentSurahVerse.verse_number,
-        page: currentSurahVerse.page,
+    if (currentSurahVerse && surahDetail) {
+      applyViewportToVerse(currentSurahVerse);
+      syncRangeFromAnchor(currentSurahVerse.verse_number, surahDetail.verse_count);
+      logUiEvent('ui_page_input_same_surah', {
+        page,
+        surahId: currentSurahVerse.surah_id,
+        verseNumber: currentSurahVerse.verse_number,
+        playbackStatus: player.playbackStatus,
       });
       return;
     }
@@ -409,13 +605,19 @@ function MainApp() {
       return;
     }
 
-    await player.stopPlayback();
-    pendingPageJumpRef.current = {
+    pendingNavigationIntentRef.current = {
+      type: 'jump_to_verse',
       surahId: firstVerse.surah_id,
-      page: firstVerse.page,
       verseNumber: firstVerse.verse_number,
+      syncRange: true,
     };
     setSelectedSurahId(firstVerse.surah_id);
+    logUiEvent('ui_page_input_cross_surah', {
+      page,
+      surahId: firstVerse.surah_id,
+      verseNumber: firstVerse.verse_number,
+      playbackStatus: player.playbackStatus,
+    });
   };
 
   const handlePageInputSubmit = async () => {
@@ -434,38 +636,39 @@ function MainApp() {
     await handlePageChange(nextPage);
   };
 
-  const handleVerseTap = async (verse: Verse) => {
-    setCurrentPage(verse.page);
-    
-    const currentStartVerse = parsePositiveInt(startVerseInput) ?? 1;
-    const currentEndVerse = parsePositiveInt(endVerseInput) ?? 1;
-    const rangeSize = Math.abs(currentEndVerse - currentStartVerse);
-    
-    const newStart = verse.verse_number;
-    const newEnd = Math.min(newStart + rangeSize, surahDetail?.verse_count ?? newStart);
-    
-    setStartVerseInput(String(newStart));
-    setEndVerseInput(String(newEnd));
-    setVisibleVerseLocation({
-      surah_id: verse.surah_id,
-      verse_number: verse.verse_number,
-      page: verse.page,
+  const handleTranslationChange = useCallback((nextAuthorId: number) => {
+    setSelectedTranslationAuthorId(nextAuthorId);
+    logUiEvent('ui_translation_changed', {
+      translationAuthorId: nextAuthorId,
+      selectedSurahId,
+      currentPage,
     });
-    
-    // Direct playback with explicit values, bypassing validation
+  }, [currentPage, logUiEvent, selectedSurahId]);
+
+  const handleReciterChange = useCallback((nextReciterId: ReciterId) => {
+    setSelectedReciterId(nextReciterId);
+  }, []);
+
+  const handleVerseTap = async (verse: Verse) => {
     try {
-      if (!surahDetail) {
-        throw new Error(text.surahNotReady);
-      }
-      
+      applyViewportToVerse(verse);
+      const readySurahDetail = getReadySurahDetail();
+      const { startVerse, endVerse } = syncRangeFromAnchor(verse.verse_number, readySurahDetail.verse_count);
       const repeatCount = parsePositiveInt(repeatCountInput) ?? 1;
       setErrorMessage(null);
-      
+      logUiEvent('ui_verse_tapped', {
+        surahId: verse.surah_id,
+        page: verse.page,
+        verseNumber: verse.verse_number,
+        playbackStatus: player.playbackStatus,
+        repeatCount,
+      });
+
       await player.startPlayback({
         reciterId: selectedReciterId,
-        surahDetail,
-        startVerseNumber: newStart,
-        endVerseNumber: newEnd,
+        surahDetail: readySurahDetail,
+        startVerseNumber: startVerse,
+        endVerseNumber: endVerse,
         repeatCount,
       });
     } catch (error) {
@@ -545,8 +748,8 @@ function MainApp() {
             onCurrentPageSubmit={() => void handlePageInputSubmit()}
             canGoPreviousPage={computed.canGoPreviousPage}
             canGoNextPage={computed.canGoNextPage}
-            onPreviousPress={pageNavigation.goToPreviousPage}
-            onNextPress={pageNavigation.goToNextPage}
+            onPreviousPress={() => goToAdjacentPage('previous')}
+            onNextPress={() => goToAdjacentPage('next')}
             startVerseInput={startVerseInput}
             endVerseInput={endVerseInput}
             repeatCountInput={repeatCountInput}
@@ -610,10 +813,10 @@ function MainApp() {
                   onLanguageChange={setLanguage}
                   selectedTranslationAuthorId={selectedTranslationAuthorId}
                   translationOptionsForLanguage={translationOptionsForLanguage}
-                  onTranslationChange={setSelectedTranslationAuthorId}
+                  onTranslationChange={handleTranslationChange}
                   selectedReciterId={selectedReciterId}
                   reciterOptions={RECITER_OPTIONS}
-                  onReciterChange={setSelectedReciterId}
+                  onReciterChange={handleReciterChange}
                   autoScrollEnabled={isAutoScrollEnabled}
                   onAutoScrollChange={setIsAutoScrollEnabled}
                   ayahTrackingEnabled={isAyahTrackingEnabled}
