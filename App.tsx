@@ -6,16 +6,11 @@ import {
   AppState,
   Alert,
   KeyboardAvoidingView,
-  Modal,
   Platform,
-  Pressable,
-  ScrollView,
   StyleSheet,
-  Text,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
 import * as SplashScreen from 'expo-splash-screen';
 import { Amiri_400Regular } from '@expo-google-fonts/amiri';
 import { Lateef_400Regular } from '@expo-google-fonts/lateef';
@@ -23,9 +18,11 @@ import { NotoNaskhArabic_400Regular } from '@expo-google-fonts/noto-naskh-arabic
 import { ScheherazadeNew_400Regular } from '@expo-google-fonts/scheherazade-new';
 
 import { CompactHeader } from './src/components/CompactHeader';
+import { AboutSheet } from './src/components/AboutSheet';
+import { DownloadManagerSheet } from './src/components/DownloadManagerSheet';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { ErrorCard } from './src/components/ErrorCard';
-import { SettingsPanel } from './src/components/SettingsPanel';
+import { SettingsSheet } from './src/components/SettingsSheet';
 import { VerseList } from './src/components/VerseList';
 import { TRANSLATION_OPTIONS } from './src/constants/authors';
 import { DEFAULT_RECITER_ID, RECITER_OPTIONS, getReciterOption, type ReciterId } from './src/constants/reciters';
@@ -37,18 +34,17 @@ import {
   DEVELOPER_NAME,
   TOTAL_QURAN_PAGES,
 } from './src/constants/defaults';
+import { SURAH_LIST } from './src/constants/surahList';
 import {
   QURAN_FONT_OPTIONS,
   QURAN_FONT_PREVIEW_TEXT,
-  type QuranFontId,
 } from './src/constants/quranFonts';
+import { useAppSettings } from './src/hooks/useAppSettings';
 import { useComputedState } from './src/hooks/useComputedState';
 import { useI18n } from './src/hooks/useI18n';
 import { useSegmentedPlayer } from './src/hooks/useSegmentedPlayer';
 import { useSurahDetail } from './src/hooks/useSurahDetail';
-import { useSurahs } from './src/hooks/useSurahs';
 import { useSwipeGesture } from './src/hooks/useSwipeGesture';
-import { Storage } from './src/services/storage';
 import {
   clearAllDownloads,
   downloadAudioBundle,
@@ -56,18 +52,11 @@ import {
   getCacheStats,
   initializeAudioCache,
 } from './src/services/audioCache';
-import {
-  appendAudioDiagnosticLog,
-  clearAudioDiagnosticLog,
-  getAudioDiagnosticLog,
-} from './src/services/audioDiagnostics';
 import { clearAllSurahAudio } from './src/services/surahAudioCache';
 import { fetchPageVerses } from './src/services/quranService';
 import { commonStyles } from './src/styles/common';
-import { theme as staticTheme } from './src/styles/theme';
 import { ThemeProvider, useTheme } from './src/hooks/useTheme';
 import type { Verse } from './src/types/quran';
-import { defaultTranslationAuthorByLanguage } from './src/utils/language';
 import { parsePositiveInt, parseSurahId } from './src/utils/parsers';
 
 void SplashScreen.preventAutoHideAsync();
@@ -86,7 +75,11 @@ type PendingNavigationIntent =
       syncRange: boolean;
     };
 
-function MainApp() {
+type MainAppProps = {
+  settings: ReturnType<typeof useAppSettings>;
+};
+
+function MainApp({ settings }: MainAppProps) {
   const [fontsLoaded] = useFonts({
     Amiri_400Regular,
     Lateef_400Regular,
@@ -94,13 +87,28 @@ function MainApp() {
     ScheherazadeNew_400Regular,
   });
 
-  const { language, setLanguage, text } = useI18n();
-  const [selectedSurahId, setSelectedSurahId] = useState<number | null>(null);
-  const [selectedTranslationAuthorId, setSelectedTranslationAuthorId] = useState<number>(() =>
-    defaultTranslationAuthorByLanguage(language)
-  );
-  const [selectedReciterId, setSelectedReciterId] = useState<ReciterId>(DEFAULT_RECITER_ID);
-  const [selectedQuranFontId, setSelectedQuranFontId] = useState<QuranFontId>('scheherazade');
+  const {
+    isHydrated,
+    language,
+    selectedSurahId,
+    selectedTranslationAuthorId,
+    selectedReciterId,
+    selectedQuranFontId,
+    isAutoScrollEnabled,
+    isAyahTrackingEnabled,
+    themeType,
+    lastVerse,
+    setLanguage,
+    setSelectedSurahId,
+    setSelectedTranslationAuthorId,
+    setSelectedReciterId,
+    setSelectedQuranFontId,
+    setThemeType,
+    setIsAutoScrollEnabled,
+    setIsAyahTrackingEnabled,
+    setLastVerse,
+  } = settings;
+  const { text } = useI18n(language);
   const [startVerseInput, setStartVerseInput] = useState('1');
   const [endVerseInput, setEndVerseInput] = useState(String(DEFAULT_RANGE_SIZE));
   const [repeatCountInput, setRepeatCountInput] = useState(String(DEFAULT_REPEAT));
@@ -114,20 +122,17 @@ function MainApp() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isDownloadManagerOpen, setIsDownloadManagerOpen] = useState(false);
-  const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
-  const [isAyahTrackingEnabled, setIsAyahTrackingEnabled] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [cacheStats, setCacheStats] = useState({ files: 0, megabytes: 0, readyVerses: 0, totalVerses: 0, offlineReady: false });
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [downloadProgressLabel, setDownloadProgressLabel] = useState('');
-  const [audioDiagnosticLog, setAudioDiagnosticLog] = useState('');
 
   const pendingNavigationIntentRef = useRef<PendingNavigationIntent | null>(null);
-  const didHydrateRef = useRef(false);
+  const restoredLastVerseRef = useRef(false);
   const previousReciterIdRef = useRef<ReciterId | null>(null);
-
-  const { surahs, isFetchingSurahs, error: surahsError } = useSurahs(text.loadingSurahsError);
-  const { surahDetail, isFetchingSurahDetail, error: surahDetailError } = useSurahDetail(
+  const surahs = SURAH_LIST;
+  const isFetchingSurahs = false;
+  const { surahDetail, isFetchingSurahDetail, isFetchingInitial, error: surahDetailError } = useSurahDetail(
     selectedSurahId,
     selectedTranslationAuthorId,
     selectedReciterId,
@@ -146,31 +151,44 @@ function MainApp() {
     [language]
   );
 
-  const player = useSegmentedPlayer({
-    reciterId: selectedReciterId,
-    onError: setErrorMessage,
-    onActiveVerseChange: (verse) => {
-      if (!isAyahTrackingEnabled || !verse) {
-        return;
+  const handleActiveVerseChange = useCallback((verse: Verse | null) => {
+    if (!isAyahTrackingEnabled || !verse) {
+      return;
+    }
+
+    setVisibleVerseLocation((previousLocation) => {
+      if (
+        previousLocation?.surah_id === verse.surah_id &&
+        previousLocation?.verse_number === verse.verse_number &&
+        previousLocation?.page === verse.page
+      ) {
+        return previousLocation;
       }
 
-      setVisibleVerseLocation({
+      return {
         surah_id: verse.surah_id,
         verse_number: verse.verse_number,
         page: verse.page,
-      });
-      if (verse.surah_id === selectedSurahId && verse.page !== currentPage) {
-        setCurrentPage(verse.page);
-      }
-      void Storage.setLastVerse(verse.surah_id, verse.verse_number);
-    },
+      };
+    });
+
+    if (verse.surah_id === selectedSurahId && verse.page !== currentPage) {
+      setCurrentPage(verse.page);
+    }
+    setLastVerse(verse.surah_id, verse.verse_number);
+  }, [currentPage, isAyahTrackingEnabled, selectedSurahId, setLastVerse]);
+
+  const player = useSegmentedPlayer({
+    reciterId: selectedReciterId,
+    onError: setErrorMessage,
+    onActiveVerseChange: handleActiveVerseChange,
   });
   const currentPlayingVerse = player.activeVerse;
   const selectedReciter = useMemo(() => getReciterOption(selectedReciterId), [selectedReciterId]);
   const ayahTrackingAvailable = useMemo(() => hasEmbeddedTracking(selectedReciterId), [selectedReciterId]);
 
-  const logUiEvent = useCallback((step: string, payload?: Record<string, unknown>) => {
-    void appendAudioDiagnosticLog(step, payload);
+  const logUiEvent = useCallback((_step: string, _payload?: Record<string, unknown>) => {
+    // Diagnostics removed.
   }, []);
 
   const getCurrentRangeSize = useCallback(() => {
@@ -180,11 +198,21 @@ function MainApp() {
   }, [endVerseInput, startVerseInput]);
 
   const applyViewportToVerse = useCallback((verse: Verse) => {
-    setCurrentPage(verse.page);
-    setVisibleVerseLocation({
-      surah_id: verse.surah_id,
-      verse_number: verse.verse_number,
-      page: verse.page,
+    setCurrentPage((previousPage) => (previousPage === verse.page ? previousPage : verse.page));
+    setVisibleVerseLocation((previousLocation) => {
+      if (
+        previousLocation?.surah_id === verse.surah_id &&
+        previousLocation?.verse_number === verse.verse_number &&
+        previousLocation?.page === verse.page
+      ) {
+        return previousLocation;
+      }
+
+      return {
+        surah_id: verse.surah_id,
+        verse_number: verse.verse_number,
+        page: verse.page,
+      };
     });
   }, []);
 
@@ -192,8 +220,8 @@ function MainApp() {
     const rangeSize = getCurrentRangeSize();
     const nextStartVerse = Math.min(Math.max(anchorVerseNumber, 1), verseCount);
     const nextEndVerse = Math.min(nextStartVerse + rangeSize, verseCount);
-    setStartVerseInput(String(nextStartVerse));
-    setEndVerseInput(String(nextEndVerse));
+    setStartVerseInput((previousValue) => (previousValue === String(nextStartVerse) ? previousValue : String(nextStartVerse)));
+    setEndVerseInput((previousValue) => (previousValue === String(nextEndVerse) ? previousValue : String(nextEndVerse)));
     return {
       startVerse: nextStartVerse,
       endVerse: nextEndVerse,
@@ -201,56 +229,13 @@ function MainApp() {
   }, [getCurrentRangeSize]);
 
   useEffect(() => {
-    async function loadPersistedState() {
-      await initializeAudioCache(DEFAULT_RECITER_ID);
-      const [savedFont, savedSurah, savedTranslation, savedReciter, savedAutoScroll, savedAyahTracking, lastVerse] = await Promise.all([
-        Storage.getQuranFont(),
-        Storage.getSelectedSurah(),
-        Storage.getSelectedTranslation(),
-        Storage.getSelectedReciter(),
-        Storage.getAutoScroll(),
-        Storage.getAyahTracking(),
-        Storage.getLastVerse(),
-      ]);
-
-      if (savedFont) {
-        setSelectedQuranFontId(savedFont as QuranFontId);
-      }
-      if (savedSurah) {
-        setSelectedSurahId(savedSurah);
-      }
-      if (savedTranslation) {
-        setSelectedTranslationAuthorId(savedTranslation);
-      }
-      if (savedReciter) {
-        setSelectedReciterId(savedReciter);
-      }
-      if (savedAutoScroll !== null) {
-        setIsAutoScrollEnabled(savedAutoScroll);
-      }
-      if (savedAyahTracking !== null) {
-        setIsAyahTrackingEnabled(savedAyahTracking);
-      }
-      if (savedAyahTracking && lastVerse) {
-        pendingNavigationIntentRef.current = {
-          type: 'jump_to_verse',
-          surahId: lastVerse.surahId,
-          verseNumber: lastVerse.verseNumber,
-          syncRange: true,
-        };
-      }
-
-      didHydrateRef.current = true;
-    }
-
-    void loadPersistedState();
+    void initializeAudioCache(DEFAULT_RECITER_ID);
   }, []);
 
   useEffect(() => {
     void (async () => {
       await initializeAudioCache(selectedReciterId);
       setCacheStats(await getCacheStats(selectedReciterId));
-      setAudioDiagnosticLog(await getAudioDiagnosticLog());
     })();
   }, [selectedReciterId]);
 
@@ -277,16 +262,12 @@ function MainApp() {
   }, [currentPage]);
 
   useEffect(() => {
-    void Storage.setAyahTracking(isAyahTrackingEnabled);
-  }, [isAyahTrackingEnabled]);
-
-  useEffect(() => {
     if (!ayahTrackingAvailable && isAyahTrackingEnabled) {
       setIsAyahTrackingEnabled(false);
     }
   }, [ayahTrackingAvailable, isAyahTrackingEnabled]);
 
-  const { theme, themeType } = useTheme();
+  const { theme } = useTheme();
 
   useEffect(() => {
     if (surahs.length > 0 && selectedSurahId === null) {
@@ -295,47 +276,19 @@ function MainApp() {
   }, [selectedSurahId, surahs]);
 
   useEffect(() => {
-    if (surahsError) {
-      setErrorMessage(surahsError);
-    }
-  }, [surahsError]);
-
-  useEffect(() => {
     if (surahDetailError) {
       setErrorMessage(surahDetailError);
     }
   }, [surahDetailError]);
 
   useEffect(() => {
-    if (fontsLoaded) {
+    if (fontsLoaded && isHydrated) {
       void SplashScreen.hideAsync();
     }
-  }, [fontsLoaded]);
+  }, [fontsLoaded, isHydrated]);
 
   useEffect(() => {
-    if (selectedSurahId !== null) {
-      void Storage.setSelectedSurah(selectedSurahId);
-    }
-  }, [selectedSurahId]);
-
-  useEffect(() => {
-    void Storage.setQuranFont(selectedQuranFontId);
-  }, [selectedQuranFontId]);
-
-  useEffect(() => {
-    void Storage.setSelectedTranslation(selectedTranslationAuthorId);
-  }, [selectedTranslationAuthorId]);
-
-  useEffect(() => {
-    void Storage.setAutoScroll(isAutoScrollEnabled);
-  }, [isAutoScrollEnabled]);
-
-  useEffect(() => {
-    void Storage.setSelectedReciter(selectedReciterId);
-  }, [selectedReciterId]);
-
-  useEffect(() => {
-    if (!didHydrateRef.current) {
+    if (!isHydrated) {
       previousReciterIdRef.current = selectedReciterId;
       return;
     }
@@ -351,7 +304,7 @@ function MainApp() {
       });
       void player.stopPlayback();
     }
-  }, [logUiEvent, player.playbackStatus, player.stopPlayback, selectedReciterId]);
+  }, [isHydrated, logUiEvent, player.playbackStatus, player.stopPlayback, selectedReciterId]);
 
   useEffect(() => {
     if (!isDownloadManagerOpen) {
@@ -360,13 +313,22 @@ function MainApp() {
 
     void (async () => {
       setCacheStats(await getCacheStats(selectedReciterId));
-      setAudioDiagnosticLog(await getAudioDiagnosticLog());
     })();
   }, [isDownloadManagerOpen, selectedReciterId]);
 
   useEffect(() => {
-    setSelectedTranslationAuthorId(defaultTranslationAuthorByLanguage(language));
-  }, [language]);
+    if (restoredLastVerseRef.current || !isHydrated || !lastVerse || !isAyahTrackingEnabled) {
+      return;
+    }
+
+    restoredLastVerseRef.current = true;
+    pendingNavigationIntentRef.current = {
+      type: 'jump_to_verse',
+      surahId: lastVerse.surahId,
+      verseNumber: lastVerse.verseNumber,
+      syncRange: true,
+    };
+  }, [isAyahTrackingEnabled, isHydrated, lastVerse]);
 
   useEffect(() => {
     if (!surahDetail) {
@@ -676,6 +638,22 @@ function MainApp() {
     }
   };
 
+  const handleVerseLongPress = useCallback((verse: Verse) => {
+    if (!surahDetail) {
+      return;
+    }
+
+    applyViewportToVerse(verse);
+    syncRangeFromAnchor(verse.verse_number, surahDetail.verse_count);
+    setErrorMessage(null);
+    logUiEvent('ui_verse_long_pressed', {
+      surahId: verse.surah_id,
+      page: verse.page,
+      verseNumber: verse.verse_number,
+      playbackStatus: player.playbackStatus,
+    });
+  }, [applyViewportToVerse, logUiEvent, player.playbackStatus, surahDetail, syncRangeFromAnchor]);
+
   const handleDownloadAll = async () => {
     try {
       const availableSpaceMB = await getAvailableSpaceMB();
@@ -692,7 +670,6 @@ function MainApp() {
       });
 
       setCacheStats(await getCacheStats(selectedReciterId));
-      setAudioDiagnosticLog(await getAudioDiagnosticLog());
       setDownloadProgressLabel(text.downloadCompleteForReciter(selectedReciter.label));
     } catch (error) {
       if (error instanceof Error && error.message === 'download_cancelled') {
@@ -717,7 +694,6 @@ function MainApp() {
             await clearAllDownloads(selectedReciterId);
             await clearAllSurahAudio();
             setCacheStats(await getCacheStats(selectedReciterId));
-            setAudioDiagnosticLog(await getAudioDiagnosticLog());
             setDownloadProgressLabel('');
           })();
         },
@@ -727,7 +703,7 @@ function MainApp() {
 
   const currentVerse = currentPlayingVerse;
 
-  if (!fontsLoaded) {
+  if (!fontsLoaded || !isHydrated) {
     return null;
   }
 
@@ -775,7 +751,7 @@ function MainApp() {
 
         {errorMessage ? <ErrorCard message={errorMessage} /> : null}
 
-        {!surahDetail ? (
+        {isFetchingInitial || !surahDetail ? (
           <View style={styles.loaderState}>
             <ActivityIndicator size="large" color={theme.colors.ACCENT_PRIMARY} />
           </View>
@@ -786,151 +762,70 @@ function MainApp() {
             currentVerse={currentVerse}
             quranFontFamily={selectedQuranFont.fontFamily}
             quranTextStyle={selectedQuranFont.verseTextStyle}
-            sectionTitle=""
-            pageProgressText=""
             swipeHintText={text.swipeHint}
             autoScrollEnabled={isAutoScrollEnabled}
             onVerseTap={(verse) => void handleVerseTap(verse)}
-            onVerseLongPress={(verse) => void handleVerseTap(verse)}
+            onVerseLongPress={handleVerseLongPress}
             onVisibleVerseChange={setVisibleVerseLocation}
             panHandlers={pageSwipeResponder}
           />
         )}
 
-        <Modal visible={isSettingsOpen} animationType="slide" transparent onRequestClose={() => setIsSettingsOpen(false)}>
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}>
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{text.settings}</Text>
-                <Pressable onPress={() => setIsSettingsOpen(false)} style={[styles.closeButton, { backgroundColor: theme.colors.CARD_BG }]}>
-                  <Feather name="x" size={24} color={theme.colors.TEXT_PRIMARY} />
-                </Pressable>
-              </View>
+        <SettingsSheet
+          visible={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          language={language}
+          onLanguageChange={setLanguage}
+          selectedTranslationAuthorId={selectedTranslationAuthorId}
+          translationOptionsForLanguage={translationOptionsForLanguage}
+          onTranslationChange={handleTranslationChange}
+          selectedReciterId={selectedReciterId}
+          reciterOptions={RECITER_OPTIONS}
+          onReciterChange={handleReciterChange}
+          autoScrollEnabled={isAutoScrollEnabled}
+          onAutoScrollChange={setIsAutoScrollEnabled}
+          ayahTrackingEnabled={isAyahTrackingEnabled}
+          ayahTrackingAvailable={ayahTrackingAvailable}
+          onAyahTrackingChange={setIsAyahTrackingEnabled}
+          onThemeChange={setThemeType}
+          quranFontId={selectedQuranFontId}
+          quranFontOptions={QURAN_FONT_OPTIONS}
+          onQuranFontChange={setSelectedQuranFontId}
+          playbackRate={player.playbackRate}
+          onPlaybackRateChange={player.setPlaybackRate}
+          quranFontPreview={QURAN_FONT_PREVIEW_TEXT}
+          quranFontFamily={selectedQuranFont.fontFamily}
+          quranFontPreviewStyle={selectedQuranFont.previewTextStyle}
+          onAboutPress={() => {
+            setIsSettingsOpen(false);
+            setIsAboutOpen(true);
+          }}
+          onManageDownloadsPress={() => {
+            setIsSettingsOpen(false);
+            setIsDownloadManagerOpen(true);
+          }}
+          text={text}
+        />
 
-              <ScrollView contentContainerStyle={styles.modalScroll}>
-                <SettingsPanel
-                  language={language}
-                  onLanguageChange={setLanguage}
-                  selectedTranslationAuthorId={selectedTranslationAuthorId}
-                  translationOptionsForLanguage={translationOptionsForLanguage}
-                  onTranslationChange={handleTranslationChange}
-                  selectedReciterId={selectedReciterId}
-                  reciterOptions={RECITER_OPTIONS}
-                  onReciterChange={handleReciterChange}
-                  autoScrollEnabled={isAutoScrollEnabled}
-                  onAutoScrollChange={setIsAutoScrollEnabled}
-                  ayahTrackingEnabled={isAyahTrackingEnabled}
-                  ayahTrackingAvailable={ayahTrackingAvailable}
-                  onAyahTrackingChange={setIsAyahTrackingEnabled}
-                  quranFontId={selectedQuranFontId}
-                  quranFontOptions={QURAN_FONT_OPTIONS}
-                  onQuranFontChange={setSelectedQuranFontId}
-                  playbackRate={player.playbackRate}
-                  onPlaybackRateChange={player.setPlaybackRate}
-                  quranFontText={text.quranFont}
-                  fontPreviewText={text.fontPreview}
-                  quranFontPreview={QURAN_FONT_PREVIEW_TEXT}
-                  quranFontFamily={selectedQuranFont.fontFamily}
-                  quranFontPreviewStyle={selectedQuranFont.previewTextStyle}
-                  languageText={text.language}
-                  translationText={text.translation}
-                  reciterText={text.reciter}
-                  trackedReciterText={text.trackedReciter}
-                  autoScrollText={text.autoScroll}
-                  ayahTrackingText={text.ayahTracking}
-                  themeText={text.theme}
-                  playbackSpeedText={text.playbackSpeed}
-                  aboutText={text.about}
-                  manageDownloadsText={text.manageDownloads}
-                  onText={text.on}
-                  offText={text.off}
-                  onAboutPress={() => {
-                    setIsSettingsOpen(false);
-                    setIsAboutOpen(true);
-                  }}
-                  onManageDownloadsPress={() => {
-                    setIsSettingsOpen(false);
-                    setIsDownloadManagerOpen(true);
-                  }}
-                />
-              </ScrollView>
-            </View>
-          </View>
-        </Modal>
+        <DownloadManagerSheet
+          visible={isDownloadManagerOpen}
+          onClose={() => setIsDownloadManagerOpen(false)}
+          selectedReciterLabel={selectedReciter.label}
+          cacheStats={cacheStats}
+          isDownloadingAll={isDownloadingAll}
+          downloadProgressLabel={downloadProgressLabel}
+          onDownloadAll={() => void handleDownloadAll()}
+          onClearDownloads={() => void handleClearDownloads()}
+          text={text}
+        />
 
-        <Modal visible={isDownloadManagerOpen} animationType="slide" transparent onRequestClose={() => setIsDownloadManagerOpen(false)}>
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}>
-              <View style={styles.modalHeader}>
-                <Text style={[styles.modalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{text.manageDownloads}</Text>
-                <Pressable onPress={() => setIsDownloadManagerOpen(false)} style={[styles.closeButton, { backgroundColor: theme.colors.CARD_BG }]}>
-                  <Feather name="x" size={24} color={theme.colors.TEXT_PRIMARY} />
-                </Pressable>
-              </View>
-
-              <View style={styles.downloadCard}>
-                <Text style={[styles.downloadSubtitle, { color: theme.colors.TEXT_SECONDARY }]}>
-                  {text.selectedReciterDownloads(selectedReciter.label)}
-                </Text>
-                <Text style={[styles.downloadHint, { color: theme.colors.TEXT_MUTED }]}>
-                  {text.selectedReciterOnlyHint(selectedReciter.label)}
-                </Text>
-                <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.storageUsed}: ${cacheStats.megabytes} MB`}</Text>
-                <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.readyVerses}: ${cacheStats.readyVerses}/${cacheStats.totalVerses}`}</Text>
-                <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.cachedFiles}: ${cacheStats.files} MP3`}</Text>
-                {downloadProgressLabel ? <Text style={[styles.downloadHint, { color: theme.colors.TEXT_MUTED }]}>{downloadProgressLabel}</Text> : null}
-
-                <Pressable
-                  style={[styles.downloadButton, isDownloadingAll && styles.downloadButtonDisabled, { backgroundColor: theme.colors.ACCENT_PRIMARY }]}
-                  disabled={isDownloadingAll}
-                  onPress={() => void handleDownloadAll()}
-                >
-                  <Text style={[styles.downloadButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>
-                    {isDownloadingAll
-                      ? text.downloadingSelectedReciter(selectedReciter.label)
-                      : cacheStats.offlineReady
-                      ? text.downloadReadyForReciter(selectedReciter.label)
-                      : text.downloadSelectedReciter(selectedReciter.label)}
-                  </Text>
-                </Pressable>
-
-                <Pressable style={[styles.clearButton, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]} onPress={() => void handleClearDownloads()}>
-                  <Text style={[styles.clearButtonText, { color: theme.colors.TEXT_SECONDARY }]}>{text.clearReciterDownloads(selectedReciter.label)}</Text>
-                </Pressable>
-
-                <View style={[styles.diagnosticsCard, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}>
-                  <View style={styles.diagnosticsHeader}>
-                    <Text style={[styles.diagnosticsTitle, { color: theme.colors.TEXT_PRIMARY }]}>{text.audioDiagnostics}</Text>
-                    <Pressable onPress={() => void (async () => {
-                      await clearAudioDiagnosticLog();
-                      setAudioDiagnosticLog(await getAudioDiagnosticLog());
-                    })()}>
-                      <Text style={[styles.clearLogsText, { color: theme.colors.ACCENT_PRIMARY }]}>{text.clearAudioLogs}</Text>
-                    </Pressable>
-                  </View>
-                  <ScrollView style={styles.diagnosticsScroll}>
-                    <Text style={[styles.diagnosticsLog, { color: theme.colors.TEXT_MUTED }]}>
-                      {audioDiagnosticLog || text.noAudioLogs}
-                    </Text>
-                  </ScrollView>
-                </View>
-              </View>
-            </View>
-          </View>
-        </Modal>
-
-        <Modal visible={isAboutOpen} animationType="fade" transparent onRequestClose={() => setIsAboutOpen(false)}>
-          <View style={styles.modalOverlay}>
-            <View style={[styles.modalContent, styles.aboutContent, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}>
-              <Text style={[styles.modalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{text.about}</Text>
-              <Text style={[styles.aboutText, { color: theme.colors.TEXT_SECONDARY }]}>{`${text.appName}\n${text.version}: ${APP_VERSION}\n${text.developedBy}: ${DEVELOPER_NAME}`}</Text>
-              <Text style={[styles.aboutText, { color: theme.colors.TEXT_SECONDARY }]}>{text.aboutDescription}</Text>
-              <Pressable style={[styles.downloadButton, { backgroundColor: theme.colors.ACCENT_PRIMARY }]} onPress={() => setIsAboutOpen(false)}>
-                <Text style={[styles.downloadButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>{text.close}</Text>
-              </Pressable>
-            </View>
-          </View>
-        </Modal>
+        <AboutSheet
+          visible={isAboutOpen}
+          onClose={() => setIsAboutOpen(false)}
+          appVersion={APP_VERSION}
+          developerName={DEVELOPER_NAME}
+          text={text}
+        />
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -939,10 +834,18 @@ function MainApp() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider>
-        <MainApp />
-      </ThemeProvider>
+      <AppShell />
     </ErrorBoundary>
+  );
+}
+
+function AppShell() {
+  const settings = useAppSettings();
+
+  return (
+    <ThemeProvider themeType={settings.themeType} onThemeChange={settings.setThemeType}>
+      <MainApp settings={settings} />
+    </ThemeProvider>
   );
 }
 
@@ -956,120 +859,6 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.72)',
-    justifyContent: 'center',
-    padding: staticTheme.spacing.XL,
-  },
-  modalContent: {
-    maxHeight: '88%',
-    borderRadius: staticTheme.borderRadius.XXLARGE,
-    backgroundColor: staticTheme.colors.SECONDARY_BG,
-    borderWidth: 1,
-    borderColor: staticTheme.colors.BORDER_PRIMARY,
-    padding: staticTheme.spacing.LG,
-    gap: staticTheme.spacing.MD,
-  },
-  aboutContent: {
-    alignSelf: 'center',
-    width: '100%',
-    maxWidth: 420,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  modalTitle: {
-    color: staticTheme.colors.TEXT_PRIMARY,
-    fontSize: staticTheme.fontSize.XL,
-    fontWeight: '700',
-  },
-  closeButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: staticTheme.colors.CARD_BG,
-  },
-  modalScroll: {
-    gap: staticTheme.spacing.LG,
-  },
-  downloadCard: {
-    gap: staticTheme.spacing.MD,
-  },
-  downloadStat: {
-    color: staticTheme.colors.TEXT_PRIMARY,
-    fontSize: staticTheme.fontSize.MD,
-  },
-  downloadHint: {
-    color: staticTheme.colors.TEXT_MUTED,
-    fontSize: staticTheme.fontSize.SM,
-  },
-  downloadSubtitle: {
-    fontSize: staticTheme.fontSize.MD,
-    fontWeight: '700',
-  },
-  downloadButton: {
-    borderRadius: staticTheme.borderRadius.MEDIUM,
-    backgroundColor: staticTheme.colors.ACCENT_PRIMARY,
-    paddingVertical: staticTheme.spacing.MD,
-    alignItems: 'center',
-  },
-  downloadButtonDisabled: {
-    opacity: 0.6,
-  },
-  downloadButtonText: {
-    color: staticTheme.colors.TEXT_PRIMARY,
-    fontWeight: '700',
-    fontSize: staticTheme.fontSize.MD,
-  },
-  clearButton: {
-    borderRadius: staticTheme.borderRadius.MEDIUM,
-    backgroundColor: staticTheme.colors.CARD_BG,
-    paddingVertical: staticTheme.spacing.MD,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: staticTheme.colors.BORDER_SECONDARY,
-  },
-  clearButtonText: {
-    color: staticTheme.colors.TEXT_SECONDARY,
-    fontWeight: '700',
-    fontSize: staticTheme.fontSize.MD,
-  },
-  diagnosticsCard: {
-    borderWidth: 1,
-    borderRadius: staticTheme.borderRadius.MEDIUM,
-    padding: staticTheme.spacing.MD,
-    gap: staticTheme.spacing.SM,
-  },
-  diagnosticsHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: staticTheme.spacing.MD,
-  },
-  diagnosticsTitle: {
-    fontSize: staticTheme.fontSize.MD,
-    fontWeight: '700',
-  },
-  clearLogsText: {
-    fontSize: staticTheme.fontSize.SM,
-    fontWeight: '700',
-  },
-  diagnosticsScroll: {
-    maxHeight: 180,
-  },
-  diagnosticsLog: {
-    fontSize: staticTheme.fontSize.SM,
-    lineHeight: 18,
-  },
-  aboutText: {
-    color: staticTheme.colors.TEXT_SECONDARY,
-    lineHeight: 22,
   },
   backgroundGlowTop: {
     position: 'absolute',

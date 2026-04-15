@@ -3,7 +3,6 @@ import { FlatList, Platform, StyleSheet, Text, View, type ViewToken } from 'reac
 import type { Verse } from '../types/quran';
 import type { VerseLocation } from '../types/navigation';
 import { VerseCard } from './VerseCard';
-import { PageHeader } from './PageHeader';
 import { useTheme } from '../hooks/useTheme';
 import { UI_CONFIG } from '../constants/gestures';
 import { getAutoScrollTargetIndex } from '../utils/getAutoScrollTargetIndex';
@@ -17,8 +16,6 @@ type VerseListProps = {
     fontSize: number;
     lineHeight: number;
   };
-  sectionTitle: string;
-  pageProgressText: string;
   swipeHintText: string;
   autoScrollEnabled: boolean;
   onVerseTap: (verse: Verse) => void;
@@ -33,8 +30,6 @@ export function VerseList({
   currentVerse,
   quranFontFamily,
   quranTextStyle,
-  sectionTitle,
-  pageProgressText,
   swipeHintText,
   autoScrollEnabled,
   onVerseTap,
@@ -103,9 +98,6 @@ export function VerseList({
 
   return (
     <View style={styles.listContainer}>
-      {sectionTitle || pageProgressText ? (
-        <PageHeader title={sectionTitle} pageProgressText={pageProgressText} />
-      ) : null}
       <View style={styles.pageBody} {...panHandlers}>
         <FlatList
           key={`page-${currentPage}`}

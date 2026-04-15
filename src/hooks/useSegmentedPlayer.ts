@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getTrackPlayerModule, getTrackPlayerUnavailableReason } from '../services/trackPlayer';
 import { getVerseAudioForPlayback, retainVerseRangeForPlaybackByReciter } from '../services/audioCache';
 import { getReciterOption, type ReciterId } from '../constants/reciters';
-import { appendAudioDiagnosticLog } from '../services/audioDiagnostics';
 import { getPreferredSurahAudioUri } from '../services/surahAudioCache';
 import type { SurahDetail, Verse } from '../types/quran';
 import {
@@ -161,10 +160,16 @@ function getSelectedVerses(
   );
 }
 
-function supportsContinuousPlayback(reciterId: ReciterId, surahDetail: SurahDetail, verses: Verse[]) {
+function supportsContinuousPlayback(
+  reciterId: ReciterId,
+  surahDetail: SurahDetail,
+  verses: Verse[],
+  startVerseNumber: number
+) {
   return (
     ENABLE_GHAMDI_CONTINUOUS_PLAYBACK &&
     reciterId === 'ghamdi' &&
+    startVerseNumber === 1 &&
     Boolean(surahDetail.audio?.url) &&
     verses.length > 0 &&
     verses.every((verse) => Boolean(verse.timing))
@@ -655,7 +660,7 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     try {
       const { TrackPlayer } = await ensurePlayerSetup();
       const reciter = getReciterOption(startReciterId);
-      const nextSession = supportsContinuousPlayback(startReciterId, surahDetail, selectedVerses)
+      const nextSession = supportsContinuousPlayback(startReciterId, surahDetail, selectedVerses, startVerseNumber)
         ? await buildContinuousPlaybackSession(surahDetail, startVerseNumber, endVerseNumber, repeatCount)
         : await buildQueuePlaybackSession(startReciterId, surahDetail, startVerseNumber, endVerseNumber, repeatCount);
 
@@ -688,15 +693,6 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
       currentTrackIndexRef.current = 0;
       continuousVerseIndexRef.current = 0;
       setLoadedSurahId(surahDetail.id);
-      void appendAudioDiagnosticLog('playback_start', {
-        mode: nextSession.mode,
-        surahId: surahDetail.id,
-        startVerseNumber,
-        endVerseNumber,
-        repeatCount,
-        reciterId: startReciterId,
-      });
-
       if (nextSession.mode === 'continuous') {
         syncVisibleState(nextSession.boundaries[0]?.verse ?? null, 1);
 
@@ -749,7 +745,6 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
 
     clearContinuousBoundaryTimer();
     await TrackPlayer.pause();
-    void appendAudioDiagnosticLog('playback_pause');
     setPlaybackStatus('paused');
   }, [clearContinuousBoundaryTimer]);
 
@@ -768,17 +763,12 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
       await scheduleContinuousBoundaryTimer();
     }
 
-    void appendAudioDiagnosticLog('playback_resume', {
-      surahId: session?.surahId ?? null,
-      mode: session?.mode ?? null,
-    });
     setPlaybackStatus('playing');
   }, [scheduleContinuousBoundaryTimer]);
 
   const stopPlayback = useCallback(async () => {
     playbackRequestIdRef.current += 1;
     await completeActiveSession();
-    void appendAudioDiagnosticLog('playback_stop');
     setPlaybackStatus('stopped');
   }, [completeActiveSession]);
 

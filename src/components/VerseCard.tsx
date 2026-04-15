@@ -33,6 +33,9 @@ export function VerseCard({
         { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_PRIMARY },
         isCurrentVerse && { borderColor: theme.colors.ACCENT_PRIMARY, backgroundColor: theme.colors.TERTIARY_BG }
       ]}
+      accessibilityRole="button"
+      accessibilityLabel={`Ayah ${verse.verse_number}`}
+      accessibilityHint={isCurrentVerse ? 'Currently active ayah' : 'Starts playback from this ayah'}
       onPress={() => {
         if (longPressTriggeredRef.current) {
           longPressTriggeredRef.current = false;

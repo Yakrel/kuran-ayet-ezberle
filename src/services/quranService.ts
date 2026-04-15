@@ -70,7 +70,13 @@ let cachedQuranData: QuranData | null = null;
 const cachedQulDatasets = new Map<ReciterId, QulDataset>();
 let cachedSurahsById = new Map<number, RawSurah>();
 const cachedQulSurahsByIdByReciter = new Map<ReciterId, Map<number, RawQulSurah>>();
-const cachedVersesByPageByReciter = new Map<ReciterId, Map<number, Verse[]>>();
+const cachedRawVersesByKey = new Map<string, RawVerse>();
+const cachedPageVerseKeysByReciter = new Map<ReciterId, Map<number, string[]>>();
+const cachedQulVersesByKeyByReciter = new Map<ReciterId, Map<string, RawQulVerse>>();
+
+function getVerseKey(surahId: number, verseNumber: number) {
+  return `${surahId}:${verseNumber}`;
+}
 
 function normalizeArabicVerseText(text: string): string {
   return text.normalize('NFC');
@@ -143,40 +149,61 @@ function buildIndexes(reciterId: ReciterId, quranData: QuranData, qulDataset: Qu
 
     for (const surah of quranData.surahs) {
       cachedSurahsById.set(surah.id, surah);
+      for (const verse of surah.verses) {
+        cachedRawVersesByKey.set(getVerseKey(surah.id, verse.verse_number), verse);
+      }
     }
   }
 
   if (
     cachedQulSurahsByIdByReciter.has(reciterId) &&
-    cachedVersesByPageByReciter.has(reciterId)
+    cachedPageVerseKeysByReciter.has(reciterId) &&
+    cachedQulVersesByKeyByReciter.has(reciterId)
   ) {
     return;
   }
 
   const cachedQulSurahsById = new Map<number, RawQulSurah>();
-  const cachedVersesByPage = new Map<number, Verse[]>();
+  const cachedQulVersesByKey = new Map<string, RawQulVerse>();
+  const cachedPageVerseKeys = new Map<number, string[]>();
 
   for (const qulSurah of qulDataset?.surahs ?? []) {
     cachedQulSurahsById.set(qulSurah.id, qulSurah);
+    for (const verse of qulSurah.verses) {
+      cachedQulVersesByKey.set(verse.verse_key, verse);
+    }
   }
 
   for (const surah of quranData.surahs) {
-    const qulSurah = cachedQulSurahsById.get(surah.id);
-    const qulVerseMap = new Map(
-      (qulSurah?.verses ?? []).map((verse) => [verse.verse_key, verse] as const)
-    );
-
     for (const verse of surah.verses) {
-      const verseKey = `${surah.id}:${verse.verse_number}`;
-      const mappedVerse = mapVerse(surah, verse, qulVerseMap.get(verseKey), 6);
-      const currentPageVerses = cachedVersesByPage.get(verse.page) ?? [];
-      currentPageVerses.push(mappedVerse);
-      cachedVersesByPage.set(verse.page, currentPageVerses);
+      const verseKey = getVerseKey(surah.id, verse.verse_number);
+      const currentPageVerseKeys = cachedPageVerseKeys.get(verse.page) ?? [];
+      currentPageVerseKeys.push(verseKey);
+      cachedPageVerseKeys.set(verse.page, currentPageVerseKeys);
     }
   }
 
   cachedQulSurahsByIdByReciter.set(reciterId, cachedQulSurahsById);
-  cachedVersesByPageByReciter.set(reciterId, cachedVersesByPage);
+  cachedQulVersesByKeyByReciter.set(reciterId, cachedQulVersesByKey);
+  cachedPageVerseKeysByReciter.set(reciterId, cachedPageVerseKeys);
+}
+
+function mapVerseByKey(
+  verseKey: string,
+  translationAuthorId: number,
+  qulVersesByKey: Map<string, RawQulVerse>
+) {
+  const [surahIdText, verseNumberText] = verseKey.split(':');
+  const surahId = Number(surahIdText);
+  const verseNumber = Number(verseNumberText);
+  const surah = cachedSurahsById.get(surahId);
+  const rawVerse = cachedRawVersesByKey.get(verseKey);
+
+  if (!surah || !rawVerse) {
+    throw new Error(`Verse not found in local data: ${surahId}:${verseNumber}`);
+  }
+
+  return mapVerse(surah, rawVerse, qulVersesByKey.get(getVerseKey(surahId, verseNumber)), translationAuthorId);
 }
 
 async function getQuranData(): Promise<QuranData> {
@@ -240,14 +267,11 @@ export async function fetchSurahDetail(
   const surah = cachedSurahsById.get(surahId);
   const reciter = getReciterOption(reciterId);
   const cachedQulSurahsById = cachedQulSurahsByIdByReciter.get(reciterId) ?? new Map<number, RawQulSurah>();
+  const cachedQulVersesByKey = cachedQulVersesByKeyByReciter.get(reciterId) ?? new Map<string, RawQulVerse>();
   const qulSurah = cachedQulSurahsById.get(surahId);
   if (!surah) {
     throw new Error('Surah not found in local data');
   }
-
-  const qulVerseMap = new Map(
-    (qulSurah?.verses ?? []).map((verse) => [verse.verse_key, verse] as const)
-  );
 
   return {
     id: surah.id,
@@ -256,7 +280,7 @@ export async function fetchSurahDetail(
     audio: mapAudioAsset(qulSurah),
     recitation_id: reciter.qulRecitationId ?? trackingBundle.recitationId,
     verses: surah.verses.map((verse) =>
-      mapVerse(surah, verse, qulVerseMap.get(`${surah.id}:${verse.verse_number}`), translationAuthorId)
+      mapVerseByKey(getVerseKey(surah.id, verse.verse_number), translationAuthorId, cachedQulVersesByKey)
     ),
   };
 }
@@ -269,26 +293,11 @@ export async function fetchPageVerses(
   const [quranData, trackingBundle] = await Promise.all([getQuranData(), getTrackingBundle(reciterId)]);
   buildIndexes(reciterId, quranData, trackingBundle.dataset);
 
-  const cachedVersesByPage = cachedVersesByPageByReciter.get(reciterId) ?? new Map<number, Verse[]>();
-  const cachedQulSurahsById = cachedQulSurahsByIdByReciter.get(reciterId) ?? new Map<number, RawQulSurah>();
-  const pageVerses = cachedVersesByPage.get(pageNumber) ?? [];
-  if (translationAuthorId === 6) {
-    return pageVerses;
-  }
+  const cachedPageVerseKeys = cachedPageVerseKeysByReciter.get(reciterId) ?? new Map<number, string[]>();
+  const cachedQulVersesByKey = cachedQulVersesByKeyByReciter.get(reciterId) ?? new Map<string, RawQulVerse>();
+  const pageVerseKeys = cachedPageVerseKeys.get(pageNumber) ?? [];
 
-  return pageVerses.map((verse) => {
-    const surah = cachedSurahsById.get(verse.surah_id);
-    const rawVerse = surah?.verses.find((item) => item.verse_number === verse.verse_number);
-    if (!surah || !rawVerse) {
-      return verse;
-    }
-
-    const qulVerse = cachedQulSurahsById
-      .get(verse.surah_id)
-      ?.verses.find((item) => item.verse_key === `${verse.surah_id}:${verse.verse_number}`);
-
-    return mapVerse(surah, rawVerse, qulVerse, translationAuthorId);
-  });
+  return pageVerseKeys.map((verseKey) => mapVerseByKey(verseKey, translationAuthorId, cachedQulVersesByKey));
 }
 
 export async function getRecitationId(reciterId: ReciterId = 'ghamdi') {

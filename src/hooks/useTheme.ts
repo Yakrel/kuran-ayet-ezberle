@@ -1,7 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useMemo } from 'react';
 import { THEMES, ThemeType } from '../constants/colors';
 import { BORDER_RADIUS, FONT_SIZE, SPACING, UI_SIZES } from '../constants/spacing';
-import { Storage } from '../services/storage';
 
 type ThemeColors = typeof THEMES.DARK;
 
@@ -22,22 +21,15 @@ type ThemeContextType = {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [themeType, setThemeType] = useState<ThemeType>('DARK');
-
-  useEffect(() => {
-    Storage.getItem('theme').then((savedTheme) => {
-      if (savedTheme === 'PAPER' || savedTheme === 'DARK') {
-        setThemeType(savedTheme as ThemeType);
-      }
-    });
-  }, []);
-
-  const setTheme = (type: ThemeType) => {
-    setThemeType(type);
-    Storage.setItem('theme', type);
-  };
-
+export function ThemeProvider({
+  children,
+  themeType,
+  onThemeChange,
+}: {
+  children: React.ReactNode;
+  themeType: ThemeType;
+  onThemeChange: (type: ThemeType) => void;
+}) {
   const theme = useMemo(() => {
     const colors = THEMES[themeType];
     return {
@@ -75,7 +67,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   return React.createElement(
     ThemeContext.Provider,
-    { value: { theme: theme as any, themeType, setTheme } },
+    { value: { theme: theme as any, themeType, setTheme: onThemeChange } },
     children
   );
 }

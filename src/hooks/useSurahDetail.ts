@@ -12,10 +12,12 @@ export function useSurahDetail(
   const [surahDetail, setSurahDetail] = useState<SurahDetail | null>(null);
   const [isFetchingSurahDetail, setIsFetchingSurahDetail] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeSurahId, setActiveSurahId] = useState<number | null>(null);
 
   useEffect(() => {
     if (surahId === null) {
       setSurahDetail(null);
+      setActiveSurahId(null);
       setIsFetchingSurahDetail(false);
       setError(null);
       return;
@@ -25,13 +27,16 @@ export function useSurahDetail(
     let isActive = true;
 
     async function loadSurahDetail(): Promise<void> {
-      setSurahDetail(null);
+      if (activeSurahId !== null && activeSurahId !== currentSurahId) {
+        setSurahDetail(null);
+      }
       setIsFetchingSurahDetail(true);
       setError(null);
       try {
         const detail = await fetchSurahDetail(currentSurahId, translationAuthorId, reciterId);
         if (isActive) {
           setSurahDetail(detail);
+          setActiveSurahId(detail.id);
         }
       } catch (err) {
         if (isActive) {
@@ -49,11 +54,13 @@ export function useSurahDetail(
     return () => {
       isActive = false;
     };
-  }, [surahId, translationAuthorId, reciterId, loadingSurahDetailError]);
+  }, [activeSurahId, surahId, translationAuthorId, reciterId, loadingSurahDetailError]);
 
   return {
     surahDetail,
     isFetchingSurahDetail,
+    isFetchingInitial: isFetchingSurahDetail && surahDetail === null,
+    isRefreshing: isFetchingSurahDetail && surahDetail !== null,
     error,
   };
 }

@@ -1,15 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ReciterId } from '../constants/reciters';
-
-export type PlaybackSessionSnapshot = {
-  surahId: number;
-  startVerseNumber: number;
-  endVerseNumber: number;
-  repeatCount: number;
-  currentTrackIndex: number;
-  queueLength: number;
-  playbackStatus: 'idle' | 'loading' | 'playing' | 'paused' | 'stopped';
-};
+import type { ThemeType } from '../constants/colors';
 
 const KEYS = {
   LANGUAGE: '@app_language',
@@ -17,12 +8,12 @@ const KEYS = {
   SELECTED_SURAH: '@app_selected_surah',
   SELECTED_TRANSLATION: '@app_selected_translation',
   SELECTED_RECITER: '@app_selected_reciter',
+  THEME: '@app_theme',
   AUTO_SCROLL: '@app_auto_scroll',
   AYAH_TRACKING: '@app_ayah_tracking',
   LAST_VERSE: '@app_last_verse',
   DOWNLOAD_COMPLETE_PREFIX: '@app_full_download_complete',
   ONBOARDING_DONE: '@app_onboarding_done',
-  PLAYBACK_SESSION: '@app_playback_session',
 };
 
 async function setBoolean(key: string, value: boolean) {
@@ -88,6 +79,14 @@ export const Storage = {
       : null;
   },
 
+  async setTheme(themeType: ThemeType) {
+    await AsyncStorage.setItem(KEYS.THEME, themeType);
+  },
+  async getTheme() {
+    const val = await AsyncStorage.getItem(KEYS.THEME);
+    return val === 'PAPER' || val === 'DARK' ? (val as ThemeType) : null;
+  },
+
   async setAutoScroll(enabled: boolean) {
     await setBoolean(KEYS.AUTO_SCROLL, enabled);
   },
@@ -122,53 +121,6 @@ export const Storage = {
       return null;
     }
   },
-
-  async setPlaybackSession(session: PlaybackSessionSnapshot) {
-    await AsyncStorage.setItem(KEYS.PLAYBACK_SESSION, JSON.stringify(session));
-  },
-
-  async getPlaybackSession(): Promise<PlaybackSessionSnapshot | null> {
-    const val = await AsyncStorage.getItem(KEYS.PLAYBACK_SESSION);
-    if (!val) {
-      return null;
-    }
-
-    try {
-      const parsed = JSON.parse(val) as Partial<PlaybackSessionSnapshot>;
-      if (
-        typeof parsed.surahId !== 'number' ||
-        typeof parsed.startVerseNumber !== 'number' ||
-        typeof parsed.endVerseNumber !== 'number' ||
-        typeof parsed.repeatCount !== 'number' ||
-        typeof parsed.currentTrackIndex !== 'number' ||
-        typeof parsed.queueLength !== 'number' ||
-        (parsed.playbackStatus !== 'idle' &&
-          parsed.playbackStatus !== 'loading' &&
-          parsed.playbackStatus !== 'playing' &&
-          parsed.playbackStatus !== 'paused' &&
-          parsed.playbackStatus !== 'stopped')
-      ) {
-        return null;
-      }
-
-      return {
-        surahId: parsed.surahId,
-        startVerseNumber: parsed.startVerseNumber,
-        endVerseNumber: parsed.endVerseNumber,
-        repeatCount: parsed.repeatCount,
-        currentTrackIndex: parsed.currentTrackIndex,
-        queueLength: parsed.queueLength,
-        playbackStatus: parsed.playbackStatus,
-      };
-    } catch {
-      return null;
-    }
-  },
-
-  async clearPlaybackSession() {
-    await AsyncStorage.removeItem(KEYS.PLAYBACK_SESSION);
-  },
-
   async setItem(key: string, value: string) {
     await AsyncStorage.setItem(key, value);
   },

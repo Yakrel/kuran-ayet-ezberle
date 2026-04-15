@@ -42,6 +42,7 @@ type SettingsPanelProps = {
   autoScrollText: string;
   ayahTrackingText: string;
   themeText: string;
+  onThemeChange: (theme: ThemeType) => void;
   playbackSpeedText: string;
   aboutText: string;
   manageDownloadsText: string;
@@ -89,6 +90,7 @@ export function SettingsPanel({
   autoScrollText,
   ayahTrackingText,
   themeText,
+  onThemeChange,
   playbackSpeedText,
   aboutText,
   manageDownloadsText,
@@ -97,7 +99,7 @@ export function SettingsPanel({
   onAboutPress,
   onManageDownloadsPress,
 }: SettingsPanelProps) {
-  const { theme, themeType, setTheme } = useTheme();
+  const { theme, themeType } = useTheme();
   const pickerMode = Platform.OS === 'android' && themeType === 'PAPER' ? 'dialog' : 'dropdown';
   const useThemedSelect = Platform.OS === 'android' && themeType === 'PAPER';
   const [activeSelect, setActiveSelect] = useState<ActiveSelectKey>(null);
@@ -253,7 +255,7 @@ export function SettingsPanel({
   return (
     <View style={styles.settingsPanel}>
       {renderSelectField('language', languageText, language, languageOptions, onLanguageChange)}
-      {renderSelectField('theme', themeText, themeType, themeOptions, (nextTheme) => setTheme(nextTheme as ThemeType))}
+      {renderSelectField('theme', themeText, themeType, themeOptions, (nextTheme) => onThemeChange(nextTheme as ThemeType))}
       {renderSelectField('speed', playbackSpeedText, playbackRate, speedOptions, (nextRate) => onPlaybackRateChange(Number(nextRate)))}
       {renderSelectField('translation', translationText, selectedTranslationAuthorId, translationPickerOptions, (nextAuthorId) => onTranslationChange(Number(nextAuthorId)))}
       {renderSelectField('reciter', reciterText, selectedReciterId, reciterPickerOptions, onReciterChange)}
@@ -360,7 +362,7 @@ export function SettingsPanel({
                       if (activeSelect === 'language') {
                         onLanguageChange(option.value as LanguageCode);
                       } else if (activeSelect === 'theme') {
-                        setTheme(option.value as ThemeType);
+                        onThemeChange(option.value as ThemeType);
                       } else if (activeSelect === 'speed') {
                         onPlaybackRateChange(Number(option.value));
                       } else if (activeSelect === 'translation') {

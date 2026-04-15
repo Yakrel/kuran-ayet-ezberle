@@ -1,5 +1,4 @@
 import * as FileSystem from 'expo-file-system/legacy';
-import { appendAudioDiagnosticLog } from './audioDiagnostics';
 import { Storage } from './storage';
 import { DEFAULT_RECITER_ID, getReciterOption, type ReciterId } from '../constants/reciters';
 import { buildVerseFileName } from '../utils/formatters';
@@ -504,7 +503,6 @@ async function getReadyFileUri(
   });
 
   if (result) {
-    await appendAudioDiagnosticLog('cache_hit', { reciterId, surahId, verseNumber, pinnedOffline });
     await reconcileOfflineReadyFlag(reciterId);
   }
   return result;
@@ -537,8 +535,6 @@ async function createInflightDownload(
   const promise = trackTaskPromise((async () => {
     await ensureCacheDir(reciterId);
     await removeFileIfExists(partialUri);
-    await appendAudioDiagnosticLog('download_start', { reciterId, surahId, verseNumber, pinnedOffline: options.pinnedOffline });
-
     await withCacheMutationLock(async () => {
       await removeFileIfExists(fileUri);
       await removeIndexEntryUnsafe(reciterId, fileName);
@@ -584,7 +580,6 @@ async function createInflightDownload(
         if (!inflight.pinnedOfflineRequested) {
           await pruneLiveCacheIfNeeded(reciterId);
         }
-        await appendAudioDiagnosticLog('download_complete', { reciterId, surahId, verseNumber, pinnedOffline: inflight.pinnedOfflineRequested });
         await reconcileOfflineReadyFlag(reciterId);
         completed = true;
         return fileUri;
@@ -638,14 +633,11 @@ async function downloadVerseToCache(
     return readyFileUri;
   }
 
-  await appendAudioDiagnosticLog('cache_miss', { reciterId, surahId, verseNumber, pinnedOffline });
-
   let inflight = inflightDownloads.get(scopedFileKey);
   const createdNew = !inflight;
   if (!inflight) {
     inflight = await createInflightDownload(surahId, verseNumber, options);
   } else {
-    await appendAudioDiagnosticLog('inflight_reuse', { reciterId, surahId, verseNumber, pinnedOffline });
     addConsumerToInflight(inflight, options);
   }
 

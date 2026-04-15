@@ -16,7 +16,6 @@ const files = new Map<string, FileRecord>();
 const storage = new Map<string, string>();
 const downloadCounts = new Map<string, number>();
 const downloadHandlers = new Map<string, () => Promise<{ status: number }>>();
-let diagnosticLog = '';
 
 function setFile(uri: string, size: number, isDirectory = false) {
   files.set(uri, { size, isDirectory });
@@ -126,18 +125,6 @@ vi.mock('./storage', () => ({
   },
 }));
 
-vi.mock('./audioDiagnostics', () => ({
-  async appendAudioDiagnosticLog(step: string) {
-    diagnosticLog = diagnosticLog ? `${diagnosticLog}\n${step}` : step;
-  },
-  async getAudioDiagnosticLog() {
-    return diagnosticLog;
-  },
-  async clearAudioDiagnosticLog() {
-    diagnosticLog = '';
-  },
-}));
-
 async function loadAudioCache() {
   vi.resetModules();
   return await import('./audioCache');
@@ -148,7 +135,6 @@ beforeEach(() => {
   storage.clear();
   downloadCounts.clear();
   downloadHandlers.clear();
-  diagnosticLog = '';
   setFile(documentDirectory, 0, true);
   setFile(`${documentDirectory}ayah-audio-cache/`, 0, true);
   setFile(`${documentDirectory}ayah-audio-cache/ghamdi/`, 0, true);
@@ -277,18 +263,4 @@ describe('audioCache', () => {
     expect(downloadCounts.get(minshawyUrl)).toBe(1);
   });
 
-  it('records cache miss then cache hit in diagnostics', async () => {
-    const audioCache = await loadAudioCache();
-    const diagnostics = await import('./audioDiagnostics');
-    const url = 'https://everyayah.com/data/Ghamadi_40kbps/001001.mp3';
-    downloadHandlers.set(url, async () => ({ status: 200 }));
-
-    await diagnostics.clearAudioDiagnosticLog();
-    await audioCache.getVerseAudioForPlayback(DEFAULT_RECITER_ID, 1, 1);
-    await audioCache.getVerseAudioForPlayback(DEFAULT_RECITER_ID, 1, 1);
-
-    const log = await diagnostics.getAudioDiagnosticLog();
-    expect(log).toContain('cache_miss');
-    expect(log).toContain('cache_hit');
-  });
 });

@@ -41,9 +41,6 @@ export type TranslationStrings = {
   changelog: string;
   initialRelease: string;
   manageDownloads: string;
-  noAudioLogs: string;
-  audioDiagnostics: string;
-  clearAudioLogs: string;
   downloadAll: string;
   downloadReady: string;
   clearDownloads: string;
