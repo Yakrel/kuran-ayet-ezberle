@@ -11,8 +11,8 @@ type DownloadManagerSheetProps = {
   cacheStats: {
     files: number;
     megabytes: number;
-    readyVerses: number;
-    totalVerses: number;
+    readySurahs: number;
+    totalSurahs: number;
     offlineReady: boolean;
   };
   isDownloadingAll: boolean;
@@ -54,7 +54,7 @@ export function DownloadManagerSheet({
               {text.selectedReciterOnlyHint(selectedReciterLabel)}
             </Text>
             <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.storageUsed}: ${cacheStats.megabytes} MB`}</Text>
-            <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.readyVerses}: ${cacheStats.readyVerses}/${cacheStats.totalVerses}`}</Text>
+            <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.readySurahs}: ${cacheStats.readySurahs}/${cacheStats.totalSurahs}`}</Text>
             <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.cachedFiles}: ${cacheStats.files} MP3`}</Text>
             {downloadProgressLabel ? <Text style={[styles.downloadHint, { color: theme.colors.TEXT_MUTED }]}>{downloadProgressLabel}</Text> : null}
 

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
-import { DEFAULT_RECITER_ID, getReciterOption, type ReciterId } from '../constants/reciters';
+import { DEFAULT_RECITER_ID, getReciterOption } from '../constants/reciters';
 import { getTrackPlayerModule, getTrackPlayerUnavailableReason } from '../services/trackPlayer';
 import { getPreferredSurahAudioUri } from '../services/surahAudioCache';
 import type { SurahDetail, Verse } from '../types/quran';
@@ -30,10 +30,9 @@ type PlaybackSession = {
   totalDurationMs: number;
 };
 
-type UseSegmentedPlayerOptions = {
+type UseContinuousPlayerOptions = {
   onError: (message: string | null) => void;
   onActiveVerseChange?: (verse: Verse | null) => void;
-  reciterId: ReciterId;
 };
 
 type StartPlaybackArgs = {
@@ -41,7 +40,6 @@ type StartPlaybackArgs = {
   startVerseNumber: number;
   endVerseNumber: number;
   repeatCount: number;
-  reciterId: ReciterId;
 };
 
 type TrackPlayerProgress = {
@@ -157,7 +155,7 @@ async function buildContinuousPlaybackSession(
   const rangeStartMs = boundaries[0].startTimeMs;
   const rangeEndMs = boundaries[boundaries.length - 1].endTimeMs;
   const rangeDurationMs = Math.max(rangeEndMs - rangeStartMs, 1);
-  const surahAudioUrl = await getPreferredSurahAudioUri(DEFAULT_RECITER_ID, surahDetail.id, surahDetail.audio.url);
+  const surahAudioUrl = await getPreferredSurahAudioUri(surahDetail.id, surahDetail.audio.url);
 
   return {
     surahId: surahDetail.id,
@@ -174,7 +172,7 @@ async function buildContinuousPlaybackSession(
   };
 }
 
-export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmentedPlayerOptions) {
+export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinuousPlayerOptions) {
   const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>('idle');
   const [currentRepeat, setCurrentRepeat] = useState(1);
   const [activeVerse, setActiveVerse] = useState<Verse | null>(null);

@@ -40,7 +40,7 @@ import {
 import { useAppSettings } from './src/hooks/useAppSettings';
 import { useComputedState } from './src/hooks/useComputedState';
 import { useI18n } from './src/hooks/useI18n';
-import { useSegmentedPlayer } from './src/hooks/useSegmentedPlayer';
+import { useContinuousPlayer } from './src/hooks/useContinuousPlayer';
 import { useSurahDetail } from './src/hooks/useSurahDetail';
 import { useSwipeGesture } from './src/hooks/useSwipeGesture';
 import {
@@ -123,7 +123,7 @@ function MainApp({ settings }: MainAppProps) {
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isDownloadManagerOpen, setIsDownloadManagerOpen] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [cacheStats, setCacheStats] = useState({ files: 0, megabytes: 0, readyVerses: 0, totalVerses: 0, offlineReady: false });
+  const [cacheStats, setCacheStats] = useState({ files: 0, megabytes: 0, readySurahs: 0, totalSurahs: 0, offlineReady: false });
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [downloadProgressLabel, setDownloadProgressLabel] = useState('');
   const [verseActionKey, setVerseActionKey] = useState<string | null>(null);
@@ -176,8 +176,7 @@ function MainApp({ settings }: MainAppProps) {
     }
   }, [currentPage, selectedSurahId]);
 
-  const player = useSegmentedPlayer({
-    reciterId: DEFAULT_RECITER_ID,
+  const player = useContinuousPlayer({
     onError: setErrorMessage,
     onActiveVerseChange: handleActiveVerseChange,
   });
@@ -228,13 +227,13 @@ function MainApp({ settings }: MainAppProps) {
   useEffect(() => {
     void (async () => {
       const [stats, surahAudios] = await Promise.all([
-        getSurahAudioCacheStats(DEFAULT_RECITER_ID),
+        getSurahAudioCacheStats(),
         fetchSurahAudioRefs(),
       ]);
       setCacheStats({
         ...stats,
-        readyVerses: stats.files,
-        totalVerses: surahAudios.length,
+        readySurahs: stats.files,
+        totalSurahs: surahAudios.length,
         offlineReady: stats.files >= surahAudios.length,
       });
     })();
@@ -345,13 +344,13 @@ function MainApp({ settings }: MainAppProps) {
 
     void (async () => {
       const [stats, surahAudios] = await Promise.all([
-        getSurahAudioCacheStats(DEFAULT_RECITER_ID),
+        getSurahAudioCacheStats(),
         fetchSurahAudioRefs(),
       ]);
       setCacheStats({
         ...stats,
-        readyVerses: stats.files,
-        totalVerses: surahAudios.length,
+        readySurahs: stats.files,
+        totalSurahs: surahAudios.length,
         offlineReady: stats.files >= surahAudios.length,
       });
     })();
@@ -471,10 +470,8 @@ function MainApp({ settings }: MainAppProps) {
         startVerse,
         endVerse,
         repeatCount,
-        reciterId: DEFAULT_RECITER_ID,
       });
       await player.startPlayback({
-        reciterId: DEFAULT_RECITER_ID,
         surahDetail: readySurahDetail,
         startVerseNumber: startVerse,
         endVerseNumber: endVerse,
@@ -659,7 +656,6 @@ function MainApp({ settings }: MainAppProps) {
       setErrorMessage(null);
 
       await player.startPlayback({
-        reciterId: DEFAULT_RECITER_ID,
         surahDetail: readySurahDetail,
         startVerseNumber: startVerse,
         endVerseNumber: endVerse,
@@ -682,15 +678,15 @@ function MainApp({ settings }: MainAppProps) {
       setDownloadProgressLabel('0%');
 
       const surahAudios = await fetchSurahAudioRefs();
-      await downloadAllSurahAudio(DEFAULT_RECITER_ID, surahAudios, (progress) => {
+      await downloadAllSurahAudio(surahAudios, (progress) => {
         setDownloadProgressLabel(`${progress.current}/${progress.total} • ${progress.percent}%`);
       });
 
-      const stats = await getSurahAudioCacheStats(DEFAULT_RECITER_ID);
+      const stats = await getSurahAudioCacheStats();
       setCacheStats({
         ...stats,
-        readyVerses: stats.files,
-        totalVerses: surahAudios.length,
+        readySurahs: stats.files,
+        totalSurahs: surahAudios.length,
         offlineReady: stats.files >= surahAudios.length,
       });
       setDownloadProgressLabel(text.downloadCompleteForReciter(selectedReciter.label));
@@ -714,9 +710,9 @@ function MainApp({ settings }: MainAppProps) {
         onPress: () => {
           void (async () => {
             await player.stopPlayback();
-            await clearAllSurahAudio(DEFAULT_RECITER_ID);
+            await clearAllSurahAudio();
             const surahAudios = await fetchSurahAudioRefs();
-            setCacheStats({ files: 0, megabytes: 0, readyVerses: 0, totalVerses: surahAudios.length, offlineReady: false });
+            setCacheStats({ files: 0, megabytes: 0, readySurahs: 0, totalSurahs: surahAudios.length, offlineReady: false });
             setDownloadProgressLabel('');
           })();
         },
@@ -769,6 +765,9 @@ function MainApp({ settings }: MainAppProps) {
               start: text.start,
               page: text.page,
               lastVerse: text.lastVerse,
+              cancel: text.cancel,
+              confirm: text.confirm,
+              max: text.max,
             }}
           />
         </View>
@@ -790,6 +789,7 @@ function MainApp({ settings }: MainAppProps) {
             autoScrollEnabled={isAutoScrollEnabled}
             onVerseLongPress={handleVerseLongPress}
             onPlayFromVerse={(verse) => void handlePlayFromVerse(verse)}
+            playFromVerseText={text.playFromVerse}
             verseActionKey={verseActionKey}
             onVisibleVerseChange={setVisibleVerseLocation}
             panHandlers={pageSwipeResponder}

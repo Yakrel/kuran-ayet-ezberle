@@ -14,6 +14,7 @@ type VerseCardProps = {
   isCurrentVerse?: boolean;
   onLongPress: (verse: Verse) => void;
   onPlayFromVerse: (verse: Verse) => void;
+  playFromVerseText: string;
   showPlayAction: boolean;
 };
 
@@ -24,6 +25,7 @@ export function VerseCard({
   isCurrentVerse,
   onLongPress,
   onPlayFromVerse,
+  playFromVerseText,
   showPlayAction,
 }: VerseCardProps) {
   const { theme } = useTheme();
@@ -83,7 +85,7 @@ export function VerseCard({
           onPress={() => onPlayFromVerse(verse)}
         >
           <Feather name="play" size={16} color="#fff" />
-          <Text style={styles.playActionText}>Bu ayetten çal</Text>
+          <Text style={styles.playActionText}>{playFromVerseText}</Text>
         </Pressable>
       ) : null}
     </Pressable>

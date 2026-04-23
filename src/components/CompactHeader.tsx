@@ -50,6 +50,9 @@ type CompactHeaderProps = {
     start: string;
     page: string;
     lastVerse: string;
+    cancel: string;
+    confirm: string;
+    max: string;
   };
 };
 
@@ -205,6 +208,9 @@ export function CompactHeader({
         initialValue={startVerseInput}
         onSubmit={onStartVerseChange}
         maxValue={maxVerseInSurah}
+        maxLabel={text.max}
+        cancelLabel={text.cancel}
+        submitLabel={text.confirm}
         placeholder="1"
       />
       <RangeInputModal
@@ -215,6 +221,9 @@ export function CompactHeader({
         onSubmit={onEndVerseChange}
         maxValue={maxVerseInSurah}
         maxActionLabel={text.lastVerse}
+        maxLabel={text.max}
+        cancelLabel={text.cancel}
+        submitLabel={text.confirm}
         placeholder="1"
       />
       <RangeInputModal
@@ -223,6 +232,9 @@ export function CompactHeader({
         title={text.repeat}
         initialValue={repeatCountInput}
         onSubmit={onRepeatCountChange}
+        maxLabel={text.max}
+        cancelLabel={text.cancel}
+        submitLabel={text.confirm}
         placeholder="1"
       />
     </View>

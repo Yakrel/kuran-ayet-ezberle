@@ -20,6 +20,7 @@ type VerseListProps = {
   autoScrollEnabled: boolean;
   onVerseLongPress: (verse: Verse) => void;
   onPlayFromVerse: (verse: Verse) => void;
+  playFromVerseText: string;
   verseActionKey: string | null;
   onVisibleVerseChange: (location: VerseLocation) => void;
   panHandlers: ReturnType<typeof import('react-native').PanResponder.create>['panHandlers'];
@@ -35,6 +36,7 @@ export function VerseList({
   autoScrollEnabled,
   onVerseLongPress,
   onPlayFromVerse,
+  playFromVerseText,
   verseActionKey,
   onVisibleVerseChange,
   panHandlers,
@@ -128,6 +130,7 @@ export function VerseList({
                 isCurrentVerse={isCurrent}
                 onLongPress={onVerseLongPress}
                 onPlayFromVerse={onPlayFromVerse}
+                playFromVerseText={playFromVerseText}
                 showPlayAction={verseActionKey === `${item.surah_id}:${item.verse_number}`}
               />
             );
@@ -159,5 +162,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginHorizontal: 12,
     letterSpacing: 0.2,
+    opacity: 0.65,
   },
 });

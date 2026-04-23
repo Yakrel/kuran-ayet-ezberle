@@ -86,7 +86,7 @@ export function SurahPicker({
         <View style={[styles.modalOverlay, { backgroundColor: themeType === 'DARK' ? 'rgba(2, 6, 23, 0.72)' : 'rgba(7, 54, 66, 0.4)' }]}>
           <View style={[styles.modalCard, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}>
             <View style={[styles.modalHeader, { borderBottomColor: theme.colors.BORDER_SECONDARY }]}>
-              <Text style={[styles.modalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{label ?? 'Sure'}</Text>
+              <Text style={[styles.modalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{label ?? text.surah}</Text>
               <Pressable style={[styles.closeButton, { backgroundColor: theme.colors.CARD_BG }]} onPress={() => setIsOpen(false)}>
                 <Feather name="x" size={20} color={theme.colors.TEXT_PRIMARY} />
               </Pressable>
@@ -134,7 +134,7 @@ export function SurahPicker({
                       ]}>
                         {surah.id}. {surah.name}
                       </Text>
-                      <Text style={[styles.optionMeta, { color: theme.colors.TEXT_MUTED }]}>{surah.verse_count} ayet</Text>
+                      <Text style={[styles.optionMeta, { color: theme.colors.TEXT_MUTED }]}>{surah.verse_count} {text.ayahUnit}</Text>
                     </View>
                     {isSelected ? (
                       <Feather name="check" size={18} color={theme.colors.ACCENT_PRIMARY} />

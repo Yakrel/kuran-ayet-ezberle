@@ -1,15 +1,15 @@
-# Kur'an - Ayet Ezberle
+# Quran Ayah Memorization
 
 A concise, open-source Android-first Quran memorization app built with Expo and React Native.
 
 ## Features
 
 - Surah and ayah selector
-- Play a range of ayahs (start, count) with optional repeat/loop
+- Play an explicit ayah range (start, end) with optional repeat/loop
 - Arabic ayah text display alongside selectable translations (TR/EN)
-- Verse-by-verse audio playback (Saad Al-Ghamdi) with automatic per-ayah disk caching
+- Continuous full-surah audio playback (Saad Al-Ghamdi) with ayah timing and range seeking
 - Page-based swipe navigation and resume playback
-- Stream-first listening with a reusable offline pack built on the same ayah cache
+- Stream-first listening with a reusable offline pack built on the same full-surah audio source
 
 ## Quick start
 
@@ -43,9 +43,9 @@ npm run start:metro
 ## Data sources
 
 - Text & translations: https://api.acikkuran.com
-- Audio (Saad Al-Ghamdi): https://everyayah.com/data/Ghamadi_40kbps/
-  Ayah files follow the pattern `SSSAAA.mp3` where `SSS` is the 3-digit surah and `AAA` is the 3-digit ayah.
-  Example: https://everyayah.com/data/Ghamadi_40kbps/001001.mp3
+- Audio and ayah timing: QUL/Tarteel recitation `13` for Saad Al-Ghamdi.
+- The app uses embedded full-surah MP3 references and timing data from `assets/data/recitations/qul-recitation-13.json`.
+- Offline listening caches the same full-surah MP3 files under the app cache; it does not use a separate verse-by-verse audio source.
 
 ## License
 

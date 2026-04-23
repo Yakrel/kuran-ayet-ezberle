@@ -29,9 +29,13 @@ type SettingsPanelProps = {
     lineHeight: number;
   };
   languageText: string;
+  languageTurkishText: string;
+  languageEnglishText: string;
   translationText: string;
   autoScrollText: string;
   themeText: string;
+  themeDarkText: string;
+  themePaperText: string;
   onThemeChange: (theme: ThemeType) => void;
   playbackSpeedText: string;
   aboutText: string;
@@ -68,9 +72,13 @@ export function SettingsPanel({
   quranFontFamily,
   quranFontPreviewStyle,
   languageText,
+  languageTurkishText,
+  languageEnglishText,
   translationText,
   autoScrollText,
   themeText,
+  themeDarkText,
+  themePaperText,
   onThemeChange,
   playbackSpeedText,
   aboutText,
@@ -86,13 +94,13 @@ export function SettingsPanel({
   const [activeSelect, setActiveSelect] = useState<ActiveSelectKey>(null);
 
   const languageOptions: Array<SelectOption<LanguageCode>> = [
-    { value: 'tr', label: language === 'tr' ? 'Türkçe' : 'Turkish' },
-    { value: 'en', label: language === 'tr' ? 'İngilizce' : 'English' },
+    { value: 'tr', label: languageTurkishText },
+    { value: 'en', label: languageEnglishText },
   ];
 
   const themeOptions: Array<SelectOption<ThemeType>> = [
-    { value: 'DARK', label: language === 'tr' ? 'Koyu' : 'Dark' },
-    { value: 'PAPER', label: language === 'tr' ? 'Kağıt' : 'Paper' },
+    { value: 'DARK', label: themeDarkText },
+    { value: 'PAPER', label: themePaperText },
   ];
 
   const speedOptions: Array<SelectOption<number>> = [

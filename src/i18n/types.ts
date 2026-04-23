@@ -10,11 +10,16 @@ export type TranslationStrings = {
   endVerse: string;
   lastVerse: string;
   verseCount: string;
+  ayahUnit: string;
   repeat: string;
   start: string;
   stop: string;
   language: string;
+  languageTurkish: string;
+  languageEnglish: string;
   theme: string;
+  themeDark: string;
+  themePaper: string;
   playbackSpeed: string;
   page: string;
   range: string;
@@ -50,7 +55,7 @@ export type TranslationStrings = {
   selectedReciterDownloads: (reciter: string) => string;
   selectedReciterOnlyHint: (reciter: string) => string;
   storageUsed: string;
-  readyVerses: string;
+  readySurahs: string;
   downloadPromptTitle: string;
   downloadPromptDesc: string;
   downloadLater: string;
@@ -62,6 +67,9 @@ export type TranslationStrings = {
   downloadError: string;
   lowStorageWarning: string;
   cancel: string;
+  confirm: string;
+  max: string;
+  playFromVerse: string;
   loadingSurahsError: string;
   loadingSurahDetailError: string;
   invalidSurahSelection: string;
@@ -69,6 +77,8 @@ export type TranslationStrings = {
   startingPlaybackError: string;
   playbackError: string;
   audioModeError: string;
+  unexpectedError: string;
+  restartApp: string;
   rangeInputError: string;
   surahNotReady: string;
   verseOutOfRange: (max: number) => string;
@@ -81,7 +91,7 @@ export type TranslationStrings = {
   changelogFonts: string;
   changelogLanguages: string;
   changelogOfflineListening: string;
-  segmentedRecitation: string;
+  continuousRecitation: string;
   repeatBuilder: string;
   activeSession: string;
   referenceVerses: string;

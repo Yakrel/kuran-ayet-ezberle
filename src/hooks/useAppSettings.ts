@@ -3,6 +3,7 @@ import type { ThemeType } from '../constants/colors';
 import type { QuranFontId } from '../constants/quranFonts';
 import type { LanguageCode } from '../i18n/types';
 import { Storage } from '../services/storage';
+import { cleanupLegacyAyahPlaybackState } from '../services/legacyCleanup';
 import { inferDeviceLanguage } from '../utils/language';
 import {
   DEFAULT_APP_SETTINGS,
@@ -23,6 +24,8 @@ export function useAppSettings() {
     let isActive = true;
 
     async function loadSettings() {
+      await cleanupLegacyAyahPlaybackState();
+
       const fallbackLanguage = inferDeviceLanguage();
       const persisted: PersistedAppSettings = {
         language: (await Storage.getLanguage()) as LanguageCode | null,
