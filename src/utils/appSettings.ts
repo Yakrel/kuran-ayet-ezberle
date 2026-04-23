@@ -4,44 +4,56 @@ import {
   DEFAULT_TURKISH_AUTHOR_ID,
 } from '../constants/defaults';
 import type { QuranFontId } from '../constants/quranFonts';
-import type { ReciterId } from '../constants/reciters';
 import { TRANSLATION_OPTIONS } from '../constants/authors';
 import type { LanguageCode } from '../i18n/types';
+import { DEFAULT_RANGE_SIZE, DEFAULT_REPEAT } from '../constants/defaults';
+
+export type PracticeState = {
+  surahId: number | null;
+  verseNumber: number;
+  page: number;
+  startVerse: number;
+  endVerse: number;
+  repeatCount: number;
+};
 
 export type PersistedAppSettings = {
   language: LanguageCode | null;
   selectedTranslationAuthorId: number | null;
   selectedSurahId: number | null;
-  selectedReciterId: ReciterId | null;
   selectedQuranFontId: QuranFontId | null;
   themeType: ThemeType | null;
   isAutoScrollEnabled: boolean | null;
-  isAyahTrackingEnabled: boolean | null;
-  lastVerse: { surahId: number; verseNumber: number } | null;
+  practiceState: unknown;
 };
 
 export type AppSettingsState = {
   language: LanguageCode;
   selectedTranslationAuthorId: number;
   selectedSurahId: number | null;
-  selectedReciterId: ReciterId;
   selectedQuranFontId: QuranFontId;
   themeType: ThemeType;
   isAutoScrollEnabled: boolean;
-  isAyahTrackingEnabled: boolean;
-  lastVerse: { surahId: number; verseNumber: number } | null;
+  practiceState: PracticeState;
+};
+
+export const DEFAULT_PRACTICE_STATE: PracticeState = {
+  surahId: null,
+  verseNumber: 1,
+  page: 1,
+  startVerse: 1,
+  endVerse: DEFAULT_RANGE_SIZE,
+  repeatCount: DEFAULT_REPEAT,
 };
 
 export const DEFAULT_APP_SETTINGS: AppSettingsState = {
   language: 'en',
   selectedTranslationAuthorId: DEFAULT_ENGLISH_AUTHOR_ID,
   selectedSurahId: null,
-  selectedReciterId: 'ghamdi',
   selectedQuranFontId: 'scheherazade',
   themeType: 'DARK',
   isAutoScrollEnabled: true,
-  isAyahTrackingEnabled: false,
-  lastVerse: null,
+  practiceState: DEFAULT_PRACTICE_STATE,
 };
 
 export function isTranslationAllowedForLanguage(language: LanguageCode, translationAuthorId: number) {
@@ -54,6 +66,28 @@ function getDefaultTranslationAuthorByLanguage(language: LanguageCode) {
   return language === 'tr' ? DEFAULT_TURKISH_AUTHOR_ID : DEFAULT_ENGLISH_AUTHOR_ID;
 }
 
+function readPositiveInteger(value: unknown, fallback: number) {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+export function resolvePersistedPracticeState(persisted: unknown): PracticeState {
+  if (!persisted || typeof persisted !== 'object') {
+    return DEFAULT_PRACTICE_STATE;
+  }
+
+  const candidate = persisted as Partial<Record<keyof PracticeState, unknown>>;
+  const surahId = readPositiveInteger(candidate.surahId, 0);
+
+  return {
+    surahId: surahId > 0 ? surahId : null,
+    verseNumber: readPositiveInteger(candidate.verseNumber, DEFAULT_PRACTICE_STATE.verseNumber),
+    page: readPositiveInteger(candidate.page, DEFAULT_PRACTICE_STATE.page),
+    startVerse: readPositiveInteger(candidate.startVerse, DEFAULT_PRACTICE_STATE.startVerse),
+    endVerse: readPositiveInteger(candidate.endVerse, DEFAULT_PRACTICE_STATE.endVerse),
+    repeatCount: readPositiveInteger(candidate.repeatCount, DEFAULT_PRACTICE_STATE.repeatCount),
+  };
+}
+
 export function resolveInitialAppSettings(
   persisted: PersistedAppSettings,
   fallbackLanguage: LanguageCode
@@ -64,17 +98,16 @@ export function resolveInitialAppSettings(
     isTranslationAllowedForLanguage(language, persisted.selectedTranslationAuthorId)
       ? persisted.selectedTranslationAuthorId
       : getDefaultTranslationAuthorByLanguage(language);
+  const practiceState = resolvePersistedPracticeState(persisted.practiceState);
 
   const nextState: AppSettingsState = {
     language,
     selectedTranslationAuthorId,
-    selectedSurahId: persisted.selectedSurahId,
-    selectedReciterId: persisted.selectedReciterId ?? DEFAULT_APP_SETTINGS.selectedReciterId,
+    selectedSurahId: practiceState.surahId ?? persisted.selectedSurahId,
     selectedQuranFontId: persisted.selectedQuranFontId ?? DEFAULT_APP_SETTINGS.selectedQuranFontId,
     themeType: persisted.themeType ?? DEFAULT_APP_SETTINGS.themeType,
     isAutoScrollEnabled: persisted.isAutoScrollEnabled ?? DEFAULT_APP_SETTINGS.isAutoScrollEnabled,
-    isAyahTrackingEnabled: persisted.isAyahTrackingEnabled ?? DEFAULT_APP_SETTINGS.isAyahTrackingEnabled,
-    lastVerse: persisted.lastVerse,
+    practiceState,
   };
 
   return {

@@ -16,22 +16,10 @@ export type VerseTranslation = {
   text: string;
 };
 
-export type WordSegment = [number, number, number];
-
-export type WordToken = {
-  location: string;
-  text: string;
-  position: number;
-  line_number: number;
-  page_number: number;
-  is_ayah_marker: boolean;
-};
-
 export type VerseTiming = {
   time_from_ms: number;
   time_to_ms: number;
   duration_ms: number;
-  segments: WordSegment[];
 };
 
 export type Verse = {
@@ -40,7 +28,6 @@ export type Verse = {
   page: number;
   verse: string;
   translation: VerseTranslation;
-  words: WordToken[];
   timing: VerseTiming | null;
 };
 

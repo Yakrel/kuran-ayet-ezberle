@@ -25,11 +25,9 @@ import { ErrorCard } from './src/components/ErrorCard';
 import { SettingsSheet } from './src/components/SettingsSheet';
 import { VerseList } from './src/components/VerseList';
 import { TRANSLATION_OPTIONS } from './src/constants/authors';
-import { DEFAULT_RECITER_ID, RECITER_OPTIONS, getReciterOption, type ReciterId } from './src/constants/reciters';
-import { hasEmbeddedTracking } from './src/constants/reciters';
+import { DEFAULT_RECITER_ID, getReciterOption } from './src/constants/reciters';
 import {
   APP_VERSION,
-  DEFAULT_RANGE_SIZE,
   DEFAULT_REPEAT,
   DEVELOPER_NAME,
   TOTAL_QURAN_PAGES,
@@ -46,14 +44,12 @@ import { useSegmentedPlayer } from './src/hooks/useSegmentedPlayer';
 import { useSurahDetail } from './src/hooks/useSurahDetail';
 import { useSwipeGesture } from './src/hooks/useSwipeGesture';
 import {
-  clearAllDownloads,
-  downloadAudioBundle,
+  clearAllSurahAudio,
+  downloadAllSurahAudio,
   getAvailableSpaceMB,
-  getCacheStats,
-  initializeAudioCache,
-} from './src/services/audioCache';
-import { clearAllSurahAudio } from './src/services/surahAudioCache';
-import { fetchPageVerses } from './src/services/quranService';
+  getSurahAudioCacheStats,
+} from './src/services/surahAudioCache';
+import { fetchPageVerses, fetchSurahAudioRefs } from './src/services/quranService';
 import { commonStyles } from './src/styles/common';
 import { ThemeProvider, useTheme } from './src/hooks/useTheme';
 import type { Verse } from './src/types/quran';
@@ -92,33 +88,37 @@ function MainApp({ settings }: MainAppProps) {
     language,
     selectedSurahId,
     selectedTranslationAuthorId,
-    selectedReciterId,
     selectedQuranFontId,
     isAutoScrollEnabled,
-    isAyahTrackingEnabled,
     themeType,
-    lastVerse,
+    practiceState,
     setLanguage,
     setSelectedSurahId,
     setSelectedTranslationAuthorId,
-    setSelectedReciterId,
     setSelectedQuranFontId,
     setThemeType,
     setIsAutoScrollEnabled,
-    setIsAyahTrackingEnabled,
-    setLastVerse,
+    setPracticeState,
   } = settings;
   const { text } = useI18n(language);
-  const [startVerseInput, setStartVerseInput] = useState('1');
-  const [endVerseInput, setEndVerseInput] = useState(String(DEFAULT_RANGE_SIZE));
-  const [repeatCountInput, setRepeatCountInput] = useState(String(DEFAULT_REPEAT));
-  const [currentPageInput, setCurrentPageInput] = useState('1');
-  const [currentPage, setCurrentPage] = useState(1);
+  const [startVerseInput, setStartVerseInput] = useState(String(practiceState.startVerse));
+  const [endVerseInput, setEndVerseInput] = useState(String(practiceState.endVerse));
+  const [repeatCountInput, setRepeatCountInput] = useState(String(practiceState.repeatCount));
+  const [currentPageInput, setCurrentPageInput] = useState(String(practiceState.page));
+  const [currentPage, setCurrentPage] = useState(practiceState.page);
   const [visibleVerseLocation, setVisibleVerseLocation] = useState<{
     surah_id: number;
     verse_number: number;
     page: number;
-  } | null>(null);
+  } | null>(
+    practiceState.surahId
+      ? {
+          surah_id: practiceState.surahId,
+          verse_number: practiceState.verseNumber,
+          page: practiceState.page,
+        }
+      : null
+  );
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isDownloadManagerOpen, setIsDownloadManagerOpen] = useState(false);
@@ -126,16 +126,15 @@ function MainApp({ settings }: MainAppProps) {
   const [cacheStats, setCacheStats] = useState({ files: 0, megabytes: 0, readyVerses: 0, totalVerses: 0, offlineReady: false });
   const [isDownloadingAll, setIsDownloadingAll] = useState(false);
   const [downloadProgressLabel, setDownloadProgressLabel] = useState('');
+  const [verseActionKey, setVerseActionKey] = useState<string | null>(null);
 
   const pendingNavigationIntentRef = useRef<PendingNavigationIntent | null>(null);
-  const restoredLastVerseRef = useRef(false);
-  const previousReciterIdRef = useRef<ReciterId | null>(null);
+  const hasAppliedInitialPracticeStateRef = useRef(false);
   const surahs = SURAH_LIST;
   const isFetchingSurahs = false;
   const { surahDetail, isFetchingSurahDetail, isFetchingInitial, error: surahDetailError } = useSurahDetail(
     selectedSurahId,
     selectedTranslationAuthorId,
-    selectedReciterId,
     text.loadingSurahDetailError
   );
 
@@ -152,7 +151,7 @@ function MainApp({ settings }: MainAppProps) {
   );
 
   const handleActiveVerseChange = useCallback((verse: Verse | null) => {
-    if (!isAyahTrackingEnabled || !verse) {
+    if (!verse) {
       return;
     }
 
@@ -175,17 +174,15 @@ function MainApp({ settings }: MainAppProps) {
     if (verse.surah_id === selectedSurahId && verse.page !== currentPage) {
       setCurrentPage(verse.page);
     }
-    setLastVerse(verse.surah_id, verse.verse_number);
-  }, [currentPage, isAyahTrackingEnabled, selectedSurahId, setLastVerse]);
+  }, [currentPage, selectedSurahId]);
 
   const player = useSegmentedPlayer({
-    reciterId: selectedReciterId,
+    reciterId: DEFAULT_RECITER_ID,
     onError: setErrorMessage,
     onActiveVerseChange: handleActiveVerseChange,
   });
   const currentPlayingVerse = player.activeVerse;
-  const selectedReciter = useMemo(() => getReciterOption(selectedReciterId), [selectedReciterId]);
-  const ayahTrackingAvailable = useMemo(() => hasEmbeddedTracking(selectedReciterId), [selectedReciterId]);
+  const selectedReciter = useMemo(() => getReciterOption(DEFAULT_RECITER_ID), []);
 
   const logUiEvent = useCallback((_step: string, _payload?: Record<string, unknown>) => {
     // Diagnostics removed.
@@ -229,15 +226,19 @@ function MainApp({ settings }: MainAppProps) {
   }, [getCurrentRangeSize]);
 
   useEffect(() => {
-    void initializeAudioCache(DEFAULT_RECITER_ID);
-  }, []);
-
-  useEffect(() => {
     void (async () => {
-      await initializeAudioCache(selectedReciterId);
-      setCacheStats(await getCacheStats(selectedReciterId));
+      const [stats, surahAudios] = await Promise.all([
+        getSurahAudioCacheStats(DEFAULT_RECITER_ID),
+        fetchSurahAudioRefs(),
+      ]);
+      setCacheStats({
+        ...stats,
+        readyVerses: stats.files,
+        totalVerses: surahAudios.length,
+        offlineReady: stats.files >= surahAudios.length,
+      });
     })();
-  }, [selectedReciterId]);
+  }, []);
 
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
@@ -261,19 +262,69 @@ function MainApp({ settings }: MainAppProps) {
     setCurrentPageInput(String(normalizedCurrentPage));
   }, [currentPage]);
 
-  useEffect(() => {
-    if (!ayahTrackingAvailable && isAyahTrackingEnabled) {
-      setIsAyahTrackingEnabled(false);
-    }
-  }, [ayahTrackingAvailable, isAyahTrackingEnabled]);
-
   const { theme } = useTheme();
 
   useEffect(() => {
-    if (surahs.length > 0 && selectedSurahId === null) {
+    if (isHydrated && surahs.length > 0 && selectedSurahId === null) {
       setSelectedSurahId(surahs[0].id);
     }
-  }, [selectedSurahId, surahs]);
+  }, [isHydrated, selectedSurahId, setSelectedSurahId, surahs]);
+
+  useEffect(() => {
+    if (hasAppliedInitialPracticeStateRef.current || !isHydrated) {
+      return;
+    }
+
+    hasAppliedInitialPracticeStateRef.current = true;
+    setStartVerseInput(String(practiceState.startVerse));
+    setEndVerseInput(String(practiceState.endVerse));
+    setRepeatCountInput(String(practiceState.repeatCount));
+    setCurrentPage(practiceState.page);
+    setVisibleVerseLocation(
+      practiceState.surahId
+        ? {
+            surah_id: practiceState.surahId,
+            verse_number: practiceState.verseNumber,
+            page: practiceState.page,
+          }
+        : null
+    );
+  }, [isHydrated, practiceState]);
+
+  useEffect(() => {
+    if (!isHydrated || !hasAppliedInitialPracticeStateRef.current) {
+      return;
+    }
+
+    const startVerse = parsePositiveInt(startVerseInput) ?? 1;
+    const endVerse = parsePositiveInt(endVerseInput) ?? startVerse;
+    const repeatCount = parsePositiveInt(repeatCountInput) ?? DEFAULT_REPEAT;
+    const nextPracticeState = {
+      surahId: visibleVerseLocation?.surah_id ?? selectedSurahId,
+      verseNumber: visibleVerseLocation?.verse_number ?? startVerse,
+      page: visibleVerseLocation?.page ?? currentPage,
+      startVerse,
+      endVerse,
+      repeatCount,
+    };
+
+    const saveTimer = setTimeout(() => {
+      setPracticeState(nextPracticeState);
+    }, 250);
+
+    return () => {
+      clearTimeout(saveTimer);
+    };
+  }, [
+    currentPage,
+    endVerseInput,
+    isHydrated,
+    repeatCountInput,
+    selectedSurahId,
+    setPracticeState,
+    startVerseInput,
+    visibleVerseLocation,
+  ]);
 
   useEffect(() => {
     if (surahDetailError) {
@@ -288,47 +339,23 @@ function MainApp({ settings }: MainAppProps) {
   }, [fontsLoaded, isHydrated]);
 
   useEffect(() => {
-    if (!isHydrated) {
-      previousReciterIdRef.current = selectedReciterId;
-      return;
-    }
-
-    const previousReciterId = previousReciterIdRef.current;
-    previousReciterIdRef.current = selectedReciterId;
-
-    if (previousReciterId && previousReciterId !== selectedReciterId) {
-      logUiEvent('ui_reciter_changed', {
-        from: previousReciterId,
-        to: selectedReciterId,
-        playbackStatus: player.playbackStatus,
-      });
-      void player.stopPlayback();
-    }
-  }, [isHydrated, logUiEvent, player.playbackStatus, player.stopPlayback, selectedReciterId]);
-
-  useEffect(() => {
     if (!isDownloadManagerOpen) {
       return;
     }
 
     void (async () => {
-      setCacheStats(await getCacheStats(selectedReciterId));
+      const [stats, surahAudios] = await Promise.all([
+        getSurahAudioCacheStats(DEFAULT_RECITER_ID),
+        fetchSurahAudioRefs(),
+      ]);
+      setCacheStats({
+        ...stats,
+        readyVerses: stats.files,
+        totalVerses: surahAudios.length,
+        offlineReady: stats.files >= surahAudios.length,
+      });
     })();
-  }, [isDownloadManagerOpen, selectedReciterId]);
-
-  useEffect(() => {
-    if (restoredLastVerseRef.current || !isHydrated || !lastVerse || !isAyahTrackingEnabled) {
-      return;
-    }
-
-    restoredLastVerseRef.current = true;
-    pendingNavigationIntentRef.current = {
-      type: 'jump_to_verse',
-      surahId: lastVerse.surahId,
-      verseNumber: lastVerse.verseNumber,
-      syncRange: true,
-    };
-  }, [isAyahTrackingEnabled, isHydrated, lastVerse]);
+  }, [isDownloadManagerOpen]);
 
   useEffect(() => {
     if (!surahDetail) {
@@ -444,10 +471,10 @@ function MainApp({ settings }: MainAppProps) {
         startVerse,
         endVerse,
         repeatCount,
-        reciterId: selectedReciterId,
+        reciterId: DEFAULT_RECITER_ID,
       });
       await player.startPlayback({
-        reciterId: selectedReciterId,
+        reciterId: DEFAULT_RECITER_ID,
         surahDetail: readySurahDetail,
         startVerseNumber: startVerse,
         endVerseNumber: endVerse,
@@ -561,7 +588,7 @@ function MainApp({ settings }: MainAppProps) {
       return;
     }
 
-    const pageVerses = await fetchPageVerses(page, selectedTranslationAuthorId, selectedReciterId);
+    const pageVerses = await fetchPageVerses(page, selectedTranslationAuthorId);
     const firstVerse = pageVerses[0];
     if (!firstVerse) {
       return;
@@ -607,27 +634,32 @@ function MainApp({ settings }: MainAppProps) {
     });
   }, [currentPage, logUiEvent, selectedSurahId]);
 
-  const handleReciterChange = useCallback((nextReciterId: ReciterId) => {
-    setSelectedReciterId(nextReciterId);
-  }, []);
+  const handleVerseLongPress = useCallback((verse: Verse) => {
+    if (!surahDetail) {
+      return;
+    }
 
-  const handleVerseTap = async (verse: Verse) => {
+    applyViewportToVerse(verse);
+    setVerseActionKey(`${verse.surah_id}:${verse.verse_number}`);
+    setErrorMessage(null);
+    logUiEvent('ui_verse_long_pressed', {
+      surahId: verse.surah_id,
+      page: verse.page,
+      verseNumber: verse.verse_number,
+      playbackStatus: player.playbackStatus,
+    });
+  }, [applyViewportToVerse, logUiEvent, player.playbackStatus, surahDetail]);
+
+  const handlePlayFromVerse = async (verse: Verse) => {
     try {
-      applyViewportToVerse(verse);
       const readySurahDetail = getReadySurahDetail();
       const { startVerse, endVerse } = syncRangeFromAnchor(verse.verse_number, readySurahDetail.verse_count);
       const repeatCount = parsePositiveInt(repeatCountInput) ?? 1;
+      setVerseActionKey(null);
       setErrorMessage(null);
-      logUiEvent('ui_verse_tapped', {
-        surahId: verse.surah_id,
-        page: verse.page,
-        verseNumber: verse.verse_number,
-        playbackStatus: player.playbackStatus,
-        repeatCount,
-      });
 
       await player.startPlayback({
-        reciterId: selectedReciterId,
+        reciterId: DEFAULT_RECITER_ID,
         surahDetail: readySurahDetail,
         startVerseNumber: startVerse,
         endVerseNumber: endVerse,
@@ -637,22 +669,6 @@ function MainApp({ settings }: MainAppProps) {
       setErrorMessage(error instanceof Error ? error.message : text.startingPlaybackError);
     }
   };
-
-  const handleVerseLongPress = useCallback((verse: Verse) => {
-    if (!surahDetail) {
-      return;
-    }
-
-    applyViewportToVerse(verse);
-    syncRangeFromAnchor(verse.verse_number, surahDetail.verse_count);
-    setErrorMessage(null);
-    logUiEvent('ui_verse_long_pressed', {
-      surahId: verse.surah_id,
-      page: verse.page,
-      verseNumber: verse.verse_number,
-      playbackStatus: player.playbackStatus,
-    });
-  }, [applyViewportToVerse, logUiEvent, player.playbackStatus, surahDetail, syncRangeFromAnchor]);
 
   const handleDownloadAll = async () => {
     try {
@@ -665,11 +681,18 @@ function MainApp({ settings }: MainAppProps) {
       setIsDownloadingAll(true);
       setDownloadProgressLabel('0%');
 
-      await downloadAudioBundle(selectedReciterId, (progress) => {
+      const surahAudios = await fetchSurahAudioRefs();
+      await downloadAllSurahAudio(DEFAULT_RECITER_ID, surahAudios, (progress) => {
         setDownloadProgressLabel(`${progress.current}/${progress.total} • ${progress.percent}%`);
       });
 
-      setCacheStats(await getCacheStats(selectedReciterId));
+      const stats = await getSurahAudioCacheStats(DEFAULT_RECITER_ID);
+      setCacheStats({
+        ...stats,
+        readyVerses: stats.files,
+        totalVerses: surahAudios.length,
+        offlineReady: stats.files >= surahAudios.length,
+      });
       setDownloadProgressLabel(text.downloadCompleteForReciter(selectedReciter.label));
     } catch (error) {
       if (error instanceof Error && error.message === 'download_cancelled') {
@@ -691,9 +714,9 @@ function MainApp({ settings }: MainAppProps) {
         onPress: () => {
           void (async () => {
             await player.stopPlayback();
-            await clearAllDownloads(selectedReciterId);
-            await clearAllSurahAudio();
-            setCacheStats(await getCacheStats(selectedReciterId));
+            await clearAllSurahAudio(DEFAULT_RECITER_ID);
+            const surahAudios = await fetchSurahAudioRefs();
+            setCacheStats({ files: 0, megabytes: 0, readyVerses: 0, totalVerses: surahAudios.length, offlineReady: false });
             setDownloadProgressLabel('');
           })();
         },
@@ -745,6 +768,7 @@ function MainApp({ settings }: MainAppProps) {
               repeat: text.repeat,
               start: text.start,
               page: text.page,
+              lastVerse: text.lastVerse,
             }}
           />
         </View>
@@ -764,8 +788,9 @@ function MainApp({ settings }: MainAppProps) {
             quranTextStyle={selectedQuranFont.verseTextStyle}
             swipeHintText={text.swipeHint}
             autoScrollEnabled={isAutoScrollEnabled}
-            onVerseTap={(verse) => void handleVerseTap(verse)}
             onVerseLongPress={handleVerseLongPress}
+            onPlayFromVerse={(verse) => void handlePlayFromVerse(verse)}
+            verseActionKey={verseActionKey}
             onVisibleVerseChange={setVisibleVerseLocation}
             panHandlers={pageSwipeResponder}
           />
@@ -779,14 +804,8 @@ function MainApp({ settings }: MainAppProps) {
           selectedTranslationAuthorId={selectedTranslationAuthorId}
           translationOptionsForLanguage={translationOptionsForLanguage}
           onTranslationChange={handleTranslationChange}
-          selectedReciterId={selectedReciterId}
-          reciterOptions={RECITER_OPTIONS}
-          onReciterChange={handleReciterChange}
           autoScrollEnabled={isAutoScrollEnabled}
           onAutoScrollChange={setIsAutoScrollEnabled}
-          ayahTrackingEnabled={isAyahTrackingEnabled}
-          ayahTrackingAvailable={ayahTrackingAvailable}
-          onAyahTrackingChange={setIsAyahTrackingEnabled}
           onThemeChange={setThemeType}
           quranFontId={selectedQuranFontId}
           quranFontOptions={QURAN_FONT_OPTIONS}

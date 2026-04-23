@@ -49,6 +49,7 @@ type CompactHeaderProps = {
     repeat: string;
     start: string;
     page: string;
+    lastVerse: string;
   };
 };
 
@@ -102,15 +103,15 @@ export function CompactHeader({
 
         <View style={[styles.pagePanel, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}>
           <Pressable
-            onPress={onNextPress}
-            disabled={!canGoNextPage}
+            onPress={onPreviousPress}
+            disabled={!canGoPreviousPage}
             style={[
               styles.navButton,
               { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY },
-              !canGoNextPage && styles.navButtonDisabled,
+              !canGoPreviousPage && styles.navButtonDisabled,
             ]}
           >
-            <Feather name="chevron-right" size={16} color={canGoNextPage ? theme.colors.TEXT_PRIMARY : theme.colors.TEXT_MUTED} />
+            <Feather name="chevron-left" size={16} color={canGoPreviousPage ? theme.colors.TEXT_PRIMARY : theme.colors.TEXT_MUTED} />
           </Pressable>
 
           <View style={[styles.pageInputWrap, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}>
@@ -126,15 +127,15 @@ export function CompactHeader({
           </View>
 
           <Pressable
-            onPress={onPreviousPress}
-            disabled={!canGoPreviousPage}
+            onPress={onNextPress}
+            disabled={!canGoNextPage}
             style={[
               styles.navButton,
               { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY },
-              !canGoPreviousPage && styles.navButtonDisabled,
+              !canGoNextPage && styles.navButtonDisabled,
             ]}
           >
-            <Feather name="chevron-left" size={16} color={canGoPreviousPage ? theme.colors.TEXT_PRIMARY : theme.colors.TEXT_MUTED} />
+            <Feather name="chevron-right" size={16} color={canGoNextPage ? theme.colors.TEXT_PRIMARY : theme.colors.TEXT_MUTED} />
           </Pressable>
         </View>
 
@@ -213,6 +214,7 @@ export function CompactHeader({
         initialValue={endVerseInput}
         onSubmit={onEndVerseChange}
         maxValue={maxVerseInSurah}
+        maxActionLabel={text.lastVerse}
         placeholder="1"
       />
       <RangeInputModal

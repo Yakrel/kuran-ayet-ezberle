@@ -4,7 +4,6 @@ import type { ThemeType } from '../constants/colors';
 import type { LanguageCode, TranslationStrings } from '../i18n/types';
 import type { TranslationOption } from '../types/quran';
 import type { QuranFontId, QuranFontOption } from '../constants/quranFonts';
-import type { ReciterId, ReciterOption } from '../constants/reciters';
 import { useTheme } from '../hooks/useTheme';
 import { theme as staticTheme } from '../styles/theme';
 import { SettingsPanel } from './SettingsPanel';
@@ -17,14 +16,8 @@ type SettingsSheetProps = {
   selectedTranslationAuthorId: number;
   translationOptionsForLanguage: TranslationOption[];
   onTranslationChange: (authorId: number) => void;
-  selectedReciterId: ReciterId;
-  reciterOptions: ReciterOption[];
-  onReciterChange: (reciterId: ReciterId) => void;
   autoScrollEnabled: boolean;
   onAutoScrollChange: (enabled: boolean) => void;
-  ayahTrackingEnabled: boolean;
-  ayahTrackingAvailable: boolean;
-  onAyahTrackingChange: (enabled: boolean) => void;
   onThemeChange: (theme: ThemeType) => void;
   quranFontId: QuranFontId;
   quranFontOptions: QuranFontOption[];
@@ -68,10 +61,7 @@ export function SettingsSheet({
               fontPreviewText={text.fontPreview}
               languageText={text.language}
               translationText={text.translation}
-              reciterText={text.reciter}
-              trackedReciterText={text.trackedReciter}
               autoScrollText={text.autoScroll}
-              ayahTrackingText={text.ayahTracking}
               themeText={text.theme}
               playbackSpeedText={text.playbackSpeed}
               aboutText={text.about}

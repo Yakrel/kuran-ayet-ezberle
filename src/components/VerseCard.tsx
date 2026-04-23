@@ -1,5 +1,6 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Feather } from '@expo/vector-icons';
 import type { Verse } from '../types/quran';
 import { useTheme } from '../hooks/useTheme';
 
@@ -11,8 +12,9 @@ type VerseCardProps = {
     lineHeight: number;
   };
   isCurrentVerse?: boolean;
-  onPress: (verse: Verse) => void;
   onLongPress: (verse: Verse) => void;
+  onPlayFromVerse: (verse: Verse) => void;
+  showPlayAction: boolean;
 };
 
 export function VerseCard({
@@ -20,11 +22,11 @@ export function VerseCard({
   quranFontFamily,
   quranTextStyle,
   isCurrentVerse,
-  onPress,
   onLongPress,
+  onPlayFromVerse,
+  showPlayAction,
 }: VerseCardProps) {
   const { theme } = useTheme();
-  const longPressTriggeredRef = useRef(false);
 
   return (
     <Pressable
@@ -35,19 +37,8 @@ export function VerseCard({
       ]}
       accessibilityRole="button"
       accessibilityLabel={`Ayah ${verse.verse_number}`}
-      accessibilityHint={isCurrentVerse ? 'Currently active ayah' : 'Starts playback from this ayah'}
-      onPress={() => {
-        if (longPressTriggeredRef.current) {
-          longPressTriggeredRef.current = false;
-          return;
-        }
-
-        onPress(verse);
-      }}
-      onLongPress={() => {
-        longPressTriggeredRef.current = true;
-        onLongPress(verse);
-      }}
+      accessibilityHint={isCurrentVerse ? 'Currently active ayah' : 'Hold for playback actions'}
+      onLongPress={() => onLongPress(verse)}
       delayLongPress={500}
     >
       {isCurrentVerse ? <View style={[styles.activeMarker, { backgroundColor: theme.colors.ACCENT_PRIMARY }]} /> : null}
@@ -81,6 +72,20 @@ export function VerseCard({
       <View style={[styles.translationBlock, { borderTopColor: theme.colors.BORDER_PRIMARY }]}>
         <Text style={[styles.translationText, { color: theme.colors.TEXT_MUTED }]}>{verse.translation.text}</Text>
       </View>
+
+      {showPlayAction ? (
+        <Pressable
+          style={({ pressed }) => [
+            styles.playActionButton,
+            { backgroundColor: theme.colors.ACCENT_PRIMARY },
+            pressed && { opacity: 0.82 },
+          ]}
+          onPress={() => onPlayFromVerse(verse)}
+        >
+          <Feather name="play" size={16} color="#fff" />
+          <Text style={styles.playActionText}>Bu ayetten çal</Text>
+        </Pressable>
+      ) : null}
     </Pressable>
   );
 }
@@ -139,5 +144,20 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     fontSize: 13,
     fontWeight: '400',
+  },
+  playActionButton: {
+    minHeight: 40,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    alignSelf: 'flex-start',
+    paddingHorizontal: 14,
+  },
+  playActionText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '800',
   },
 });

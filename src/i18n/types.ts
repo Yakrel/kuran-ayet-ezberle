@@ -8,6 +8,7 @@ export type TranslationStrings = {
   settings: string;
   startVerse: string;
   endVerse: string;
+  lastVerse: string;
   verseCount: string;
   repeat: string;
   start: string;
@@ -22,13 +23,10 @@ export type TranslationStrings = {
   active: string;
   meal: string;
   translation: string;
-  reciter: string;
-  trackedReciter: string;
   previousPage: string;
   nextPage: string;
   swipeHint: string;
   autoScroll: string;
-  ayahTracking: string;
   quranFont: string;
   fontPreview: string;
   readyToStart: string;

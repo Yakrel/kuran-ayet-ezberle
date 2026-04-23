@@ -1,6 +1,6 @@
 import { SURAH_LIST } from '../constants/surahList';
-import { getReciterOption, type ReciterId } from '../constants/reciters';
-import type { SurahAudioAsset, SurahDetail, SurahSummary, Verse, WordSegment, WordToken } from '../types/quran';
+import { DEFAULT_RECITER_ID, getReciterOption } from '../constants/reciters';
+import type { SurahAudioAsset, SurahDetail, SurahSummary, Verse } from '../types/quran';
 
 type RawTranslationMap = Record<string, string>;
 
@@ -22,25 +22,15 @@ type QuranData = {
   surahs: RawSurah[];
 };
 
-type RawQulWord = {
-  location: string;
-  text: string;
-  position: number;
-  line_number: number;
-  page_number: number;
-};
-
 type RawQulTiming = {
   time_from: number;
   time_to: number;
   duration: number;
-  segments: WordSegment[];
 };
 
 type RawQulVerse = {
   verse_key: string;
   page_number: number;
-  words: RawQulWord[];
   timing: RawQulTiming | null;
 };
 
@@ -59,20 +49,13 @@ type QulDataset = {
   surahs: RawQulSurah[];
 };
 
-type ReciterTrackingBundle = {
-  recitationId: number | null;
-  dataset: QulDataset | null;
-};
-
-const AYAH_MARKER_PATTERN = /^[٠-٩١٢٣٤٥٦٧٨٩]+$/;
-
 let cachedQuranData: QuranData | null = null;
-const cachedQulDatasets = new Map<ReciterId, QulDataset>();
+let cachedQulDataset: QulDataset | null = null;
 let cachedSurahsById = new Map<number, RawSurah>();
-const cachedQulSurahsByIdByReciter = new Map<ReciterId, Map<number, RawQulSurah>>();
-const cachedRawVersesByKey = new Map<string, RawVerse>();
-const cachedPageVerseKeysByReciter = new Map<ReciterId, Map<number, string[]>>();
-const cachedQulVersesByKeyByReciter = new Map<ReciterId, Map<string, RawQulVerse>>();
+let cachedQulSurahsById = new Map<number, RawQulSurah>();
+let cachedRawVersesByKey = new Map<string, RawVerse>();
+let cachedQulVersesByKey = new Map<string, RawQulVerse>();
+let cachedPageVerseKeys = new Map<number, string[]>();
 
 function getVerseKey(surahId: number, verseNumber: number) {
   return `${surahId}:${verseNumber}`;
@@ -84,25 +67,6 @@ function normalizeArabicVerseText(text: string): string {
 
 function getTranslationText(verse: RawVerse, translationAuthorId: number): string {
   return verse.translations[String(translationAuthorId)] ?? verse.translations['6'] ?? '';
-}
-
-/**
- * Normalizes word data from QUL dataset.
- * 
- * Unicode normalization:
- * - Converts U+06E1 (ARABIC SMALL HIGH DOTLESS HEAD OF KHAH) → U+0652 (ARABIC SUKUN)
- * - The QUL dataset uses U+06E1 which renders as a small ḥāʾ (ح) in most fonts
- * - Standard Arabic typography expects U+0652 which renders as a small circle (○)
- * - This ensures consistent rendering across all fonts (Scheherazade, Amiri, Noto Naskh)
- */
-function normalizeWords(words: RawQulWord[]): WordToken[] {
-  return words.map((word) => ({
-    ...word,
-    text: word.text
-      .normalize('NFC')
-      .replace(/\u06E1/g, '\u0652'),
-    is_ayah_marker: AYAH_MARKER_PATTERN.test(word.text.trim()),
-  }));
 }
 
 function mapAudioAsset(rawSurah: RawQulSurah | undefined): SurahAudioAsset | null {
@@ -131,68 +95,48 @@ function mapVerse(
     translation: {
       text: getTranslationText(rawVerse, translationAuthorId),
     },
-    words: normalizeWords(rawQulVerse?.words ?? []),
     timing: rawQulVerse?.timing
       ? {
           time_from_ms: rawQulVerse.timing.time_from,
           time_to_ms: rawQulVerse.timing.time_to,
           duration_ms: Math.max(0, rawQulVerse.timing.time_to - rawQulVerse.timing.time_from),
-          segments: rawQulVerse.timing.segments ?? [],
         }
       : null,
   };
 }
 
-function buildIndexes(reciterId: ReciterId, quranData: QuranData, qulDataset: QulDataset | null) {
-  if (cachedSurahsById.size === 0) {
-    cachedSurahsById = new Map<number, RawSurah>();
-
-    for (const surah of quranData.surahs) {
-      cachedSurahsById.set(surah.id, surah);
-      for (const verse of surah.verses) {
-        cachedRawVersesByKey.set(getVerseKey(surah.id, verse.verse_number), verse);
-      }
-    }
-  }
-
-  if (
-    cachedQulSurahsByIdByReciter.has(reciterId) &&
-    cachedPageVerseKeysByReciter.has(reciterId) &&
-    cachedQulVersesByKeyByReciter.has(reciterId)
-  ) {
+function buildIndexes(quranData: QuranData, qulDataset: QulDataset) {
+  if (cachedSurahsById.size > 0) {
     return;
   }
 
-  const cachedQulSurahsById = new Map<number, RawQulSurah>();
-  const cachedQulVersesByKey = new Map<string, RawQulVerse>();
-  const cachedPageVerseKeys = new Map<number, string[]>();
-
-  for (const qulSurah of qulDataset?.surahs ?? []) {
-    cachedQulSurahsById.set(qulSurah.id, qulSurah);
-    for (const verse of qulSurah.verses) {
-      cachedQulVersesByKey.set(verse.verse_key, verse);
-    }
-  }
+  cachedSurahsById = new Map<number, RawSurah>();
+  cachedQulSurahsById = new Map<number, RawQulSurah>();
+  cachedRawVersesByKey = new Map<string, RawVerse>();
+  cachedQulVersesByKey = new Map<string, RawQulVerse>();
+  cachedPageVerseKeys = new Map<number, string[]>();
 
   for (const surah of quranData.surahs) {
+    cachedSurahsById.set(surah.id, surah);
     for (const verse of surah.verses) {
       const verseKey = getVerseKey(surah.id, verse.verse_number);
+      cachedRawVersesByKey.set(verseKey, verse);
+
       const currentPageVerseKeys = cachedPageVerseKeys.get(verse.page) ?? [];
       currentPageVerseKeys.push(verseKey);
       cachedPageVerseKeys.set(verse.page, currentPageVerseKeys);
     }
   }
 
-  cachedQulSurahsByIdByReciter.set(reciterId, cachedQulSurahsById);
-  cachedQulVersesByKeyByReciter.set(reciterId, cachedQulVersesByKey);
-  cachedPageVerseKeysByReciter.set(reciterId, cachedPageVerseKeys);
+  for (const qulSurah of qulDataset.surahs) {
+    cachedQulSurahsById.set(qulSurah.id, qulSurah);
+    for (const verse of qulSurah.verses) {
+      cachedQulVersesByKey.set(verse.verse_key, verse);
+    }
+  }
 }
 
-function mapVerseByKey(
-  verseKey: string,
-  translationAuthorId: number,
-  qulVersesByKey: Map<string, RawQulVerse>
-) {
+function mapVerseByKey(verseKey: string, translationAuthorId: number) {
   const [surahIdText, verseNumberText] = verseKey.split(':');
   const surahId = Number(surahIdText);
   const verseNumber = Number(verseNumberText);
@@ -203,7 +147,7 @@ function mapVerseByKey(
     throw new Error(`Verse not found in local data: ${surahId}:${verseNumber}`);
   }
 
-  return mapVerse(surah, rawVerse, qulVersesByKey.get(getVerseKey(surahId, verseNumber)), translationAuthorId);
+  return mapVerse(surah, rawVerse, cachedQulVersesByKey.get(getVerseKey(surahId, verseNumber)), translationAuthorId);
 }
 
 async function getQuranData(): Promise<QuranData> {
@@ -214,42 +158,27 @@ async function getQuranData(): Promise<QuranData> {
   return cachedQuranData;
 }
 
-function loadQulDatasetAsset(reciterId: ReciterId): QulDataset | null {
-  const reciter = getReciterOption(reciterId);
-  if (reciter.trackingSupport !== 'embedded') {
-    return null;
-  }
-
+function loadQulDatasetAsset(): QulDataset {
+  const reciter = getReciterOption(DEFAULT_RECITER_ID);
   switch (reciter.qulDatasetAsset) {
     case 'assets/data/recitations/qul-recitation-13.json':
       return require('../../assets/data/recitations/qul-recitation-13.json') as QulDataset;
     default:
-      throw new Error(`Missing embedded tracking dataset for reciter: ${reciterId}`);
+      throw new Error(`Missing embedded timing dataset for reciter: ${DEFAULT_RECITER_ID}`);
   }
 }
 
-async function getTrackingBundle(reciterId: ReciterId): Promise<ReciterTrackingBundle> {
-  const cachedDataset = cachedQulDatasets.get(reciterId);
-  if (cachedDataset) {
-    return {
-      recitationId: cachedDataset.recitation_id,
-      dataset: cachedDataset,
-    };
+async function getQulDataset(): Promise<QulDataset> {
+  if (!cachedQulDataset) {
+    cachedQulDataset = loadQulDatasetAsset();
   }
 
-  const dataset = loadQulDatasetAsset(reciterId);
-  if (!dataset) {
-    return {
-      recitationId: null,
-      dataset: null,
-    };
-  }
+  return cachedQulDataset;
+}
 
-  cachedQulDatasets.set(reciterId, dataset);
-  return {
-    recitationId: dataset.recitation_id,
-    dataset,
-  };
+async function ensureIndexes() {
+  const [quranData, qulDataset] = await Promise.all([getQuranData(), getQulDataset()]);
+  buildIndexes(quranData, qulDataset);
 }
 
 export async function fetchSurahs(): Promise<SurahSummary[]> {
@@ -258,16 +187,11 @@ export async function fetchSurahs(): Promise<SurahSummary[]> {
 
 export async function fetchSurahDetail(
   surahId: number,
-  translationAuthorId: number = 6,
-  reciterId: ReciterId = 'ghamdi'
+  translationAuthorId: number = 6
 ): Promise<SurahDetail> {
-  const [quranData, trackingBundle] = await Promise.all([getQuranData(), getTrackingBundle(reciterId)]);
-  buildIndexes(reciterId, quranData, trackingBundle.dataset);
+  await ensureIndexes();
 
   const surah = cachedSurahsById.get(surahId);
-  const reciter = getReciterOption(reciterId);
-  const cachedQulSurahsById = cachedQulSurahsByIdByReciter.get(reciterId) ?? new Map<number, RawQulSurah>();
-  const cachedQulVersesByKey = cachedQulVersesByKeyByReciter.get(reciterId) ?? new Map<string, RawQulVerse>();
   const qulSurah = cachedQulSurahsById.get(surahId);
   if (!surah) {
     throw new Error('Surah not found in local data');
@@ -278,29 +202,30 @@ export async function fetchSurahDetail(
     name: surah.name,
     verse_count: surah.verse_count,
     audio: mapAudioAsset(qulSurah),
-    recitation_id: reciter.qulRecitationId ?? trackingBundle.recitationId,
+    recitation_id: getReciterOption(DEFAULT_RECITER_ID).recitationId,
     verses: surah.verses.map((verse) =>
-      mapVerseByKey(getVerseKey(surah.id, verse.verse_number), translationAuthorId, cachedQulVersesByKey)
+      mapVerseByKey(getVerseKey(surah.id, verse.verse_number), translationAuthorId)
     ),
   };
 }
 
 export async function fetchPageVerses(
   pageNumber: number,
-  translationAuthorId: number = 6,
-  reciterId: ReciterId = 'ghamdi'
+  translationAuthorId: number = 6
 ): Promise<Verse[]> {
-  const [quranData, trackingBundle] = await Promise.all([getQuranData(), getTrackingBundle(reciterId)]);
-  buildIndexes(reciterId, quranData, trackingBundle.dataset);
+  await ensureIndexes();
 
-  const cachedPageVerseKeys = cachedPageVerseKeysByReciter.get(reciterId) ?? new Map<number, string[]>();
-  const cachedQulVersesByKey = cachedQulVersesByKeyByReciter.get(reciterId) ?? new Map<string, RawQulVerse>();
   const pageVerseKeys = cachedPageVerseKeys.get(pageNumber) ?? [];
-
-  return pageVerseKeys.map((verseKey) => mapVerseByKey(verseKey, translationAuthorId, cachedQulVersesByKey));
+  return pageVerseKeys.map((verseKey) => mapVerseByKey(verseKey, translationAuthorId));
 }
 
-export async function getRecitationId(reciterId: ReciterId = 'ghamdi') {
-  const trackingBundle = await getTrackingBundle(reciterId);
-  return trackingBundle.recitationId;
+export async function getRecitationId() {
+  return getReciterOption(DEFAULT_RECITER_ID).recitationId;
+}
+
+export async function fetchSurahAudioRefs(): Promise<Array<{ surahId: number; remoteUrl: string }>> {
+  const dataset = await getQulDataset();
+  return dataset.surahs.flatMap((surah) =>
+    surah.audio?.url ? [{ surahId: surah.id, remoteUrl: surah.audio.url }] : []
+  );
 }

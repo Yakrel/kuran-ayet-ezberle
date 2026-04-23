@@ -1,13 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+import { DEFAULT_RECITER_ID, getReciterOption, type ReciterId } from '../constants/reciters';
 import { getTrackPlayerModule, getTrackPlayerUnavailableReason } from '../services/trackPlayer';
-import { getVerseAudioForPlayback, retainVerseRangeForPlaybackByReciter } from '../services/audioCache';
-import { getReciterOption, type ReciterId } from '../constants/reciters';
 import { getPreferredSurahAudioUri } from '../services/surahAudioCache';
 import type { SurahDetail, Verse } from '../types/quran';
-import {
-  resolveActiveTrackIndex,
-  type ActiveTrackChangedPayload,
-} from '../utils/resolveActiveTrackIndex';
 import {
   resolveContinuousRepeatStep,
   resolveContinuousVerseIndex,
@@ -16,30 +12,11 @@ import {
 
 type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped';
 
-type VerseTrack = {
-  id: string;
-  verse: Verse;
-  repeatIndex: number;
-  durationMs: number;
-  url: string;
-};
-
 type ContinuousVerseBoundary = ContinuousBoundary & {
   verse: Verse;
 };
 
-type QueuePlaybackSession = {
-  mode: 'queue';
-  surahId: number;
-  startVerseNumber: number;
-  endVerseNumber: number;
-  repeatCount: number;
-  tracks: VerseTrack[];
-  totalDurationMs: number;
-};
-
-type ContinuousPlaybackSession = {
-  mode: 'continuous';
+type PlaybackSession = {
   surahId: number;
   startVerseNumber: number;
   endVerseNumber: number;
@@ -52,8 +29,6 @@ type ContinuousPlaybackSession = {
   rangeDurationMs: number;
   totalDurationMs: number;
 };
-
-type PlaybackSession = QueuePlaybackSession | ContinuousPlaybackSession;
 
 type UseSegmentedPlayerOptions = {
   onError: (message: string | null) => void;
@@ -68,8 +43,6 @@ type StartPlaybackArgs = {
   repeatCount: number;
   reciterId: ReciterId;
 };
-
-type AudioCacheLease = Awaited<ReturnType<typeof retainVerseRangeForPlaybackByReciter>>;
 
 type TrackPlayerProgress = {
   position: number;
@@ -92,9 +65,7 @@ type TrackPlayerApi = {
   addEventListener: (event: unknown, listener: (payload: unknown) => void) => { remove: () => void };
 };
 
-// Ghamdi has per-ayah timing metadata plus full-surah audio, so use a single
-// continuous track to avoid decoder/network gaps between individual ayah files.
-const ENABLE_GHAMDI_CONTINUOUS_PLAYBACK = true;
+const KEEP_AWAKE_TAG = 'kuran-ayet-ezberle-playback';
 
 function isTrackPlayerApi(value: unknown): value is TrackPlayerApi {
   if (!value || typeof value !== 'object') {
@@ -146,10 +117,6 @@ function toPlaybackStatus(trackPlayerState: string | undefined): PlaybackStatus 
   }
 }
 
-function getVerseDurationMs(verse: Verse) {
-  return Math.max(verse.timing?.duration_ms ?? 0, 1);
-}
-
 function getSelectedVerses(
   surahDetail: SurahDetail,
   startVerseNumber: number,
@@ -160,67 +127,12 @@ function getSelectedVerses(
   );
 }
 
-function supportsContinuousPlayback(
-  reciterId: ReciterId,
-  surahDetail: SurahDetail,
-  verses: Verse[],
-  startVerseNumber: number
-) {
-  return (
-    ENABLE_GHAMDI_CONTINUOUS_PLAYBACK &&
-    reciterId === 'ghamdi' &&
-    startVerseNumber === 1 &&
-    Boolean(surahDetail.audio?.url) &&
-    verses.length > 0 &&
-    verses.every((verse) => Boolean(verse.timing))
-  );
-}
-
-async function buildQueuePlaybackSession(
-  reciterId: ReciterId,
-  surahDetail: SurahDetail,
-  startVerseNumber: number,
-  endVerseNumber: number,
-  repeatCount: number
-): Promise<QueuePlaybackSession> {
-  const selectedVerses = getSelectedVerses(surahDetail, startVerseNumber, endVerseNumber);
-
-  const verseAudio = await mapWithConcurrency(selectedVerses, 3, async (verse) => ({
-    verse,
-    audio: await getVerseAudioForPlayback(reciterId, verse.surah_id, verse.verse_number),
-  }));
-
-  const tracks: VerseTrack[] = [];
-
-  for (let repeatIndex = 1; repeatIndex <= repeatCount; repeatIndex += 1) {
-    for (const item of verseAudio) {
-      tracks.push({
-        id: `surah-${item.verse.surah_id}-verse-${item.verse.verse_number}-repeat-${repeatIndex}`,
-        verse: item.verse,
-        repeatIndex,
-        durationMs: getVerseDurationMs(item.verse),
-        url: item.audio.uri,
-      });
-    }
-  }
-
-  return {
-    mode: 'queue',
-    surahId: surahDetail.id,
-    startVerseNumber,
-    endVerseNumber,
-    repeatCount,
-    tracks,
-    totalDurationMs: tracks.reduce((sum, track) => sum + track.durationMs, 0),
-  };
-}
-
 async function buildContinuousPlaybackSession(
   surahDetail: SurahDetail,
   startVerseNumber: number,
   endVerseNumber: number,
   repeatCount: number
-): Promise<ContinuousPlaybackSession> {
+): Promise<PlaybackSession> {
   if (!surahDetail.audio?.url) {
     throw new Error('Continuous playback is unavailable because the surah audio is missing.');
   }
@@ -245,10 +157,9 @@ async function buildContinuousPlaybackSession(
   const rangeStartMs = boundaries[0].startTimeMs;
   const rangeEndMs = boundaries[boundaries.length - 1].endTimeMs;
   const rangeDurationMs = Math.max(rangeEndMs - rangeStartMs, 1);
-  const surahAudioUrl = await getPreferredSurahAudioUri(surahDetail.id, surahDetail.audio.url);
+  const surahAudioUrl = await getPreferredSurahAudioUri(DEFAULT_RECITER_ID, surahDetail.id, surahDetail.audio.url);
 
   return {
-    mode: 'continuous',
     surahId: surahDetail.id,
     startVerseNumber,
     endVerseNumber,
@@ -263,52 +174,21 @@ async function buildContinuousPlaybackSession(
   };
 }
 
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  concurrency: number,
-  iteratee: (item: T, index: number) => Promise<R>
-) {
-  const results = new Array<R>(items.length);
-  let nextIndex = 0;
-
-  const workers = Array.from({ length: Math.max(1, Math.min(concurrency, items.length || 1)) }, async () => {
-    while (nextIndex < items.length) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
-      results[currentIndex] = await iteratee(items[currentIndex], currentIndex);
-    }
-  });
-
-  await Promise.all(workers);
-  return results;
-}
-
-export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: UseSegmentedPlayerOptions) {
+export function useSegmentedPlayer({ onError, onActiveVerseChange }: UseSegmentedPlayerOptions) {
   const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus>('idle');
   const [currentRepeat, setCurrentRepeat] = useState(1);
   const [activeVerse, setActiveVerse] = useState<Verse | null>(null);
-  const [loadedSurahId, setLoadedSurahId] = useState<number | null>(null);
   const [playbackRate, setPlaybackRateState] = useState(1.0);
 
   const sessionRef = useRef<PlaybackSession | null>(null);
-  const currentTrackIndexRef = useRef(0);
   const currentRepeatRef = useRef(1);
   const continuousVerseIndexRef = useRef(0);
   const playbackRateRef = useRef(1.0);
   const setupPromiseRef = useRef<Promise<void> | null>(null);
-  const playbackLeaseRef = useRef<AudioCacheLease | null>(null);
   const playbackRequestIdRef = useRef(0);
   const pendingPlayTransitionRef = useRef(false);
   const continuousBoundaryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const continuousTransitionInFlightRef = useRef(false);
-
-  const releasePlaybackLease = useCallback(async () => {
-    const lease = playbackLeaseRef.current;
-    playbackLeaseRef.current = null;
-    if (lease) {
-      await lease.release();
-    }
-  }, []);
 
   const clearContinuousBoundaryTimer = useCallback(() => {
     if (continuousBoundaryTimerRef.current) {
@@ -333,19 +213,9 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     });
   }, [onActiveVerseChange]);
 
-  const syncQueueActiveState = useCallback(() => {
-    const session = sessionRef.current;
-    if (!session || session.mode !== 'queue') {
-      return;
-    }
-
-    const activeTrack = session.tracks[currentTrackIndexRef.current] ?? null;
-    syncVisibleState(activeTrack?.verse ?? null, activeTrack?.repeatIndex ?? 1);
-  }, [syncVisibleState]);
-
   const syncContinuousActiveState = useCallback((positionMs: number) => {
     const session = sessionRef.current;
-    if (!session || session.mode !== 'continuous') {
+    if (!session) {
       return;
     }
 
@@ -403,12 +273,10 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
   const completeActiveSession = useCallback(async (resetPlayer = true) => {
     clearContinuousBoundaryTimer();
     continuousTransitionInFlightRef.current = false;
-    currentTrackIndexRef.current = 0;
     continuousVerseIndexRef.current = 0;
     currentRepeatRef.current = 1;
     setCurrentRepeat(1);
     setActiveVerse(null);
-    setLoadedSurahId(null);
     pendingPlayTransitionRef.current = false;
 
     const TrackPlayer = getPlayerApi();
@@ -418,12 +286,11 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     }
 
     sessionRef.current = null;
-    await releasePlaybackLease();
-  }, [clearContinuousBoundaryTimer, releasePlaybackLease]);
+  }, [clearContinuousBoundaryTimer]);
 
   const scheduleContinuousBoundaryTimer = useCallback(async (remainingMs?: number) => {
     const session = sessionRef.current;
-    if (!session || session.mode !== 'continuous') {
+    if (!session) {
       return;
     }
 
@@ -451,12 +318,8 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
         }
 
         const currentSession = sessionRef.current;
-        if (!currentSession || currentSession.mode !== 'continuous') {
-          return;
-        }
-
         const currentPlayer = getPlayerApi();
-        if (!currentPlayer) {
+        if (!currentSession || !currentPlayer) {
           return;
         }
 
@@ -499,8 +362,7 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
       playbackRateRef.current = rate;
       setPlaybackRateState(rate);
 
-      const session = sessionRef.current;
-      if (session?.mode === 'continuous' && playbackStatus === 'playing') {
+      if (sessionRef.current && playbackStatus === 'playing') {
         await scheduleContinuousBoundaryTimer();
       }
     } catch (error) {
@@ -529,10 +391,7 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
             }
 
             if (nextStatus === 'playing') {
-              const session = sessionRef.current;
-              if (session?.mode === 'continuous') {
-                void scheduleContinuousBoundaryTimer();
-              }
+              void scheduleContinuousBoundaryTimer();
             }
 
             if (nextStatus === 'paused' || nextStatus === 'stopped' || nextStatus === 'idle') {
@@ -547,52 +406,12 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
           }
         );
 
-        const activeTrackSubscription = TrackPlayer.addEventListener(
-          playerModule.Event.PlaybackActiveTrackChanged,
-          (payload: unknown) => {
-            const session = sessionRef.current;
-            if (!session || session.mode !== 'queue') {
-              return;
-            }
-
-            const nextEvent = payload as ActiveTrackChangedPayload;
-            const nextIndex = resolveActiveTrackIndex(nextEvent, session.tracks);
-
-            if (nextIndex === null) {
-              return;
-            }
-
-            currentTrackIndexRef.current = Math.max(0, nextIndex);
-            syncQueueActiveState();
-          }
-        );
-
         const progressSubscription = TrackPlayer.addEventListener(
           playerModule.Event.PlaybackProgressUpdated,
           (payload: unknown) => {
-            const session = sessionRef.current;
-            if (!session || session.mode !== 'continuous') {
-              return;
-            }
-
             const nextProgress = payload as Partial<TrackPlayerProgress>;
             const positionMs = Math.round((nextProgress.position ?? 0) * 1000);
             syncContinuousActiveState(positionMs);
-          }
-        );
-
-        const queueEndedSubscription = TrackPlayer.addEventListener(
-          playerModule.Event.PlaybackQueueEnded,
-          () => {
-            const session = sessionRef.current;
-            if (!session || session.mode !== 'queue') {
-              return;
-            }
-
-            void (async () => {
-              await completeActiveSession(false);
-              setPlaybackStatus('stopped');
-            })();
           }
         );
 
@@ -611,9 +430,7 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
 
         cleanups.push(() => {
           stateSubscription.remove();
-          activeTrackSubscription.remove();
           progressSubscription.remove();
-          queueEndedSubscription.remove();
           errorSubscription.remove();
         });
       })
@@ -624,7 +441,6 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     return () => {
       isMounted = false;
       clearContinuousBoundaryTimer();
-      void releasePlaybackLease();
       for (const cleanup of cleanups) {
         cleanup();
       }
@@ -634,18 +450,27 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     completeActiveSession,
     ensurePlayerSetup,
     onError,
-    releasePlaybackLease,
     scheduleContinuousBoundaryTimer,
     syncContinuousActiveState,
-    syncQueueActiveState,
   ]);
+
+  useEffect(() => {
+    if (playbackStatus !== 'playing') {
+      void deactivateKeepAwake(KEEP_AWAKE_TAG);
+      return;
+    }
+
+    void activateKeepAwakeAsync(KEEP_AWAKE_TAG);
+    return () => {
+      void deactivateKeepAwake(KEEP_AWAKE_TAG);
+    };
+  }, [playbackStatus]);
 
   const startPlayback = useCallback(async ({
     surahDetail,
     startVerseNumber,
     endVerseNumber,
     repeatCount,
-    reciterId: startReciterId,
   }: StartPlaybackArgs) => {
     const requestId = playbackRequestIdRef.current + 1;
     playbackRequestIdRef.current = requestId;
@@ -655,75 +480,41 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     onError(null);
     clearContinuousBoundaryTimer();
 
-    const selectedVerses = getSelectedVerses(surahDetail, startVerseNumber, endVerseNumber);
-
     try {
       const { TrackPlayer } = await ensurePlayerSetup();
-      const reciter = getReciterOption(startReciterId);
-      const nextSession = supportsContinuousPlayback(startReciterId, surahDetail, selectedVerses, startVerseNumber)
-        ? await buildContinuousPlaybackSession(surahDetail, startVerseNumber, endVerseNumber, repeatCount)
-        : await buildQueuePlaybackSession(startReciterId, surahDetail, startVerseNumber, endVerseNumber, repeatCount);
-
-      let nextLease: AudioCacheLease | null = null;
-      if (nextSession.mode === 'queue') {
-        nextLease = await retainVerseRangeForPlaybackByReciter(
-          startReciterId,
-          selectedVerses.map((verse) => ({
-            surahId: verse.surah_id,
-            verseNumber: verse.verse_number,
-          }))
-        );
-      }
+      const reciter = getReciterOption(DEFAULT_RECITER_ID);
+      const nextSession = await buildContinuousPlaybackSession(
+        surahDetail,
+        startVerseNumber,
+        endVerseNumber,
+        repeatCount
+      );
 
       if (requestId !== playbackRequestIdRef.current) {
         pendingPlayTransitionRef.current = false;
-        await nextLease?.release();
         return;
       }
 
       await completeActiveSession();
       if (requestId !== playbackRequestIdRef.current) {
         pendingPlayTransitionRef.current = false;
-        await nextLease?.release();
         return;
       }
 
-      playbackLeaseRef.current = nextLease;
       sessionRef.current = nextSession;
-      currentTrackIndexRef.current = 0;
       continuousVerseIndexRef.current = 0;
-      setLoadedSurahId(surahDetail.id);
-      if (nextSession.mode === 'continuous') {
-        syncVisibleState(nextSession.boundaries[0]?.verse ?? null, 1);
+      syncVisibleState(nextSession.boundaries[0]?.verse ?? null, 1);
 
-        await TrackPlayer.reset();
-        await TrackPlayer.add({
-          id: nextSession.trackId,
-          url: nextSession.surahAudioUrl,
-          title: `${surahDetail.name} ${startVerseNumber}-${endVerseNumber}`,
-          artist: reciter.artist,
-        });
-        await TrackPlayer.seekTo(nextSession.rangeStartMs / 1000);
-        await TrackPlayer.play();
-        await scheduleContinuousBoundaryTimer(nextSession.rangeDurationMs);
-      } else {
-        if (nextSession.tracks.length === 0) {
-          throw new Error('No playable ayahs found in the selected range.');
-        }
-
-        syncVisibleState(nextSession.tracks[0].verse, 1);
-
-        await TrackPlayer.reset();
-        await TrackPlayer.add(
-          nextSession.tracks.map((track) => ({
-            id: track.id,
-            url: track.url,
-            title: `${surahDetail.name} ${track.verse.verse_number}`,
-            artist: reciter.artist,
-          }))
-        );
-        await TrackPlayer.play();
-      }
+      await TrackPlayer.reset();
+      await TrackPlayer.add({
+        id: nextSession.trackId,
+        url: nextSession.surahAudioUrl,
+        title: `${surahDetail.name} ${startVerseNumber}-${endVerseNumber}`,
+        artist: reciter.artist,
+      });
+      await TrackPlayer.seekTo(nextSession.rangeStartMs / 1000);
+      await TrackPlayer.play();
+      await scheduleContinuousBoundaryTimer(nextSession.rangeDurationMs);
 
       if (requestId === playbackRequestIdRef.current) {
         pendingPlayTransitionRef.current = false;
@@ -758,11 +549,7 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     pendingPlayTransitionRef.current = true;
     await TrackPlayer.play();
     pendingPlayTransitionRef.current = false;
-
-    if (session?.mode === 'continuous') {
-      await scheduleContinuousBoundaryTimer();
-    }
-
+    await scheduleContinuousBoundaryTimer();
     setPlaybackStatus('playing');
   }, [scheduleContinuousBoundaryTimer]);
 
@@ -772,27 +559,12 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     setPlaybackStatus('stopped');
   }, [completeActiveSession]);
 
-  const seekToVerse = useCallback(async (surahDetail: SurahDetail, verseNumber: number, shouldPlay = true) => {
-    await startPlayback({
-      reciterId,
-      surahDetail,
-      startVerseNumber: verseNumber,
-      endVerseNumber: verseNumber,
-      repeatCount: 1,
-    });
-
-    if (!shouldPlay) {
-      await pausePlayback();
-    }
-  }, [pausePlayback, reciterId, startPlayback]);
-
   const state = useMemo(() => ({
     playbackStatus,
     currentRepeat,
     activeVerse,
-    loadedSurahId,
     playbackRate,
-  }), [activeVerse, currentRepeat, loadedSurahId, playbackStatus, playbackRate]);
+  }), [activeVerse, currentRepeat, playbackStatus, playbackRate]);
 
   return {
     ...state,
@@ -800,7 +572,6 @@ export function useSegmentedPlayer({ onError, onActiveVerseChange, reciterId }: 
     pausePlayback,
     resumePlayback,
     stopPlayback,
-    seekToVerse,
     setPlaybackRate,
   };
 }

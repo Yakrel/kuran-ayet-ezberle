@@ -53,29 +53,6 @@ function loadQuranData() {
   return JSON.parse(readFileSync(QURAN_DATA_PATH, 'utf8'));
 }
 
-function fetchAllSurahWords(surahId, verseCount) {
-  const verses = [];
-  let from = 1;
-
-  while (verses.length < verseCount) {
-    const remaining = verseCount - verses.length;
-    const perPage = Math.min(50, remaining);
-    const payload = fetchJson(
-      `https://qul.tarteel.ai/api/v1/chapters/${surahId}/verses?words=true&from=${from}&per_page=${perPage}`
-    );
-
-    const batch = Array.isArray(payload.verses) ? payload.verses : [];
-    if (batch.length === 0) {
-      throw new Error(`No verse words returned for surah ${surahId} from ayah ${from}.`);
-    }
-
-    verses.push(...batch);
-    from = verses.length + 1;
-  }
-
-  return verses;
-}
-
 function fetchAllSurahSegments(recitationId, surahId, verseCount) {
   const segments = {};
   let audio = null;
@@ -125,23 +102,15 @@ function buildDataset({ recitationId, outputPath }) {
 
   for (const surah of quran.surahs) {
     console.log(`Fetching QUL dataset ${recitationId} for surah ${surah.id}/${quran.surahs.length}...`);
-    const wordsVerses = fetchAllSurahWords(surah.id, surah.verse_count);
     const { audio, segments } = fetchAllSurahSegments(recitationId, surah.id, surah.verse_count);
 
     surahs.push({
       id: surah.id,
       audio,
-      verses: wordsVerses.map((verse) => ({
-        verse_key: verse.verse_key,
-        page_number: verse.page_number,
-        words: verse.words.map((word) => ({
-          location: word.location,
-          text: word.text,
-          position: word.position,
-          line_number: word.line_number,
-          page_number: word.page_number,
-        })),
-        timing: segments[verse.verse_key] ?? null,
+      verses: surah.verses.map((verse) => ({
+        verse_key: `${surah.id}:${verse.verse_number}`,
+        page_number: verse.page,
+        timing: segments[`${surah.id}:${verse.verse_number}`] ?? null,
       })),
     });
   }

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
@@ -11,6 +11,7 @@ type RangeInputModalProps = {
   initialValue: string;
   onSubmit: (value: string) => void;
   maxValue?: number;
+  maxActionLabel?: string;
   placeholder?: string;
 };
 
@@ -21,10 +22,17 @@ export function RangeInputModal({
   initialValue,
   onSubmit,
   maxValue,
+  maxActionLabel,
   placeholder = '1',
 }: RangeInputModalProps) {
   const [value, setValue] = useState(initialValue);
   const { theme, themeType } = useTheme();
+
+  useEffect(() => {
+    if (visible) {
+      setValue(initialValue);
+    }
+  }, [initialValue, visible]);
 
   const handleSubmit = () => {
     onSubmit(value);
@@ -48,9 +56,20 @@ export function RangeInputModal({
           </View>
 
           {maxValue && (
-            <Text style={[styles.hint, { color: theme.colors.TEXT_MUTED }]}>
-              Max: {maxValue}
-            </Text>
+            <View style={styles.hintRow}>
+              <Text style={[styles.hint, { color: theme.colors.TEXT_MUTED }]}>
+                Max: {maxValue}
+              </Text>
+              {maxActionLabel ? (
+                <Pressable
+                  style={[styles.maxButton, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}
+                  onPress={() => setValue(String(maxValue))}
+                >
+                  <Feather name="skip-forward" size={13} color={theme.colors.ACCENT_PRIMARY} />
+                  <Text style={[styles.maxButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{maxActionLabel}</Text>
+                </Pressable>
+              ) : null}
+            </View>
           )}
 
           <TextInput
@@ -119,7 +138,27 @@ const styles = StyleSheet.create({
   },
   hint: {
     fontSize: 12,
+  },
+  hintRow: {
+    minHeight: 30,
     marginTop: -8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  },
+  maxButton: {
+    minHeight: 30,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  maxButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
   input: {
     height: 64,

@@ -1,18 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { ReciterId } from '../constants/reciters';
 import type { ThemeType } from '../constants/colors';
 
 const KEYS = {
   LANGUAGE: '@app_language',
   QURAN_FONT: '@app_quran_font',
+  PRACTICE_STATE: '@app_practice_state',
   SELECTED_SURAH: '@app_selected_surah',
   SELECTED_TRANSLATION: '@app_selected_translation',
-  SELECTED_RECITER: '@app_selected_reciter',
   THEME: '@app_theme',
   AUTO_SCROLL: '@app_auto_scroll',
-  AYAH_TRACKING: '@app_ayah_tracking',
-  LAST_VERSE: '@app_last_verse',
-  DOWNLOAD_COMPLETE_PREFIX: '@app_full_download_complete',
   ONBOARDING_DONE: '@app_onboarding_done',
 };
 
@@ -26,13 +22,6 @@ async function getBoolean(key: string, fallback = false) {
 }
 
 export const Storage = {
-  async setDownloadComplete(reciterId: ReciterId, complete: boolean) {
-    await setBoolean(`${KEYS.DOWNLOAD_COMPLETE_PREFIX}:${reciterId}`, complete);
-  },
-  async getDownloadComplete(reciterId: ReciterId) {
-    return await getBoolean(`${KEYS.DOWNLOAD_COMPLETE_PREFIX}:${reciterId}`);
-  },
-
   async setOnboardingDone(done: boolean) {
     await setBoolean(KEYS.ONBOARDING_DONE, done);
   },
@@ -58,7 +47,24 @@ export const Storage = {
   },
   async getSelectedSurah() {
     const val = await AsyncStorage.getItem(KEYS.SELECTED_SURAH);
-    return val ? Number(val) : null;
+    const parsed = val ? Number(val) : null;
+    return parsed !== null && Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+  },
+
+  async setPracticeState(value: unknown) {
+    await AsyncStorage.setItem(KEYS.PRACTICE_STATE, JSON.stringify(value));
+  },
+  async getPracticeState() {
+    const val = await AsyncStorage.getItem(KEYS.PRACTICE_STATE);
+    if (!val) {
+      return null;
+    }
+
+    try {
+      return JSON.parse(val) as unknown;
+    } catch {
+      return null;
+    }
   },
 
   async setSelectedTranslation(id: number) {
@@ -67,16 +73,6 @@ export const Storage = {
   async getSelectedTranslation() {
     const val = await AsyncStorage.getItem(KEYS.SELECTED_TRANSLATION);
     return val ? Number(val) : null;
-  },
-
-  async setSelectedReciter(reciterId: ReciterId) {
-    await AsyncStorage.setItem(KEYS.SELECTED_RECITER, reciterId);
-  },
-  async getSelectedReciter() {
-    const val = await AsyncStorage.getItem(KEYS.SELECTED_RECITER);
-    return val === 'ghamdi' || val === 'mishary' || val === 'maher' || val === 'minshawy'
-      ? (val as ReciterId)
-      : null;
   },
 
   async setTheme(themeType: ThemeType) {
@@ -92,34 +88,6 @@ export const Storage = {
   },
   async getAutoScroll() {
     return await getBoolean(KEYS.AUTO_SCROLL, true);
-  },
-
-  async setAyahTracking(enabled: boolean) {
-    await setBoolean(KEYS.AYAH_TRACKING, enabled);
-  },
-  async getAyahTracking() {
-    return await getBoolean(KEYS.AYAH_TRACKING, false);
-  },
-
-  async setLastVerse(surahId: number, verseNumber: number) {
-    await AsyncStorage.setItem(KEYS.LAST_VERSE, JSON.stringify({ surahId, verseNumber }));
-  },
-  async getLastVerse() {
-    const val = await AsyncStorage.getItem(KEYS.LAST_VERSE);
-    if (!val) {
-      return null;
-    }
-
-    try {
-      const parsed = JSON.parse(val) as { surahId?: number; verseNumber?: number };
-      if (typeof parsed.surahId !== 'number' || typeof parsed.verseNumber !== 'number') {
-        return null;
-      }
-
-      return parsed as { surahId: number; verseNumber: number };
-    } catch {
-      return null;
-    }
   },
   async setItem(key: string, value: string) {
     await AsyncStorage.setItem(key, value);

@@ -1,4 +1,5 @@
 import * as FileSystem from 'expo-file-system/legacy';
+import type { ReciterId } from '../constants/reciters';
 
 export type SurahAudioDownloadProgress = {
   current: number;
@@ -8,45 +9,46 @@ export type SurahAudioDownloadProgress = {
 
 const CACHE_DIR_NAME = 'surah-audio-cache/';
 
-function getCacheDir() {
+function getCacheDir(reciterId: ReciterId) {
   const base = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
   if (!base) {
     throw new Error('Audio cache directory is unavailable on this device.');
   }
 
-  return `${base}${CACHE_DIR_NAME}`;
+  return `${base}${CACHE_DIR_NAME}${reciterId}/`;
 }
 
-function getCacheFileUri(surahId: number) {
-  return `${getCacheDir()}${String(surahId).padStart(3, '0')}.mp3`;
+function getCacheFileUri(reciterId: ReciterId, surahId: number) {
+  return `${getCacheDir(reciterId)}${String(surahId).padStart(3, '0')}.mp3`;
 }
 
-async function ensureCacheDir() {
-  const dir = getCacheDir();
+async function ensureCacheDir(reciterId: ReciterId) {
+  const dir = getCacheDir(reciterId);
   const info = await FileSystem.getInfoAsync(dir);
   if (!info.exists) {
     await FileSystem.makeDirectoryAsync(dir, { intermediates: true });
   }
 }
 
-export async function getCachedSurahAudioUri(surahId: number) {
-  const fileUri = getCacheFileUri(surahId);
+export async function getCachedSurahAudioUri(reciterId: ReciterId, surahId: number) {
+  const fileUri = getCacheFileUri(reciterId, surahId);
   const info = await FileSystem.getInfoAsync(fileUri);
   return info.exists ? fileUri : null;
 }
 
-export async function getPreferredSurahAudioUri(surahId: number, remoteUrl: string) {
-  const cachedUri = await getCachedSurahAudioUri(surahId);
+export async function getPreferredSurahAudioUri(reciterId: ReciterId, surahId: number, remoteUrl: string) {
+  const cachedUri = await getCachedSurahAudioUri(reciterId, surahId);
   return cachedUri ?? remoteUrl;
 }
 
 export async function downloadSurahAudio(
+  reciterId: ReciterId,
   surahId: number,
   remoteUrl: string,
   onProgress?: (progress: SurahAudioDownloadProgress) => void
 ) {
-  await ensureCacheDir();
-  const fileUri = getCacheFileUri(surahId);
+  await ensureCacheDir(reciterId);
+  const fileUri = getCacheFileUri(reciterId, surahId);
 
   const resumable = FileSystem.createDownloadResumable(
     remoteUrl,
@@ -69,6 +71,7 @@ export async function downloadSurahAudio(
 }
 
 export async function downloadAllSurahAudio(
+  reciterId: ReciterId,
   surahAudios: Array<{ surahId: number; remoteUrl: string }>,
   onProgress?: (progress: SurahAudioDownloadProgress) => void
 ) {
@@ -76,7 +79,7 @@ export async function downloadAllSurahAudio(
 
   for (let index = 0; index < surahAudios.length; index += 1) {
     const item = surahAudios[index];
-    await downloadSurahAudio(item.surahId, item.remoteUrl);
+    await downloadSurahAudio(reciterId, item.surahId, item.remoteUrl);
     const current = index + 1;
     onProgress?.({
       current,
@@ -86,21 +89,21 @@ export async function downloadAllSurahAudio(
   }
 }
 
-export async function clearAllSurahAudio() {
-  const dir = getCacheDir();
+export async function clearAllSurahAudio(reciterId: ReciterId) {
+  const dir = getCacheDir(reciterId);
   const info = await FileSystem.getInfoAsync(dir);
   if (info.exists) {
     await FileSystem.deleteAsync(dir, { idempotent: true });
   }
 }
 
-export async function getSurahAudioCacheStats() {
-  await ensureCacheDir();
-  const files = await FileSystem.readDirectoryAsync(getCacheDir());
+export async function getSurahAudioCacheStats(reciterId: ReciterId) {
+  await ensureCacheDir(reciterId);
+  const files = await FileSystem.readDirectoryAsync(getCacheDir(reciterId));
   let totalBytes = 0;
 
   for (const file of files) {
-    const info = await FileSystem.getInfoAsync(`${getCacheDir()}${file}`);
+    const info = await FileSystem.getInfoAsync(`${getCacheDir(reciterId)}${file}`);
     totalBytes += info.exists && typeof info.size === 'number' ? info.size : 0;
   }
 
@@ -108,4 +111,13 @@ export async function getSurahAudioCacheStats() {
     files: files.length,
     megabytes: Number((totalBytes / (1024 * 1024)).toFixed(1)),
   };
+}
+
+export async function getAvailableSpaceMB(): Promise<number> {
+  try {
+    const freeBytes = await FileSystem.getFreeDiskStorageAsync();
+    return freeBytes / (1024 * 1024);
+  } catch {
+    return 2048;
+  }
 }

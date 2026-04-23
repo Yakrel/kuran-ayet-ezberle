@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  DEFAULT_APP_SETTINGS,
   resolveInitialAppSettings,
+  resolvePersistedPracticeState,
   resolveTranslationAfterLanguageChange,
 } from './appSettings';
 
@@ -12,18 +12,31 @@ describe('resolveInitialAppSettings', () => {
         language: 'tr',
         selectedTranslationAuthorId: 11,
         selectedSurahId: 2,
-        selectedReciterId: 'maher',
         selectedQuranFontId: 'amiri',
         themeType: 'PAPER',
         isAutoScrollEnabled: false,
-        isAyahTrackingEnabled: true,
-        lastVerse: { surahId: 2, verseNumber: 5 },
+        practiceState: {
+          surahId: 20,
+          verseNumber: 10,
+          page: 312,
+          startVerse: 10,
+          endVerse: 40,
+          repeatCount: 5,
+        },
       },
       'en'
     );
 
     expect(result.nextState.selectedTranslationAuthorId).toBe(11);
     expect(result.nextState.language).toBe('tr');
+    expect(result.nextState.practiceState).toEqual({
+      surahId: 20,
+      verseNumber: 10,
+      page: 312,
+      startVerse: 10,
+      endVerse: 40,
+      repeatCount: 5,
+    });
     expect(result.shouldPersistTranslation).toBe(false);
   });
 
@@ -33,19 +46,82 @@ describe('resolveInitialAppSettings', () => {
         language: 'tr',
         selectedTranslationAuthorId: 32,
         selectedSurahId: null,
-        selectedReciterId: null,
         selectedQuranFontId: null,
         themeType: null,
         isAutoScrollEnabled: null,
-        isAyahTrackingEnabled: null,
-        lastVerse: null,
+        practiceState: null,
       },
       'en'
     );
 
     expect(result.nextState.selectedTranslationAuthorId).toBe(6);
-    expect(result.nextState.selectedReciterId).toBe(DEFAULT_APP_SETTINGS.selectedReciterId);
     expect(result.shouldPersistTranslation).toBe(true);
+  });
+
+  it('uses the persisted practice surah as the active surah', () => {
+    const result = resolveInitialAppSettings(
+      {
+        language: 'tr',
+        selectedTranslationAuthorId: 6,
+        selectedSurahId: 1,
+        selectedQuranFontId: null,
+        themeType: null,
+        isAutoScrollEnabled: null,
+        practiceState: {
+          surahId: 36,
+          verseNumber: 12,
+          page: 441,
+          startVerse: 12,
+          endVerse: 83,
+          repeatCount: 7,
+        },
+      },
+      'en'
+    );
+
+    expect(result.nextState.selectedSurahId).toBe(36);
+  });
+});
+
+describe('resolvePersistedPracticeState', () => {
+  it('keeps valid persisted practice values', () => {
+    expect(
+      resolvePersistedPracticeState({
+        surahId: 2,
+        verseNumber: 20,
+        page: 5,
+        startVerse: 20,
+        endVerse: 40,
+        repeatCount: 10,
+      })
+    ).toEqual({
+      surahId: 2,
+      verseNumber: 20,
+      page: 5,
+      startVerse: 20,
+      endVerse: 40,
+      repeatCount: 10,
+    });
+  });
+
+  it('repairs invalid persisted practice values with defaults', () => {
+    expect(
+      resolvePersistedPracticeState({
+        surahId: -1,
+        verseNumber: 0,
+        page: 'abc',
+        startVerse: null,
+        endVerse: 9.5,
+        repeatCount: -3,
+      })
+    ).toEqual({
+      surahId: null,
+      verseNumber: 1,
+      page: 1,
+      startVerse: 1,
+      endVerse: 5,
+      repeatCount: 3,
+    });
   });
 });
 

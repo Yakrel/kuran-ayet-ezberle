@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ThemeType } from '../constants/colors';
 import type { QuranFontId } from '../constants/quranFonts';
-import type { ReciterId } from '../constants/reciters';
 import type { LanguageCode } from '../i18n/types';
 import { Storage } from '../services/storage';
 import { inferDeviceLanguage } from '../utils/language';
@@ -10,6 +9,7 @@ import {
   resolveInitialAppSettings,
   resolveTranslationAfterLanguageChange,
   type AppSettingsState,
+  type PracticeState,
   type PersistedAppSettings,
 } from '../utils/appSettings';
 
@@ -28,12 +28,10 @@ export function useAppSettings() {
         language: (await Storage.getLanguage()) as LanguageCode | null,
         selectedTranslationAuthorId: await Storage.getSelectedTranslation(),
         selectedSurahId: await Storage.getSelectedSurah(),
-        selectedReciterId: await Storage.getSelectedReciter(),
         selectedQuranFontId: (await Storage.getQuranFont()) as QuranFontId | null,
         themeType: (await Storage.getTheme()) as ThemeType | null,
         isAutoScrollEnabled: await Storage.getAutoScroll(),
-        isAyahTrackingEnabled: await Storage.getAyahTracking(),
-        lastVerse: await Storage.getLastVerse(),
+        practiceState: await Storage.getPracticeState(),
       };
 
       const { nextState, shouldPersistTranslation } = resolveInitialAppSettings(persisted, fallbackLanguage);
@@ -104,11 +102,6 @@ export function useAppSettings() {
     }
   }, [setPartialSettings]);
 
-  const setSelectedReciterId = useCallback((nextReciterId: ReciterId) => {
-    setPartialSettings('selectedReciterId', nextReciterId);
-    void Storage.setSelectedReciter(nextReciterId);
-  }, [setPartialSettings]);
-
   const setSelectedQuranFontId = useCallback((nextFontId: QuranFontId) => {
     setPartialSettings('selectedQuranFontId', nextFontId);
     void Storage.setQuranFont(nextFontId);
@@ -124,15 +117,9 @@ export function useAppSettings() {
     void Storage.setAutoScroll(enabled);
   }, [setPartialSettings]);
 
-  const setIsAyahTrackingEnabled = useCallback((enabled: boolean) => {
-    setPartialSettings('isAyahTrackingEnabled', enabled);
-    void Storage.setAyahTracking(enabled);
-  }, [setPartialSettings]);
-
-  const setLastVerse = useCallback((surahId: number, verseNumber: number) => {
-    const lastVerse = { surahId, verseNumber };
-    setPartialSettings('lastVerse', lastVerse);
-    void Storage.setLastVerse(surahId, verseNumber);
+  const setPracticeState = useCallback((nextPracticeState: PracticeState) => {
+    setPartialSettings('practiceState', nextPracticeState);
+    void Storage.setPracticeState(nextPracticeState);
   }, [setPartialSettings]);
 
   return {
@@ -141,11 +128,9 @@ export function useAppSettings() {
     setLanguage,
     setSelectedTranslationAuthorId,
     setSelectedSurahId,
-    setSelectedReciterId,
     setSelectedQuranFontId,
     setThemeType,
     setIsAutoScrollEnabled,
-    setIsAyahTrackingEnabled,
-    setLastVerse,
+    setPracticeState,
   };
 }

@@ -18,8 +18,9 @@ type VerseListProps = {
   };
   swipeHintText: string;
   autoScrollEnabled: boolean;
-  onVerseTap: (verse: Verse) => void;
   onVerseLongPress: (verse: Verse) => void;
+  onPlayFromVerse: (verse: Verse) => void;
+  verseActionKey: string | null;
   onVisibleVerseChange: (location: VerseLocation) => void;
   panHandlers: ReturnType<typeof import('react-native').PanResponder.create>['panHandlers'];
 };
@@ -32,8 +33,9 @@ export function VerseList({
   quranTextStyle,
   swipeHintText,
   autoScrollEnabled,
-  onVerseTap,
   onVerseLongPress,
+  onPlayFromVerse,
+  verseActionKey,
   onVisibleVerseChange,
   panHandlers,
 }: VerseListProps) {
@@ -124,8 +126,9 @@ export function VerseList({
                 quranFontFamily={quranFontFamily}
                 quranTextStyle={quranTextStyle}
                 isCurrentVerse={isCurrent}
-                onPress={onVerseTap}
                 onLongPress={onVerseLongPress}
+                onPlayFromVerse={onPlayFromVerse}
+                showPlayAction={verseActionKey === `${item.surah_id}:${item.verse_number}`}
               />
             );
           }}
