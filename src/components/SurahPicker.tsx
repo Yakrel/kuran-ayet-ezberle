@@ -2,15 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { SurahSummary } from '../types/quran';
+import type { TranslationStrings } from '../i18n/types';
 import { useTheme } from '../hooks/useTheme';
-import { useI18n } from '../hooks/useI18n';
 
 type SurahPickerProps = {
   surahs: SurahSummary[];
   selectedSurahId: number | null;
   isFetchingSurahs: boolean;
   onSurahChange: (surahId: number | string) => void;
-  label?: string;
+  text: Pick<TranslationStrings, 'surah' | 'searchSurah' | 'noSurahResults' | 'ayahUnit'>;
 };
 
 function normalizeSearchText(value: string) {
@@ -26,10 +26,9 @@ export function SurahPicker({
   selectedSurahId,
   isFetchingSurahs,
   onSurahChange,
-  label,
+  text,
 }: SurahPickerProps) {
   const { theme, themeType } = useTheme();
-  const { text } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
 
@@ -86,7 +85,7 @@ export function SurahPicker({
         <View style={[styles.modalOverlay, { backgroundColor: themeType === 'DARK' ? 'rgba(2, 6, 23, 0.72)' : 'rgba(7, 54, 66, 0.4)' }]}>
           <View style={[styles.modalCard, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}>
             <View style={[styles.modalHeader, { borderBottomColor: theme.colors.BORDER_SECONDARY }]}>
-              <Text style={[styles.modalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{label ?? 'Sure'}</Text>
+              <Text style={[styles.modalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{text.surah}</Text>
               <Pressable style={[styles.closeButton, { backgroundColor: theme.colors.CARD_BG }]} onPress={() => setIsOpen(false)}>
                 <Feather name="x" size={20} color={theme.colors.TEXT_PRIMARY} />
               </Pressable>
@@ -134,7 +133,7 @@ export function SurahPicker({
                       ]}>
                         {surah.id}. {surah.name}
                       </Text>
-                      <Text style={[styles.optionMeta, { color: theme.colors.TEXT_MUTED }]}>{surah.verse_count} ayet</Text>
+                      <Text style={[styles.optionMeta, { color: theme.colors.TEXT_MUTED }]}>{surah.verse_count} {text.ayahUnit}</Text>
                     </View>
                     {isSelected ? (
                       <Feather name="check" size={18} color={theme.colors.ACCENT_PRIMARY} />

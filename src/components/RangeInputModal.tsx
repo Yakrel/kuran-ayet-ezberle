@@ -12,6 +12,9 @@ type RangeInputModalProps = {
   onSubmit: (value: string) => void;
   maxValue?: number;
   maxActionLabel?: string;
+  maxLabel: string;
+  cancelLabel: string;
+  submitLabel: string;
   placeholder?: string;
 };
 
@@ -23,6 +26,9 @@ export function RangeInputModal({
   onSubmit,
   maxValue,
   maxActionLabel,
+  maxLabel,
+  cancelLabel,
+  submitLabel,
   placeholder = '1',
 }: RangeInputModalProps) {
   const [value, setValue] = useState(initialValue);
@@ -58,7 +64,7 @@ export function RangeInputModal({
           {maxValue && (
             <View style={styles.hintRow}>
               <Text style={[styles.hint, { color: theme.colors.TEXT_MUTED }]}>
-                Max: {maxValue}
+                {maxLabel}: {maxValue}
               </Text>
               {maxActionLabel ? (
                 <Pressable
@@ -89,13 +95,13 @@ export function RangeInputModal({
               style={[styles.actionButton, styles.cancelButton, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}
               onPress={handleClose}
             >
-              <Text style={[styles.cancelButtonText, { color: theme.colors.TEXT_SECONDARY }]}>İptal</Text>
+              <Text style={[styles.cancelButtonText, { color: theme.colors.TEXT_SECONDARY }]}>{cancelLabel}</Text>
             </Pressable>
             <Pressable
               style={[styles.actionButton, styles.submitButton, { backgroundColor: theme.colors.ACCENT_PRIMARY }]}
               onPress={handleSubmit}
             >
-              <Text style={[styles.submitButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>Tamam</Text>
+              <Text style={[styles.submitButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>{submitLabel}</Text>
             </Pressable>
           </View>
         </View>

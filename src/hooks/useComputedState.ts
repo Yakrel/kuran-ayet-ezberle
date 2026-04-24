@@ -50,9 +50,6 @@ export function useComputedState(
     (currentPageIndex >= 0 && currentPageIndex < allPages.length - 1) ||
     (surahIndex >= 0 && surahIndex < surahs.length - 1);
 
-  // Get first verse on current page
-  const firstVerseOnCurrentPage = currentPageVerses[0] ?? null;
-
   return {
     allPages,
     currentPageVerses,
@@ -61,6 +58,5 @@ export function useComputedState(
     surahIndexMap,
     canGoPreviousPage,
     canGoNextPage,
-    firstVerseOnCurrentPage,
   };
 }

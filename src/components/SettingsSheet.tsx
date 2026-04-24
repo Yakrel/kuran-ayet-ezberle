@@ -60,9 +60,13 @@ export function SettingsSheet({
               quranFontText={text.quranFont}
               fontPreviewText={text.fontPreview}
               languageText={text.language}
+              languageTurkishText={text.languageTurkish}
+              languageEnglishText={text.languageEnglish}
               translationText={text.translation}
               autoScrollText={text.autoScroll}
               themeText={text.theme}
+              themeDarkText={text.themeDark}
+              themePaperText={text.themePaper}
               playbackSpeedText={text.playbackSpeed}
               aboutText={text.about}
               manageDownloadsText={text.manageDownloads}

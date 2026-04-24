@@ -86,6 +86,3 @@ export const THEMES = {
 } as const;
 
 export type ThemeType = keyof typeof THEMES;
-
-// Export default colors for backward compatibility (defaults to DARK)
-export const COLORS = THEMES.DARK;

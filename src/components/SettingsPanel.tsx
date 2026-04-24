@@ -2,7 +2,8 @@ import React, { useMemo, useState } from 'react';
 import { Modal, Platform, ScrollView, StyleSheet, Switch, Text, View, Pressable } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { Feather } from '@expo/vector-icons';
-import type { TranslationOption, LanguageCode } from '../types/quran';
+import type { TranslationOption } from '../types/quran';
+import type { LanguageCode } from '../i18n/types';
 import type { QuranFontId, QuranFontOption } from '../constants/quranFonts';
 import { useTheme } from '../hooks/useTheme';
 import { ThemeType } from '../constants/colors';
@@ -29,9 +30,13 @@ type SettingsPanelProps = {
     lineHeight: number;
   };
   languageText: string;
+  languageTurkishText: string;
+  languageEnglishText: string;
   translationText: string;
   autoScrollText: string;
   themeText: string;
+  themeDarkText: string;
+  themePaperText: string;
   onThemeChange: (theme: ThemeType) => void;
   playbackSpeedText: string;
   aboutText: string;
@@ -68,9 +73,13 @@ export function SettingsPanel({
   quranFontFamily,
   quranFontPreviewStyle,
   languageText,
+  languageTurkishText,
+  languageEnglishText,
   translationText,
   autoScrollText,
   themeText,
+  themeDarkText,
+  themePaperText,
   onThemeChange,
   playbackSpeedText,
   aboutText,
@@ -86,13 +95,13 @@ export function SettingsPanel({
   const [activeSelect, setActiveSelect] = useState<ActiveSelectKey>(null);
 
   const languageOptions: Array<SelectOption<LanguageCode>> = [
-    { value: 'tr', label: language === 'tr' ? 'Türkçe' : 'Turkish' },
-    { value: 'en', label: language === 'tr' ? 'İngilizce' : 'English' },
+    { value: 'tr', label: languageTurkishText },
+    { value: 'en', label: languageEnglishText },
   ];
 
   const themeOptions: Array<SelectOption<ThemeType>> = [
-    { value: 'DARK', label: language === 'tr' ? 'Koyu' : 'Dark' },
-    { value: 'PAPER', label: language === 'tr' ? 'Kağıt' : 'Paper' },
+    { value: 'DARK', label: themeDarkText },
+    { value: 'PAPER', label: themePaperText },
   ];
 
   const speedOptions: Array<SelectOption<number>> = [
@@ -168,7 +177,11 @@ export function SettingsPanel({
     options: Array<SelectOption<T>>,
     onChange: (nextValue: T) => void
   ) {
-    const selectedLabel = options.find((option) => option.value === value)?.label ?? String(value);
+    const selectedOption = options.find((option) => option.value === value);
+    if (!selectedOption) {
+      throw new Error(`Selected ${key} value is not configured: ${String(value)}.`);
+    }
+    const selectedLabel = selectedOption.label;
 
     if (useThemedSelect) {
       return (

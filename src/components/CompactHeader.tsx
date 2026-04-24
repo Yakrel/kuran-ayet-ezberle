@@ -44,12 +44,25 @@ type CompactHeaderProps = {
   
   // i18n
   text: {
+    surah: string;
+    searchSurah: string;
+    noSurahResults: string;
+    ayahUnit: string;
     startVerse: string;
     endVerse: string;
     repeat: string;
     start: string;
+    pause: string;
+    resume: string;
+    stop: string;
     page: string;
+    previousPage: string;
+    nextPage: string;
+    settings: string;
     lastVerse: string;
+    cancel: string;
+    confirm: string;
+    max: string;
   };
 };
 
@@ -98,6 +111,12 @@ export function CompactHeader({
             selectedSurahId={selectedSurahId}
             isFetchingSurahs={isFetchingSurahs}
             onSurahChange={onSurahChange}
+            text={{
+              surah: text.surah,
+              searchSurah: text.searchSurah,
+              noSurahResults: text.noSurahResults,
+              ayahUnit: text.ayahUnit,
+            }}
           />
         </View>
 
@@ -105,6 +124,8 @@ export function CompactHeader({
           <Pressable
             onPress={onPreviousPress}
             disabled={!canGoPreviousPage}
+            accessibilityRole="button"
+            accessibilityLabel={text.previousPage}
             style={[
               styles.navButton,
               { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY },
@@ -129,6 +150,8 @@ export function CompactHeader({
           <Pressable
             onPress={onNextPress}
             disabled={!canGoNextPage}
+            accessibilityRole="button"
+            accessibilityLabel={text.nextPage}
             style={[
               styles.navButton,
               { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY },
@@ -142,6 +165,8 @@ export function CompactHeader({
         <Pressable
           style={[styles.settingsButton, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}
           onPress={onSettingsPress}
+          accessibilityRole="button"
+          accessibilityLabel={text.settings}
         >
           <Feather name="settings" size={18} color={theme.colors.TEXT_PRIMARY} />
         </Pressable>
@@ -172,12 +197,16 @@ export function CompactHeader({
                 <Pressable
                   style={[styles.actionButton, styles.actionButtonSmall, { backgroundColor: theme.colors.ACCENT_PRIMARY }]}
                   onPress={onPause}
+                  accessibilityRole="button"
+                  accessibilityLabel={text.pause}
                 >
                   <Feather name="pause" size={16} color={themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff'} />
                 </Pressable>
                 <Pressable
                   style={[styles.actionButton, styles.actionButtonSmall, { backgroundColor: theme.colors.ERROR }]}
                   onPress={onStop}
+                  accessibilityRole="button"
+                  accessibilityLabel={text.stop}
                 >
                   <Feather name="square" size={14} color="#fff" />
                 </Pressable>
@@ -186,10 +215,12 @@ export function CompactHeader({
               <Pressable
                 style={[styles.actionButton, { backgroundColor: theme.colors.ACCENT_PRIMARY }]}
                 onPress={isPaused ? onResume : onStart}
+                accessibilityRole="button"
+                accessibilityLabel={isPaused ? text.resume : text.start}
               >
                 <Feather name="play" size={16} color={themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff'} />
                 <Text style={[styles.actionButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>
-                  {text.start}
+                  {isPaused ? text.resume : text.start}
                 </Text>
               </Pressable>
             )}
@@ -205,6 +236,9 @@ export function CompactHeader({
         initialValue={startVerseInput}
         onSubmit={onStartVerseChange}
         maxValue={maxVerseInSurah}
+        maxLabel={text.max}
+        cancelLabel={text.cancel}
+        submitLabel={text.confirm}
         placeholder="1"
       />
       <RangeInputModal
@@ -215,6 +249,9 @@ export function CompactHeader({
         onSubmit={onEndVerseChange}
         maxValue={maxVerseInSurah}
         maxActionLabel={text.lastVerse}
+        maxLabel={text.max}
+        cancelLabel={text.cancel}
+        submitLabel={text.confirm}
         placeholder="1"
       />
       <RangeInputModal
@@ -223,6 +260,9 @@ export function CompactHeader({
         title={text.repeat}
         initialValue={repeatCountInput}
         onSubmit={onRepeatCountChange}
+        maxLabel={text.max}
+        cancelLabel={text.cancel}
+        submitLabel={text.confirm}
         placeholder="1"
       />
     </View>

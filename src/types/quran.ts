@@ -4,12 +4,10 @@ export type SurahSummary = {
   verse_count: number;
 };
 
-export type LanguageCode = 'tr' | 'en';
-
 export type TranslationOption = {
   id: number;
   label: string;
-  language: LanguageCode;
+  language: import('../i18n/types').LanguageCode;
 };
 
 export type VerseTranslation = {
@@ -28,7 +26,7 @@ export type Verse = {
   page: number;
   verse: string;
   translation: VerseTranslation;
-  timing: VerseTiming | null;
+  timing: VerseTiming;
 };
 
 export type SurahAudioAsset = {
@@ -41,13 +39,7 @@ export type SurahDetail = {
   id: number;
   name: string;
   verse_count: number;
-  audio: SurahAudioAsset | null;
-  recitation_id: number | null;
+  audio: SurahAudioAsset;
+  recitation_id: number;
   verses: Verse[];
-};
-
-export type PlaybackPosition = {
-  current_time_ms: number;
-  duration_ms: number;
-  buffered_ms: number;
 };

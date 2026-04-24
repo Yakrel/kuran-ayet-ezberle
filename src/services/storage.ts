@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { ThemeType } from '../constants/colors';
+import type { LanguageCode } from '../i18n/types';
 
 const KEYS = {
   LANGUAGE: '@app_language',
@@ -9,30 +10,37 @@ const KEYS = {
   SELECTED_TRANSLATION: '@app_selected_translation',
   THEME: '@app_theme',
   AUTO_SCROLL: '@app_auto_scroll',
-  ONBOARDING_DONE: '@app_onboarding_done',
 };
 
 async function setBoolean(key: string, value: boolean) {
   await AsyncStorage.setItem(key, value ? '1' : '0');
 }
 
-async function getBoolean(key: string, fallback = false) {
+async function getBoolean(key: string) {
   const value = await AsyncStorage.getItem(key);
-  return value === null ? fallback : value === '1';
+  if (value === null) {
+    return null;
+  }
+  if (value !== '0' && value !== '1') {
+    throw new Error(`Invalid boolean storage value for ${key}.`);
+  }
+
+  return value === '1';
 }
 
 export const Storage = {
-  async setOnboardingDone(done: boolean) {
-    await setBoolean(KEYS.ONBOARDING_DONE, done);
-  },
-  async getOnboardingDone() {
-    return await getBoolean(KEYS.ONBOARDING_DONE);
-  },
   async setLanguage(lang: string) {
     await AsyncStorage.setItem(KEYS.LANGUAGE, lang);
   },
   async getLanguage() {
-    return await AsyncStorage.getItem(KEYS.LANGUAGE);
+    const val = await AsyncStorage.getItem(KEYS.LANGUAGE);
+    if (val === null) {
+      return null;
+    }
+    if (val !== 'tr' && val !== 'en') {
+      throw new Error(`Invalid persisted language: ${val}.`);
+    }
+    return val as LanguageCode;
   },
 
   async setQuranFont(fontId: string) {
@@ -47,8 +55,15 @@ export const Storage = {
   },
   async getSelectedSurah() {
     const val = await AsyncStorage.getItem(KEYS.SELECTED_SURAH);
-    const parsed = val ? Number(val) : null;
-    return parsed !== null && Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+    if (val === null) {
+      return null;
+    }
+
+    const parsed = Number(val);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(`Invalid persisted surah: ${val}.`);
+    }
+    return parsed;
   },
 
   async setPracticeState(value: unknown) {
@@ -60,11 +75,7 @@ export const Storage = {
       return null;
     }
 
-    try {
-      return JSON.parse(val) as unknown;
-    } catch {
-      return null;
-    }
+    return JSON.parse(val) as unknown;
   },
 
   async setSelectedTranslation(id: number) {
@@ -72,7 +83,15 @@ export const Storage = {
   },
   async getSelectedTranslation() {
     const val = await AsyncStorage.getItem(KEYS.SELECTED_TRANSLATION);
-    return val ? Number(val) : null;
+    if (val === null) {
+      return null;
+    }
+
+    const parsed = Number(val);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+      throw new Error(`Invalid persisted translation: ${val}.`);
+    }
+    return parsed;
   },
 
   async setTheme(themeType: ThemeType) {
@@ -80,24 +99,19 @@ export const Storage = {
   },
   async getTheme() {
     const val = await AsyncStorage.getItem(KEYS.THEME);
-    return val === 'PAPER' || val === 'DARK' ? (val as ThemeType) : null;
+    if (val === null) {
+      return null;
+    }
+    if (val !== 'PAPER' && val !== 'DARK') {
+      throw new Error(`Invalid persisted theme: ${val}.`);
+    }
+    return val as ThemeType;
   },
 
   async setAutoScroll(enabled: boolean) {
     await setBoolean(KEYS.AUTO_SCROLL, enabled);
   },
   async getAutoScroll() {
-    return await getBoolean(KEYS.AUTO_SCROLL, true);
-  },
-  async setItem(key: string, value: string) {
-    await AsyncStorage.setItem(key, value);
-  },
-
-  async getItem(key: string) {
-    return await AsyncStorage.getItem(key);
-  },
-
-  async removeItem(key: string) {
-    await AsyncStorage.removeItem(key);
+    return await getBoolean(KEYS.AUTO_SCROLL);
   },
 };

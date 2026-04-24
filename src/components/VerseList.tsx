@@ -20,6 +20,7 @@ type VerseListProps = {
   autoScrollEnabled: boolean;
   onVerseLongPress: (verse: Verse) => void;
   onPlayFromVerse: (verse: Verse) => void;
+  playFromVerseText: string;
   verseActionKey: string | null;
   onVisibleVerseChange: (location: VerseLocation) => void;
   panHandlers: ReturnType<typeof import('react-native').PanResponder.create>['panHandlers'];
@@ -35,6 +36,7 @@ export function VerseList({
   autoScrollEnabled,
   onVerseLongPress,
   onPlayFromVerse,
+  playFromVerseText,
   verseActionKey,
   onVisibleVerseChange,
   panHandlers,
@@ -43,6 +45,7 @@ export function VerseList({
   const verseListRef = useRef<FlatList<Verse> | null>(null);
   const visibleIndexesRef = useRef<number[]>([]);
   const lastAutoScrollIndexRef = useRef<number | null>(null);
+  const scrollRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   
   const viewabilityConfigRef = useRef({
     itemVisiblePercentThreshold: UI_CONFIG.VERSE_VISIBILITY_THRESHOLD,
@@ -80,6 +83,14 @@ export function VerseList({
     visibleIndexesRef.current = [];
     lastAutoScrollIndexRef.current = null;
   }, [currentPageVerses]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollRetryTimerRef.current) {
+        clearTimeout(scrollRetryTimerRef.current);
+      }
+    };
+  }, []);
   
   const onViewableItemsChangedRef = useRef(({ viewableItems }: { viewableItems: ViewToken[] }) => {
     const visibleItems = viewableItems.filter((item) => item.isViewable);
@@ -108,7 +119,26 @@ export function VerseList({
           keyExtractor={(item) => `${item.surah_id}-${item.verse_number}`}
           contentContainerStyle={styles.listContent}
           keyboardShouldPersistTaps="handled"
-          onScrollToIndexFailed={() => undefined}
+          onScrollToIndexFailed={({ index, highestMeasuredFrameIndex }) => {
+            if (scrollRetryTimerRef.current) {
+              clearTimeout(scrollRetryTimerRef.current);
+            }
+
+            const measuredIndex = Math.max(0, Math.min(index, highestMeasuredFrameIndex));
+            verseListRef.current?.scrollToIndex({
+              index: measuredIndex,
+              animated: false,
+              viewPosition: 0.3,
+            });
+
+            scrollRetryTimerRef.current = setTimeout(() => {
+              verseListRef.current?.scrollToIndex({
+                index,
+                animated: false,
+                viewPosition: 0.3,
+              });
+            }, 80);
+          }}
           viewabilityConfig={viewabilityConfigRef.current}
           onViewableItemsChanged={onViewableItemsChangedRef.current}
           initialNumToRender={10}
@@ -128,6 +158,7 @@ export function VerseList({
                 isCurrentVerse={isCurrent}
                 onLongPress={onVerseLongPress}
                 onPlayFromVerse={onPlayFromVerse}
+                playFromVerseText={playFromVerseText}
                 showPlayAction={verseActionKey === `${item.surah_id}:${item.verse_number}`}
               />
             );
@@ -159,5 +190,6 @@ const styles = StyleSheet.create({
     fontSize: 10,
     marginHorizontal: 12,
     letterSpacing: 0.2,
+    opacity: 0.65,
   },
 });

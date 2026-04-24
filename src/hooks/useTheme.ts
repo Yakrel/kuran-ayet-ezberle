@@ -2,9 +2,9 @@ import React, { createContext, useContext, useMemo } from 'react';
 import { THEMES, ThemeType } from '../constants/colors';
 import { BORDER_RADIUS, FONT_SIZE, SPACING, UI_SIZES } from '../constants/spacing';
 
-type ThemeColors = typeof THEMES.DARK;
+type ThemeColors = (typeof THEMES)[ThemeType];
 
-type Theme = ThemeColors & {
+type Theme = {
   colors: ThemeColors;
   spacing: typeof SPACING;
   borderRadius: typeof BORDER_RADIUS;
@@ -34,7 +34,6 @@ export function ThemeProvider({
     const colors = THEMES[themeType];
     return {
       colors,
-      ...colors, // For backward compatibility if someone uses theme.PRIMARY_BG
       spacing: SPACING,
       borderRadius: BORDER_RADIUS,
       fontSize: FONT_SIZE,
@@ -67,7 +66,7 @@ export function ThemeProvider({
 
   return React.createElement(
     ThemeContext.Provider,
-    { value: { theme: theme as any, themeType, setTheme: onThemeChange } },
+    { value: { theme, themeType, setTheme: onThemeChange } },
     children
   );
 }
