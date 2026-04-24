@@ -1,4 +1,34 @@
-type TrackPlayerModule = Record<string, any>;
+type TrackPlayerApi = {
+  registerPlaybackService: (factory: PlaybackServiceFactory) => void;
+  play: () => Promise<void>;
+  pause: () => Promise<void>;
+  stop: () => Promise<void>;
+  addEventListener: (event: unknown, listener: () => void) => unknown;
+};
+
+type TrackPlayerModule = {
+  default?: TrackPlayerApi;
+  Event: {
+    RemotePlay: unknown;
+    RemotePause: unknown;
+    RemoteStop: unknown;
+    PlaybackState: unknown;
+    PlaybackProgressUpdated: unknown;
+    PlaybackError: unknown;
+  };
+  Capability: {
+    Play: unknown;
+    Pause: unknown;
+    Stop: unknown;
+    SeekTo: unknown;
+  };
+  RepeatMode: {
+    Off: unknown;
+  };
+  AppKilledPlaybackBehavior: {
+    StopPlaybackAndRemoveNotification: unknown;
+  };
+};
 type PlaybackServiceFactory = () => (() => Promise<void>);
 
 let cachedModule: TrackPlayerModule | null | undefined;
@@ -24,7 +54,6 @@ export function getTrackPlayerModule(): TrackPlayerModule | null {
   } catch (error) {
     cachedModule = null;
     cachedError = formatLoadError(error);
-    console.error('TrackPlayer could not be loaded:', error);
     return null;
   }
 }

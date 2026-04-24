@@ -44,6 +44,10 @@ type CompactHeaderProps = {
   
   // i18n
   text: {
+    surah: string;
+    searchSurah: string;
+    noSurahResults: string;
+    ayahUnit: string;
     startVerse: string;
     endVerse: string;
     repeat: string;
@@ -107,6 +111,12 @@ export function CompactHeader({
             selectedSurahId={selectedSurahId}
             isFetchingSurahs={isFetchingSurahs}
             onSurahChange={onSurahChange}
+            text={{
+              surah: text.surah,
+              searchSurah: text.searchSurah,
+              noSurahResults: text.noSurahResults,
+              ayahUnit: text.ayahUnit,
+            }}
           />
         </View>
 

@@ -1,4 +1,4 @@
-import React, { Component, ErrorInfo, ReactNode } from 'react';
+import React, { Component, ReactNode } from 'react';
 import { StyleSheet, Text, View, Pressable } from 'react-native';
 import { theme } from '../styles/theme';
 import { inferDeviceLanguage } from '../utils/language';
@@ -21,10 +21,6 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public static getDerivedStateFromError(error: Error): State {
     return { hasError: true, error };
-  }
-
-  public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
-    console.error('Uncaught error:', error, errorInfo);
   }
 
   private handleReset = () => {

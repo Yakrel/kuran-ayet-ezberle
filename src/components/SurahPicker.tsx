@@ -2,14 +2,15 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { SurahSummary } from '../types/quran';
+import type { TranslationStrings } from '../i18n/types';
 import { useTheme } from '../hooks/useTheme';
-import { useI18n } from '../hooks/useI18n';
 
 type SurahPickerProps = {
   surahs: SurahSummary[];
   selectedSurahId: number | null;
   isFetchingSurahs: boolean;
   onSurahChange: (surahId: number | string) => void;
+  text: Pick<TranslationStrings, 'surah' | 'searchSurah' | 'noSurahResults' | 'ayahUnit'>;
 };
 
 function normalizeSearchText(value: string) {
@@ -25,9 +26,9 @@ export function SurahPicker({
   selectedSurahId,
   isFetchingSurahs,
   onSurahChange,
+  text,
 }: SurahPickerProps) {
   const { theme, themeType } = useTheme();
-  const { text } = useI18n();
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
 

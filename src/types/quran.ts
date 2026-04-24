@@ -4,12 +4,10 @@ export type SurahSummary = {
   verse_count: number;
 };
 
-export type LanguageCode = 'tr' | 'en';
-
 export type TranslationOption = {
   id: number;
   label: string;
-  language: LanguageCode;
+  language: import('../i18n/types').LanguageCode;
 };
 
 export type VerseTranslation = {
@@ -44,10 +42,4 @@ export type SurahDetail = {
   audio: SurahAudioAsset;
   recitation_id: number;
   verses: Verse[];
-};
-
-export type PlaybackPosition = {
-  current_time_ms: number;
-  duration_ms: number;
-  buffered_ms: number;
 };

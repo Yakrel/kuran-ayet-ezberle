@@ -649,6 +649,10 @@ function MainApp({ settings }: MainAppProps) {
             onStop={() => void player.stopPlayback()}
             onSettingsPress={() => setIsSettingsOpen(true)}
             text={{
+              surah: text.surah,
+              searchSurah: text.searchSurah,
+              noSurahResults: text.noSurahResults,
+              ayahUnit: text.ayahUnit,
               startVerse: text.startVerse,
               endVerse: text.endVerse,
               repeat: text.repeat,
