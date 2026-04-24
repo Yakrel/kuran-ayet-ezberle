@@ -176,7 +176,11 @@ export function SettingsPanel({
     options: Array<SelectOption<T>>,
     onChange: (nextValue: T) => void
   ) {
-    const selectedLabel = options.find((option) => option.value === value)?.label ?? String(value);
+    const selectedOption = options.find((option) => option.value === value);
+    if (!selectedOption) {
+      throw new Error(`Selected ${key} value is not configured: ${String(value)}.`);
+    }
+    const selectedLabel = selectedOption.label;
 
     if (useThemedSelect) {
       return (

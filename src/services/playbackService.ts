@@ -6,7 +6,11 @@ export async function playbackService() {
     return;
   }
 
-  const TrackPlayer = trackPlayerModule.default ?? trackPlayerModule;
+  const TrackPlayer = trackPlayerModule.default;
+  if (!TrackPlayer) {
+    throw new Error('TrackPlayer default export is unavailable.');
+  }
+
   const { Event } = trackPlayerModule;
 
   TrackPlayer.addEventListener(Event.RemotePlay, () => {

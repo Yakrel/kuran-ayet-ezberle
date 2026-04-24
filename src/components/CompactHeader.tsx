@@ -48,7 +48,13 @@ type CompactHeaderProps = {
     endVerse: string;
     repeat: string;
     start: string;
+    pause: string;
+    resume: string;
+    stop: string;
     page: string;
+    previousPage: string;
+    nextPage: string;
+    settings: string;
     lastVerse: string;
     cancel: string;
     confirm: string;
@@ -108,6 +114,8 @@ export function CompactHeader({
           <Pressable
             onPress={onPreviousPress}
             disabled={!canGoPreviousPage}
+            accessibilityRole="button"
+            accessibilityLabel={text.previousPage}
             style={[
               styles.navButton,
               { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY },
@@ -132,6 +140,8 @@ export function CompactHeader({
           <Pressable
             onPress={onNextPress}
             disabled={!canGoNextPage}
+            accessibilityRole="button"
+            accessibilityLabel={text.nextPage}
             style={[
               styles.navButton,
               { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY },
@@ -145,6 +155,8 @@ export function CompactHeader({
         <Pressable
           style={[styles.settingsButton, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}
           onPress={onSettingsPress}
+          accessibilityRole="button"
+          accessibilityLabel={text.settings}
         >
           <Feather name="settings" size={18} color={theme.colors.TEXT_PRIMARY} />
         </Pressable>
@@ -175,12 +187,16 @@ export function CompactHeader({
                 <Pressable
                   style={[styles.actionButton, styles.actionButtonSmall, { backgroundColor: theme.colors.ACCENT_PRIMARY }]}
                   onPress={onPause}
+                  accessibilityRole="button"
+                  accessibilityLabel={text.pause}
                 >
                   <Feather name="pause" size={16} color={themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff'} />
                 </Pressable>
                 <Pressable
                   style={[styles.actionButton, styles.actionButtonSmall, { backgroundColor: theme.colors.ERROR }]}
                   onPress={onStop}
+                  accessibilityRole="button"
+                  accessibilityLabel={text.stop}
                 >
                   <Feather name="square" size={14} color="#fff" />
                 </Pressable>
@@ -189,10 +205,12 @@ export function CompactHeader({
               <Pressable
                 style={[styles.actionButton, { backgroundColor: theme.colors.ACCENT_PRIMARY }]}
                 onPress={isPaused ? onResume : onStart}
+                accessibilityRole="button"
+                accessibilityLabel={isPaused ? text.resume : text.start}
               >
                 <Feather name="play" size={16} color={themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff'} />
                 <Text style={[styles.actionButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>
-                  {text.start}
+                  {isPaused ? text.resume : text.start}
                 </Text>
               </Pressable>
             )}

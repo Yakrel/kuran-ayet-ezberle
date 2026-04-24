@@ -1,12 +1,37 @@
 import { describe, expect, it } from 'vitest';
 import {
+  DEFAULT_APP_SETTINGS,
+  DEFAULT_PRACTICE_STATE,
   resolveInitialAppSettings,
   resolvePersistedPracticeState,
   resolveTranslationAfterLanguageChange,
 } from './appSettings';
 
 describe('resolveInitialAppSettings', () => {
-  it('keeps a stored translation when it matches the stored language', () => {
+  it('uses explicit defaults only when values have never been persisted', () => {
+    const result = resolveInitialAppSettings(
+      {
+        language: null,
+        selectedTranslationAuthorId: null,
+        selectedSurahId: null,
+        selectedQuranFontId: null,
+        themeType: null,
+        isAutoScrollEnabled: null,
+        practiceState: null,
+      },
+      'tr'
+    );
+
+    expect(result.nextState).toEqual({
+      ...DEFAULT_APP_SETTINGS,
+      language: 'tr',
+      selectedTranslationAuthorId: 6,
+      practiceState: DEFAULT_PRACTICE_STATE,
+    });
+    expect(result.shouldPersistTranslation).toBe(true);
+  });
+
+  it('keeps valid persisted settings', () => {
     const result = resolveInitialAppSettings(
       {
         language: 'tr',
@@ -29,6 +54,7 @@ describe('resolveInitialAppSettings', () => {
 
     expect(result.nextState.selectedTranslationAuthorId).toBe(11);
     expect(result.nextState.language).toBe('tr');
+    expect(result.nextState.selectedSurahId).toBe(20);
     expect(result.nextState.practiceState).toEqual({
       surahId: 20,
       verseNumber: 10,
@@ -40,46 +66,21 @@ describe('resolveInitialAppSettings', () => {
     expect(result.shouldPersistTranslation).toBe(false);
   });
 
-  it('repairs an invalid translation for the chosen language', () => {
-    const result = resolveInitialAppSettings(
-      {
-        language: 'tr',
-        selectedTranslationAuthorId: 32,
-        selectedSurahId: null,
-        selectedQuranFontId: null,
-        themeType: null,
-        isAutoScrollEnabled: null,
-        practiceState: null,
-      },
-      'en'
-    );
-
-    expect(result.nextState.selectedTranslationAuthorId).toBe(6);
-    expect(result.shouldPersistTranslation).toBe(true);
-  });
-
-  it('uses the persisted practice surah as the active surah', () => {
-    const result = resolveInitialAppSettings(
-      {
-        language: 'tr',
-        selectedTranslationAuthorId: 6,
-        selectedSurahId: 1,
-        selectedQuranFontId: null,
-        themeType: null,
-        isAutoScrollEnabled: null,
-        practiceState: {
-          surahId: 36,
-          verseNumber: 12,
-          page: 441,
-          startVerse: 12,
-          endVerse: 83,
-          repeatCount: 7,
+  it('throws when a persisted translation does not match the language', () => {
+    expect(() =>
+      resolveInitialAppSettings(
+        {
+          language: 'tr',
+          selectedTranslationAuthorId: 32,
+          selectedSurahId: null,
+          selectedQuranFontId: null,
+          themeType: null,
+          isAutoScrollEnabled: null,
+          practiceState: null,
         },
-      },
-      'en'
-    );
-
-    expect(result.nextState.selectedSurahId).toBe(36);
+        'en'
+      )
+    ).toThrow('Invalid persisted translation');
   });
 });
 
@@ -104,8 +105,8 @@ describe('resolvePersistedPracticeState', () => {
     });
   });
 
-  it('repairs invalid persisted practice values with defaults', () => {
-    expect(
+  it('throws on invalid persisted practice values', () => {
+    expect(() =>
       resolvePersistedPracticeState({
         surahId: -1,
         verseNumber: 0,
@@ -114,14 +115,7 @@ describe('resolvePersistedPracticeState', () => {
         endVerse: 9.5,
         repeatCount: -3,
       })
-    ).toEqual({
-      surahId: null,
-      verseNumber: 1,
-      page: 1,
-      startVerse: 1,
-      endVerse: 5,
-      repeatCount: 3,
-    });
+    ).toThrow('Invalid persisted practice field');
   });
 });
 
@@ -130,7 +124,7 @@ describe('resolveTranslationAfterLanguageChange', () => {
     expect(resolveTranslationAfterLanguageChange(32, 'en')).toBe(32);
   });
 
-  it('switches to the new language default when the current translation is invalid', () => {
+  it('selects the explicit language default when the old translation cannot be used', () => {
     expect(resolveTranslationAfterLanguageChange(11, 'en')).toBe(32);
   });
 });

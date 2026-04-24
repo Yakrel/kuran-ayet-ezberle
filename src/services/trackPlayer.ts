@@ -35,7 +35,7 @@ export function getTrackPlayerUnavailableReason() {
   }
 
   getTrackPlayerModule();
-  return cachedError ?? null;
+  return cachedError === undefined ? null : cachedError;
 }
 
 export function registerPlaybackService(factory: PlaybackServiceFactory) {
@@ -44,7 +44,11 @@ export function registerPlaybackService(factory: PlaybackServiceFactory) {
     return false;
   }
 
-  const TrackPlayer = trackPlayerModule.default ?? trackPlayerModule;
+  const TrackPlayer = trackPlayerModule.default;
+  if (!TrackPlayer) {
+    throw new Error('TrackPlayer default export is unavailable.');
+  }
+
   TrackPlayer.registerPlaybackService(factory);
   return true;
 }

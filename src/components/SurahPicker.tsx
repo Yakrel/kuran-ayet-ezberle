@@ -10,7 +10,6 @@ type SurahPickerProps = {
   selectedSurahId: number | null;
   isFetchingSurahs: boolean;
   onSurahChange: (surahId: number | string) => void;
-  label?: string;
 };
 
 function normalizeSearchText(value: string) {
@@ -26,7 +25,6 @@ export function SurahPicker({
   selectedSurahId,
   isFetchingSurahs,
   onSurahChange,
-  label,
 }: SurahPickerProps) {
   const { theme, themeType } = useTheme();
   const { text } = useI18n();
@@ -86,7 +84,7 @@ export function SurahPicker({
         <View style={[styles.modalOverlay, { backgroundColor: themeType === 'DARK' ? 'rgba(2, 6, 23, 0.72)' : 'rgba(7, 54, 66, 0.4)' }]}>
           <View style={[styles.modalCard, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}>
             <View style={[styles.modalHeader, { borderBottomColor: theme.colors.BORDER_SECONDARY }]}>
-              <Text style={[styles.modalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{label ?? text.surah}</Text>
+              <Text style={[styles.modalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{text.surah}</Text>
               <Pressable style={[styles.closeButton, { backgroundColor: theme.colors.CARD_BG }]} onPress={() => setIsOpen(false)}>
                 <Feather name="x" size={20} color={theme.colors.TEXT_PRIMARY} />
               </Pressable>

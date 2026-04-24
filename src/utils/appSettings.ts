@@ -4,7 +4,9 @@ import {
   DEFAULT_TURKISH_AUTHOR_ID,
 } from '../constants/defaults';
 import type { QuranFontId } from '../constants/quranFonts';
+import { QURAN_FONT_OPTIONS } from '../constants/quranFonts';
 import { TRANSLATION_OPTIONS } from '../constants/authors';
+import { SURAH_LIST } from '../constants/surahList';
 import type { LanguageCode } from '../i18n/types';
 import { DEFAULT_RANGE_SIZE, DEFAULT_REPEAT } from '../constants/defaults';
 
@@ -66,45 +68,76 @@ function getDefaultTranslationAuthorByLanguage(language: LanguageCode) {
   return language === 'tr' ? DEFAULT_TURKISH_AUTHOR_ID : DEFAULT_ENGLISH_AUTHOR_ID;
 }
 
-function readPositiveInteger(value: unknown, fallback: number) {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : fallback;
+function readPositiveInteger(value: unknown, fieldName: string) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value <= 0) {
+    throw new Error(`Invalid persisted practice field: ${fieldName}.`);
+  }
+
+  return value;
+}
+
+function assertKnownSurahId(surahId: number, fieldName: string) {
+  if (!SURAH_LIST.some((surah) => surah.id === surahId)) {
+    throw new Error(`Invalid persisted surah in ${fieldName}: ${surahId}.`);
+  }
+}
+
+function assertKnownQuranFont(fontId: QuranFontId) {
+  if (!QURAN_FONT_OPTIONS.some((option) => option.id === fontId)) {
+    throw new Error(`Invalid persisted Quran font: ${fontId}.`);
+  }
 }
 
 export function resolvePersistedPracticeState(persisted: unknown): PracticeState {
-  if (!persisted || typeof persisted !== 'object') {
+  if (persisted === null) {
     return DEFAULT_PRACTICE_STATE;
   }
 
+  if (typeof persisted !== 'object') {
+    throw new Error('Persisted practice state is invalid.');
+  }
+
   const candidate = persisted as Partial<Record<keyof PracticeState, unknown>>;
-  const surahId = readPositiveInteger(candidate.surahId, 0);
+  const rawSurahId = candidate.surahId;
+  const surahId = rawSurahId === null ? null : readPositiveInteger(rawSurahId, 'surahId');
+  if (surahId !== null) {
+    assertKnownSurahId(surahId, 'practiceState.surahId');
+  }
 
   return {
-    surahId: surahId > 0 ? surahId : null,
-    verseNumber: readPositiveInteger(candidate.verseNumber, DEFAULT_PRACTICE_STATE.verseNumber),
-    page: readPositiveInteger(candidate.page, DEFAULT_PRACTICE_STATE.page),
-    startVerse: readPositiveInteger(candidate.startVerse, DEFAULT_PRACTICE_STATE.startVerse),
-    endVerse: readPositiveInteger(candidate.endVerse, DEFAULT_PRACTICE_STATE.endVerse),
-    repeatCount: readPositiveInteger(candidate.repeatCount, DEFAULT_PRACTICE_STATE.repeatCount),
+    surahId,
+    verseNumber: readPositiveInteger(candidate.verseNumber, 'verseNumber'),
+    page: readPositiveInteger(candidate.page, 'page'),
+    startVerse: readPositiveInteger(candidate.startVerse, 'startVerse'),
+    endVerse: readPositiveInteger(candidate.endVerse, 'endVerse'),
+    repeatCount: readPositiveInteger(candidate.repeatCount, 'repeatCount'),
   };
 }
 
 export function resolveInitialAppSettings(
   persisted: PersistedAppSettings,
-  fallbackLanguage: LanguageCode
+  initialLanguage: LanguageCode
 ) {
-  const language = persisted.language ?? fallbackLanguage;
-  const selectedTranslationAuthorId =
-    persisted.selectedTranslationAuthorId !== null &&
-    isTranslationAllowedForLanguage(language, persisted.selectedTranslationAuthorId)
-      ? persisted.selectedTranslationAuthorId
-      : getDefaultTranslationAuthorByLanguage(language);
+  const language = persisted.language ?? initialLanguage;
+  const selectedTranslationAuthorId = persisted.selectedTranslationAuthorId ?? getDefaultTranslationAuthorByLanguage(language);
+  if (!isTranslationAllowedForLanguage(language, selectedTranslationAuthorId)) {
+    throw new Error(`Invalid persisted translation ${selectedTranslationAuthorId} for language ${language}.`);
+  }
+
   const practiceState = resolvePersistedPracticeState(persisted.practiceState);
+  const selectedSurahId = practiceState.surahId !== null ? practiceState.surahId : persisted.selectedSurahId;
+  if (selectedSurahId !== null) {
+    assertKnownSurahId(selectedSurahId, 'selectedSurahId');
+  }
+
+  const selectedQuranFontId = persisted.selectedQuranFontId ?? DEFAULT_APP_SETTINGS.selectedQuranFontId;
+  assertKnownQuranFont(selectedQuranFontId);
 
   const nextState: AppSettingsState = {
     language,
     selectedTranslationAuthorId,
-    selectedSurahId: practiceState.surahId ?? persisted.selectedSurahId,
-    selectedQuranFontId: persisted.selectedQuranFontId ?? DEFAULT_APP_SETTINGS.selectedQuranFontId,
+    selectedSurahId,
+    selectedQuranFontId,
     themeType: persisted.themeType ?? DEFAULT_APP_SETTINGS.themeType,
     isAutoScrollEnabled: persisted.isAutoScrollEnabled ?? DEFAULT_APP_SETTINGS.isAutoScrollEnabled,
     practiceState,
@@ -122,7 +155,9 @@ export function resolveTranslationAfterLanguageChange(
   currentTranslationAuthorId: number,
   nextLanguage: LanguageCode
 ) {
-  return isTranslationAllowedForLanguage(nextLanguage, currentTranslationAuthorId)
-    ? currentTranslationAuthorId
-    : getDefaultTranslationAuthorByLanguage(nextLanguage);
+  if (isTranslationAllowedForLanguage(nextLanguage, currentTranslationAuthorId)) {
+    return currentTranslationAuthorId;
+  }
+
+  return getDefaultTranslationAuthorByLanguage(nextLanguage);
 }

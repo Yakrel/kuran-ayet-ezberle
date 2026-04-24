@@ -3,7 +3,6 @@ import type { ThemeType } from '../constants/colors';
 import type { QuranFontId } from '../constants/quranFonts';
 import type { LanguageCode } from '../i18n/types';
 import { Storage } from '../services/storage';
-import { cleanupLegacyAyahPlaybackState } from '../services/legacyCleanup';
 import { inferDeviceLanguage } from '../utils/language';
 import {
   DEFAULT_APP_SETTINGS,
@@ -19,16 +18,15 @@ type SetStateAction<T> = T | ((previous: T) => T);
 export function useAppSettings() {
   const [settings, setSettings] = useState<AppSettingsState>(DEFAULT_APP_SETTINGS);
   const [isHydrated, setIsHydrated] = useState(false);
+  const [hydrationError, setHydrationError] = useState<Error | null>(null);
 
   useEffect(() => {
     let isActive = true;
 
     async function loadSettings() {
-      await cleanupLegacyAyahPlaybackState();
-
-      const fallbackLanguage = inferDeviceLanguage();
+      const initialLanguage = inferDeviceLanguage();
       const persisted: PersistedAppSettings = {
-        language: (await Storage.getLanguage()) as LanguageCode | null,
+        language: await Storage.getLanguage(),
         selectedTranslationAuthorId: await Storage.getSelectedTranslation(),
         selectedSurahId: await Storage.getSelectedSurah(),
         selectedQuranFontId: (await Storage.getQuranFont()) as QuranFontId | null,
@@ -37,7 +35,7 @@ export function useAppSettings() {
         practiceState: await Storage.getPracticeState(),
       };
 
-      const { nextState, shouldPersistTranslation } = resolveInitialAppSettings(persisted, fallbackLanguage);
+      const { nextState, shouldPersistTranslation } = resolveInitialAppSettings(persisted, initialLanguage);
       if (!isActive) {
         return;
       }
@@ -56,7 +54,11 @@ export function useAppSettings() {
       }
     }
 
-    void loadSettings();
+    void loadSettings().catch((error) => {
+      if (isActive) {
+        setHydrationError(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
 
     return () => {
       isActive = false;
@@ -128,6 +130,7 @@ export function useAppSettings() {
   return {
     ...settings,
     isHydrated,
+    hydrationError,
     setLanguage,
     setSelectedTranslationAuthorId,
     setSelectedSurahId,

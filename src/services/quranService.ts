@@ -66,18 +66,34 @@ function normalizeArabicVerseText(text: string): string {
 }
 
 function getTranslationText(verse: RawVerse, translationAuthorId: number): string {
-  return verse.translations[String(translationAuthorId)] ?? verse.translations['6'] ?? '';
+  const translationText = verse.translations[String(translationAuthorId)];
+  if (translationText === undefined) {
+    throw new Error(
+      `Translation ${translationAuthorId} is unavailable for ayah ${verse.verse_number}.`
+    );
+  }
+
+  return translationText;
 }
 
-function mapAudioAsset(rawSurah: RawQulSurah | undefined): SurahAudioAsset | null {
+function mapAudioAsset(rawSurah: RawQulSurah | undefined, surahId: number): SurahAudioAsset {
   if (!rawSurah?.audio) {
-    return null;
+    throw new Error(`Embedded audio is missing for surah ${surahId}.`);
+  }
+
+  const durationSeconds = Number(rawSurah.audio.duration);
+  const sizeBytes = Number(rawSurah.audio.audio_size);
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) {
+    throw new Error(`Embedded audio duration is invalid for surah ${surahId}.`);
+  }
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+    throw new Error(`Embedded audio size is invalid for surah ${surahId}.`);
   }
 
   return {
     url: rawSurah.audio.url,
-    duration_seconds: Number(rawSurah.audio.duration) || 0,
-    size_bytes: Number(rawSurah.audio.audio_size) || 0,
+    duration_seconds: durationSeconds,
+    size_bytes: sizeBytes,
   };
 }
 
@@ -87,6 +103,10 @@ function mapVerse(
   rawQulVerse: RawQulVerse | undefined,
   translationAuthorId: number
 ): Verse {
+  if (!rawQulVerse?.timing) {
+    throw new Error(`Embedded timing is missing for ayah ${rawSurah.id}:${rawVerse.verse_number}.`);
+  }
+
   return {
     surah_id: rawSurah.id,
     verse_number: rawVerse.verse_number,
@@ -95,13 +115,11 @@ function mapVerse(
     translation: {
       text: getTranslationText(rawVerse, translationAuthorId),
     },
-    timing: rawQulVerse?.timing
-      ? {
-          time_from_ms: rawQulVerse.timing.time_from,
-          time_to_ms: rawQulVerse.timing.time_to,
-          duration_ms: Math.max(0, rawQulVerse.timing.time_to - rawQulVerse.timing.time_from),
-        }
-      : null,
+    timing: {
+      time_from_ms: rawQulVerse.timing.time_from,
+      time_to_ms: rawQulVerse.timing.time_to,
+      duration_ms: Math.max(0, rawQulVerse.timing.time_to - rawQulVerse.timing.time_from),
+    },
   };
 }
 
@@ -122,9 +140,12 @@ function buildIndexes(quranData: QuranData, qulDataset: QulDataset) {
       const verseKey = getVerseKey(surah.id, verse.verse_number);
       cachedRawVersesByKey.set(verseKey, verse);
 
-      const currentPageVerseKeys = cachedPageVerseKeys.get(verse.page) ?? [];
-      currentPageVerseKeys.push(verseKey);
-      cachedPageVerseKeys.set(verse.page, currentPageVerseKeys);
+      const currentPageVerseKeys = cachedPageVerseKeys.get(verse.page);
+      if (currentPageVerseKeys) {
+        currentPageVerseKeys.push(verseKey);
+      } else {
+        cachedPageVerseKeys.set(verse.page, [verseKey]);
+      }
     }
   }
 
@@ -201,7 +222,7 @@ export async function fetchSurahDetail(
     id: surah.id,
     name: surah.name,
     verse_count: surah.verse_count,
-    audio: mapAudioAsset(qulSurah),
+    audio: mapAudioAsset(qulSurah, surah.id),
     recitation_id: getReciterOption(DEFAULT_RECITER_ID).recitationId,
     verses: surah.verses.map((verse) =>
       mapVerseByKey(getVerseKey(surah.id, verse.verse_number), translationAuthorId)
@@ -215,7 +236,11 @@ export async function fetchPageVerses(
 ): Promise<Verse[]> {
   await ensureIndexes();
 
-  const pageVerseKeys = cachedPageVerseKeys.get(pageNumber) ?? [];
+  const pageVerseKeys = cachedPageVerseKeys.get(pageNumber);
+  if (!pageVerseKeys) {
+    throw new Error(`Page ${pageNumber} is missing from local Quran data.`);
+  }
+
   return pageVerseKeys.map((verseKey) => mapVerseByKey(verseKey, translationAuthorId));
 }
 
@@ -225,7 +250,11 @@ export async function getRecitationId() {
 
 export async function fetchSurahAudioRefs(): Promise<Array<{ surahId: number; remoteUrl: string }>> {
   const dataset = await getQulDataset();
-  return dataset.surahs.flatMap((surah) =>
-    surah.audio?.url ? [{ surahId: surah.id, remoteUrl: surah.audio.url }] : []
-  );
+  return dataset.surahs.map((surah) => {
+    if (!surah.audio?.url) {
+      throw new Error(`Embedded audio is missing for surah ${surah.id}.`);
+    }
+
+    return { surahId: surah.id, remoteUrl: surah.audio.url };
+  });
 }

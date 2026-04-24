@@ -10,8 +10,8 @@ export type SurahAudioDownloadProgress = {
 const CACHE_DIR_NAME = 'surah-audio-cache/';
 
 function getCacheDir() {
-  const base = FileSystem.documentDirectory ?? FileSystem.cacheDirectory;
-  if (!base) {
+  const base = FileSystem.documentDirectory;
+  if (base === null) {
     throw new Error('Audio cache directory is unavailable on this device.');
   }
 
@@ -36,9 +36,9 @@ export async function getCachedSurahAudioUri(surahId: number) {
   return info.exists ? fileUri : null;
 }
 
-export async function getPreferredSurahAudioUri(surahId: number, remoteUrl: string) {
+export async function resolveSurahAudioUri(surahId: number, remoteUrl: string) {
   const cachedUri = await getCachedSurahAudioUri(surahId);
-  return cachedUri ?? remoteUrl;
+  return cachedUri !== null ? cachedUri : remoteUrl;
 }
 
 export async function downloadSurahAudio(
@@ -54,8 +54,8 @@ export async function downloadSurahAudio(
     fileUri,
     {},
     (downloadProgress) => {
-      const total = downloadProgress.totalBytesExpectedToWrite || 0;
-      const current = downloadProgress.totalBytesWritten || 0;
+      const total = downloadProgress.totalBytesExpectedToWrite;
+      const current = downloadProgress.totalBytesWritten;
       const percent = total > 0 ? Math.round((current / total) * 100) : 0;
       onProgress?.({ current, total, percent });
     }
@@ -116,6 +116,6 @@ export async function getAvailableSpaceMB(): Promise<number> {
     const freeBytes = await FileSystem.getFreeDiskStorageAsync();
     return freeBytes / (1024 * 1024);
   } catch {
-    return 2048;
+    throw new Error('Available device storage could not be checked.');
   }
 }

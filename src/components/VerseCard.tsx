@@ -83,6 +83,8 @@ export function VerseCard({
             pressed && { opacity: 0.82 },
           ]}
           onPress={() => onPlayFromVerse(verse)}
+          accessibilityRole="button"
+          accessibilityLabel={`${playFromVerseText}: ${verse.verse_number}`}
         >
           <Feather name="play" size={16} color="#fff" />
           <Text style={styles.playActionText}>{playFromVerseText}</Text>

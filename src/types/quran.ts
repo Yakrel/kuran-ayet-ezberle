@@ -28,7 +28,7 @@ export type Verse = {
   page: number;
   verse: string;
   translation: VerseTranslation;
-  timing: VerseTiming | null;
+  timing: VerseTiming;
 };
 
 export type SurahAudioAsset = {
@@ -41,8 +41,8 @@ export type SurahDetail = {
   id: number;
   name: string;
   verse_count: number;
-  audio: SurahAudioAsset | null;
-  recitation_id: number | null;
+  audio: SurahAudioAsset;
+  recitation_id: number;
   verses: Verse[];
 };
 

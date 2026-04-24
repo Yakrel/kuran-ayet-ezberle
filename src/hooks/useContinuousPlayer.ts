@@ -2,33 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { DEFAULT_RECITER_ID, getReciterOption } from '../constants/reciters';
 import { getTrackPlayerModule, getTrackPlayerUnavailableReason } from '../services/trackPlayer';
-import { getPreferredSurahAudioUri } from '../services/surahAudioCache';
 import type { SurahDetail, Verse } from '../types/quran';
 import {
   resolveContinuousRepeatStep,
   resolveContinuousVerseIndex,
-  type ContinuousBoundary,
 } from '../utils/continuousPlayback';
+import {
+  buildContinuousPlaybackSession,
+  type PlaybackSession,
+} from '../utils/continuousPlaybackSession';
 
-type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped';
-
-type ContinuousVerseBoundary = ContinuousBoundary & {
-  verse: Verse;
-};
-
-type PlaybackSession = {
-  surahId: number;
-  startVerseNumber: number;
-  endVerseNumber: number;
-  repeatCount: number;
-  trackId: string;
-  surahAudioUrl: string;
-  boundaries: ContinuousVerseBoundary[];
-  rangeStartMs: number;
-  rangeEndMs: number;
-  rangeDurationMs: number;
-  totalDurationMs: number;
-};
+export type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped';
 
 type UseContinuousPlayerOptions = {
   onError: (message: string | null) => void;
@@ -93,7 +77,7 @@ function getPlayerApi() {
     return null;
   }
 
-  const candidate = module.default ?? module;
+  const candidate = module.default;
   return isTrackPlayerApi(candidate) ? candidate : null;
 }
 
@@ -113,63 +97,6 @@ function toPlaybackStatus(trackPlayerState: string | undefined): PlaybackStatus 
     default:
       return 'idle';
   }
-}
-
-function getSelectedVerses(
-  surahDetail: SurahDetail,
-  startVerseNumber: number,
-  endVerseNumber: number
-) {
-  return surahDetail.verses.filter(
-    (verse) => verse.verse_number >= startVerseNumber && verse.verse_number <= endVerseNumber
-  );
-}
-
-async function buildContinuousPlaybackSession(
-  surahDetail: SurahDetail,
-  startVerseNumber: number,
-  endVerseNumber: number,
-  repeatCount: number
-): Promise<PlaybackSession> {
-  if (!surahDetail.audio?.url) {
-    throw new Error('Continuous playback is unavailable because the surah audio is missing.');
-  }
-
-  const selectedVerses = getSelectedVerses(surahDetail, startVerseNumber, endVerseNumber);
-  const boundaries = selectedVerses.map((verse) => {
-    if (!verse.timing) {
-      throw new Error(`Continuous playback is unavailable for ayah ${verse.verse_number}.`);
-    }
-
-    return {
-      verse,
-      startTimeMs: verse.timing.time_from_ms,
-      endTimeMs: verse.timing.time_to_ms,
-    };
-  });
-
-  if (boundaries.length === 0) {
-    throw new Error('No playable ayahs found in the selected range.');
-  }
-
-  const rangeStartMs = boundaries[0].startTimeMs;
-  const rangeEndMs = boundaries[boundaries.length - 1].endTimeMs;
-  const rangeDurationMs = Math.max(rangeEndMs - rangeStartMs, 1);
-  const surahAudioUrl = await getPreferredSurahAudioUri(surahDetail.id, surahDetail.audio.url);
-
-  return {
-    surahId: surahDetail.id,
-    startVerseNumber,
-    endVerseNumber,
-    repeatCount,
-    trackId: `surah-${surahDetail.id}-continuous`,
-    surahAudioUrl,
-    boundaries,
-    rangeStartMs,
-    rangeEndMs,
-    rangeDurationMs,
-    totalDurationMs: rangeDurationMs * repeatCount,
-  };
 }
 
 export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinuousPlayerOptions) {
@@ -223,7 +150,12 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
     }
 
     continuousVerseIndexRef.current = nextVerseIndex;
-    syncVisibleState(session.boundaries[nextVerseIndex]?.verse ?? null, currentRepeatRef.current);
+    const nextBoundary = session.boundaries[nextVerseIndex];
+    if (!nextBoundary) {
+      throw new Error(`Playback boundary ${nextVerseIndex} is missing.`);
+    }
+
+    syncVisibleState(nextBoundary.verse, currentRepeatRef.current);
   }, [syncVisibleState]);
 
   const ensurePlayerSetup = useCallback(async () => {
@@ -279,8 +211,8 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
 
     const TrackPlayer = getPlayerApi();
     if (resetPlayer && TrackPlayer) {
-      await TrackPlayer.stop().catch(() => undefined);
-      await TrackPlayer.reset().catch(() => undefined);
+      await TrackPlayer.stop();
+      await TrackPlayer.reset();
     }
 
     sessionRef.current = null;
@@ -296,6 +228,7 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
 
     const TrackPlayer = getPlayerApi();
     if (!TrackPlayer) {
+      onError(getTrackPlayerUnavailableReason() ?? 'TrackPlayer is unavailable.');
       return;
     }
 
@@ -328,7 +261,12 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
           const repeatStep = resolveContinuousRepeatStep(currentRepeatRef.current, currentSession.repeatCount);
           if (repeatStep.action === 'repeat') {
             continuousVerseIndexRef.current = 0;
-            syncVisibleState(currentSession.boundaries[0]?.verse ?? null, repeatStep.nextRepeat);
+            const firstBoundary = currentSession.boundaries[0];
+            if (!firstBoundary) {
+              throw new Error('Playback session has no ayah boundaries.');
+            }
+
+            syncVisibleState(firstBoundary.verse, repeatStep.nextRepeat);
             await currentPlayer.seekTo(currentSession.rangeStartMs / 1000);
             await scheduleContinuousBoundaryTimer(currentSession.rangeDurationMs);
             return;
@@ -339,7 +277,7 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
         } catch (error) {
           await completeActiveSession();
           setPlaybackStatus('stopped');
-          onError(error instanceof Error ? error.message : 'Playback failed.');
+          onError(error instanceof Error ? error.message : String(error));
         } finally {
           continuousTransitionInFlightRef.current = false;
         }
@@ -352,6 +290,7 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
   const setPlaybackRate = useCallback(async (rate: number) => {
     const TrackPlayer = getPlayerApi();
     if (!TrackPlayer) {
+      onError(getTrackPlayerUnavailableReason() ?? 'TrackPlayer is unavailable.');
       return;
     }
 
@@ -364,7 +303,7 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
         await scheduleContinuousBoundaryTimer();
       }
     } catch (error) {
-      onError(error instanceof Error ? error.message : 'Failed to set playback rate.');
+      onError(error instanceof Error ? error.message : String(error));
     }
   }, [onError, playbackStatus, scheduleContinuousBoundaryTimer]);
 
@@ -408,7 +347,12 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
           playerModule.Event.PlaybackProgressUpdated,
           (payload: unknown) => {
             const nextProgress = payload as Partial<TrackPlayerProgress>;
-            const positionMs = Math.round((nextProgress.position ?? 0) * 1000);
+            if (typeof nextProgress.position !== 'number') {
+              onError('Playback progress update did not include a position.');
+              return;
+            }
+
+            const positionMs = Math.round(nextProgress.position * 1000);
             syncContinuousActiveState(positionMs);
           }
         );
@@ -421,7 +365,7 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
             void (async () => {
               await completeActiveSession(false);
               setPlaybackStatus('stopped');
-              onError(nextError.message ?? 'Playback failed.');
+              onError(nextError.message ? nextError.message : String(payload));
             })();
           }
         );
@@ -433,7 +377,7 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
         });
       })
       .catch((error) => {
-        onError(error instanceof Error ? error.message : 'Playback setup failed.');
+        onError(error instanceof Error ? error.message : String(error));
       });
 
     return () => {
@@ -501,7 +445,12 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
 
       sessionRef.current = nextSession;
       continuousVerseIndexRef.current = 0;
-      syncVisibleState(nextSession.boundaries[0]?.verse ?? null, 1);
+      const firstBoundary = nextSession.boundaries[0];
+      if (!firstBoundary) {
+        throw new Error('Playback session has no ayah boundaries.');
+      }
+
+      syncVisibleState(firstBoundary.verse, 1);
 
       await TrackPlayer.reset();
       await TrackPlayer.add({
@@ -529,18 +478,25 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
   const pausePlayback = useCallback(async () => {
     const TrackPlayer = getPlayerApi();
     if (!TrackPlayer) {
+      onError(getTrackPlayerUnavailableReason() ?? 'TrackPlayer is unavailable.');
       return;
     }
 
     clearContinuousBoundaryTimer();
     await TrackPlayer.pause();
     setPlaybackStatus('paused');
-  }, [clearContinuousBoundaryTimer]);
+  }, [clearContinuousBoundaryTimer, onError]);
 
   const resumePlayback = useCallback(async () => {
     const TrackPlayer = getPlayerApi();
     const session = sessionRef.current;
-    if (!TrackPlayer || !session) {
+    if (!TrackPlayer) {
+      onError(getTrackPlayerUnavailableReason() ?? 'TrackPlayer is unavailable.');
+      return;
+    }
+
+    if (!session) {
+      onError('No active playback session to resume.');
       return;
     }
 
@@ -549,7 +505,7 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
     pendingPlayTransitionRef.current = false;
     await scheduleContinuousBoundaryTimer();
     setPlaybackStatus('playing');
-  }, [scheduleContinuousBoundaryTimer]);
+  }, [onError, scheduleContinuousBoundaryTimer]);
 
   const stopPlayback = useCallback(async () => {
     playbackRequestIdRef.current += 1;
