@@ -13,32 +13,25 @@ A concise, open-source Android-first Quran memorization app built with Expo and 
 
 ## Quick start
 
-Install dependencies and start the Android dev-client server:
+Install dependencies:
 
 ```bash
 npm install
+```
+
+Create the Android production APK with EAS:
+
+```bash
+npm run build:android:production
+```
+
+Start Metro only when you explicitly need a local JS server:
+
+```bash
 npm run start
 ```
 
-Create the Android development build once:
-
-```bash
-npm run build:dev-client
-```
-
-After installing that build on the device, use Metro-driven development:
-
-```bash
-npm run start
-```
-
-`npm run start` now launches Expo in dev-client mode over LAN, so JavaScript/UI changes refresh in the installed development build without rebuilding the APK each time.
-
-If you need a plain Metro server without dev-client flags, use:
-
-```bash
-npm run start:metro
-```
+Android production builds produce an APK. iOS builds are intentionally not configured because iOS does not support APK-style manual installation without Apple Developer Program signing.
 
 ## Data sources
 

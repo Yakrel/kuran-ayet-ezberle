@@ -655,6 +655,7 @@ function MainApp({ settings }: MainAppProps) {
               ayahUnit: text.ayahUnit,
               startVerse: text.startVerse,
               endVerse: text.endVerse,
+              firstVerse: text.firstVerse,
               repeat: text.repeat,
               start: text.start,
               pause: text.pause,

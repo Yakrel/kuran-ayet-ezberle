@@ -4,6 +4,7 @@ import { DEFAULT_RECITER_ID, getReciterOption } from '../constants/reciters';
 import { getTrackPlayerModule, getTrackPlayerUnavailableReason } from '../services/trackPlayer';
 import type { SurahDetail, Verse } from '../types/quran';
 import {
+  isContinuousPlaybackEndState,
   resolveContinuousRepeatStep,
   resolveContinuousVerseIndex,
 } from '../utils/continuousPlayback';
@@ -218,6 +219,48 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
     sessionRef.current = null;
   }, [clearContinuousBoundaryTimer]);
 
+  const advanceContinuousRangeEnd = useCallback(async () => {
+    if (continuousTransitionInFlightRef.current) {
+      return false;
+    }
+
+    const currentSession = sessionRef.current;
+    const currentPlayer = getPlayerApi();
+    if (!currentSession || !currentPlayer) {
+      return false;
+    }
+
+    continuousTransitionInFlightRef.current = true;
+    clearContinuousBoundaryTimer();
+
+    try {
+      const repeatStep = resolveContinuousRepeatStep(currentRepeatRef.current, currentSession.repeatCount);
+      if (repeatStep.action === 'repeat') {
+        continuousVerseIndexRef.current = 0;
+        const firstBoundary = currentSession.boundaries[0];
+        if (!firstBoundary) {
+          throw new Error('Playback session has no ayah boundaries.');
+        }
+
+        syncVisibleState(firstBoundary.verse, repeatStep.nextRepeat);
+        await currentPlayer.seekTo(currentSession.rangeStartMs / 1000);
+        await currentPlayer.play();
+        return true;
+      }
+
+      await completeActiveSession();
+      setPlaybackStatus('stopped');
+      return false;
+    } catch (error) {
+      await completeActiveSession();
+      setPlaybackStatus('stopped');
+      onError(error instanceof Error ? error.message : String(error));
+      return false;
+    } finally {
+      continuousTransitionInFlightRef.current = false;
+    }
+  }, [clearContinuousBoundaryTimer, completeActiveSession, onError, syncVisibleState]);
+
   const scheduleContinuousBoundaryTimer = useCallback(async (remainingMs?: number) => {
     const session = sessionRef.current;
     if (!session) {
@@ -244,48 +287,16 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
 
     continuousBoundaryTimerRef.current = setTimeout(() => {
       const run = async () => {
-        if (continuousTransitionInFlightRef.current) {
-          return;
-        }
-
-        const currentSession = sessionRef.current;
-        const currentPlayer = getPlayerApi();
-        if (!currentSession || !currentPlayer) {
-          return;
-        }
-
-        continuousTransitionInFlightRef.current = true;
-        clearContinuousBoundaryTimer();
-
-        try {
-          const repeatStep = resolveContinuousRepeatStep(currentRepeatRef.current, currentSession.repeatCount);
-          if (repeatStep.action === 'repeat') {
-            continuousVerseIndexRef.current = 0;
-            const firstBoundary = currentSession.boundaries[0];
-            if (!firstBoundary) {
-              throw new Error('Playback session has no ayah boundaries.');
-            }
-
-            syncVisibleState(firstBoundary.verse, repeatStep.nextRepeat);
-            await currentPlayer.seekTo(currentSession.rangeStartMs / 1000);
-            await scheduleContinuousBoundaryTimer(currentSession.rangeDurationMs);
-            return;
-          }
-
-          await completeActiveSession();
-          setPlaybackStatus('stopped');
-        } catch (error) {
-          await completeActiveSession();
-          setPlaybackStatus('stopped');
-          onError(error instanceof Error ? error.message : String(error));
-        } finally {
-          continuousTransitionInFlightRef.current = false;
+        const didContinue = await advanceContinuousRangeEnd();
+        const nextSession = sessionRef.current;
+        if (didContinue && nextSession) {
+          await scheduleContinuousBoundaryTimer(nextSession.rangeDurationMs);
         }
       };
 
       void run();
     }, timeoutMs);
-  }, [clearContinuousBoundaryTimer, completeActiveSession, onError, syncVisibleState]);
+  }, [advanceContinuousRangeEnd, clearContinuousBoundaryTimer, onError]);
 
   const setPlaybackRate = useCallback(async (rate: number) => {
     const TrackPlayer = getPlayerApi();
@@ -321,6 +332,17 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
           playerModule.Event.PlaybackState,
           (payload: unknown) => {
             const nextState = payload as { state?: string };
+            if (isContinuousPlaybackEndState(nextState.state) && sessionRef.current) {
+              void (async () => {
+                const didContinue = await advanceContinuousRangeEnd();
+                const nextSession = sessionRef.current;
+                if (didContinue && nextSession) {
+                  await scheduleContinuousBoundaryTimer(nextSession.rangeDurationMs);
+                }
+              })();
+              return;
+            }
+
             const nextStatus = toPlaybackStatus(nextState.state);
 
             if (pendingPlayTransitionRef.current && nextStatus === 'paused') {
@@ -340,6 +362,23 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
             }
 
             setPlaybackStatus(nextStatus);
+          }
+        );
+
+        const queueEndedSubscription = TrackPlayer.addEventListener(
+          playerModule.Event.PlaybackQueueEnded,
+          (_payload: unknown) => {
+            if (!sessionRef.current) {
+              return;
+            }
+
+            void (async () => {
+              const didContinue = await advanceContinuousRangeEnd();
+              const nextSession = sessionRef.current;
+              if (didContinue && nextSession) {
+                await scheduleContinuousBoundaryTimer(nextSession.rangeDurationMs);
+              }
+            })();
           }
         );
 
@@ -372,6 +411,7 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
 
         cleanups.push(() => {
           stateSubscription.remove();
+          queueEndedSubscription.remove();
           progressSubscription.remove();
           errorSubscription.remove();
         });
@@ -388,6 +428,7 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
       }
     };
   }, [
+    advanceContinuousRangeEnd,
     clearContinuousBoundaryTimer,
     completeActiveSession,
     ensurePlayerSetup,

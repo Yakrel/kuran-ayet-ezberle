@@ -8,6 +8,7 @@ export type TranslationStrings = {
   settings: string;
   startVerse: string;
   endVerse: string;
+  firstVerse: string;
   lastVerse: string;
   verseCount: string;
   ayahUnit: string;

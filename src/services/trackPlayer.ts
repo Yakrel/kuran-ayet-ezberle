@@ -13,6 +13,7 @@ type TrackPlayerModule = {
     RemotePause: unknown;
     RemoteStop: unknown;
     PlaybackState: unknown;
+    PlaybackQueueEnded: unknown;
     PlaybackProgressUpdated: unknown;
     PlaybackError: unknown;
   };

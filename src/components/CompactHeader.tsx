@@ -50,6 +50,7 @@ type CompactHeaderProps = {
     ayahUnit: string;
     startVerse: string;
     endVerse: string;
+    firstVerse: string;
     repeat: string;
     start: string;
     pause: string;
@@ -235,6 +236,8 @@ export function CompactHeader({
         title={text.startVerse}
         initialValue={startVerseInput}
         onSubmit={onStartVerseChange}
+        minValue={1}
+        minActionLabel={text.firstVerse}
         maxValue={maxVerseInSurah}
         maxLabel={text.max}
         cancelLabel={text.cancel}

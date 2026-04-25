@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  isContinuousPlaybackEndState,
   resolveContinuousRepeatStep,
   resolveContinuousVerseIndex,
 } from './continuousPlayback';
@@ -39,5 +40,16 @@ describe('resolveContinuousRepeatStep', () => {
       action: 'stop',
       nextRepeat: 3,
     });
+  });
+});
+
+describe('isContinuousPlaybackEndState', () => {
+  it('recognizes native track-player ended state', () => {
+    expect(isContinuousPlaybackEndState('ended')).toBe(true);
+  });
+
+  it('does not treat user-stopped playback as a natural queue end', () => {
+    expect(isContinuousPlaybackEndState('stopped')).toBe(false);
+    expect(isContinuousPlaybackEndState(undefined)).toBe(false);
   });
 });

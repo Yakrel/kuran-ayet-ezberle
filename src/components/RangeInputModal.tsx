@@ -10,6 +10,8 @@ type RangeInputModalProps = {
   title: string;
   initialValue: string;
   onSubmit: (value: string) => void;
+  minValue?: number;
+  minActionLabel?: string;
   maxValue?: number;
   maxActionLabel?: string;
   maxLabel: string;
@@ -24,6 +26,8 @@ export function RangeInputModal({
   title,
   initialValue,
   onSubmit,
+  minValue,
+  minActionLabel,
   maxValue,
   maxActionLabel,
   maxLabel,
@@ -61,20 +65,31 @@ export function RangeInputModal({
             </Pressable>
           </View>
 
-          {maxValue && (
+          {(minValue !== undefined || maxValue !== undefined) && (
             <View style={styles.hintRow}>
               <Text style={[styles.hint, { color: theme.colors.TEXT_MUTED }]}>
-                {maxLabel}: {maxValue}
+                {maxValue !== undefined ? `${maxLabel}: ${maxValue}` : ''}
               </Text>
-              {maxActionLabel ? (
-                <Pressable
-                  style={[styles.maxButton, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}
-                  onPress={() => setValue(String(maxValue))}
-                >
-                  <Feather name="skip-forward" size={13} color={theme.colors.ACCENT_PRIMARY} />
-                  <Text style={[styles.maxButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{maxActionLabel}</Text>
-                </Pressable>
-              ) : null}
+              <View style={styles.shortcutActions}>
+                {minValue !== undefined && minActionLabel ? (
+                  <Pressable
+                    style={[styles.maxButton, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}
+                    onPress={() => setValue(String(minValue))}
+                  >
+                    <Feather name="skip-back" size={13} color={theme.colors.ACCENT_PRIMARY} />
+                    <Text style={[styles.maxButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{minActionLabel}</Text>
+                  </Pressable>
+                ) : null}
+                {maxValue !== undefined && maxActionLabel ? (
+                  <Pressable
+                    style={[styles.maxButton, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}
+                    onPress={() => setValue(String(maxValue))}
+                  >
+                    <Feather name="skip-forward" size={13} color={theme.colors.ACCENT_PRIMARY} />
+                    <Text style={[styles.maxButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{maxActionLabel}</Text>
+                  </Pressable>
+                ) : null}
+              </View>
             </View>
           )}
 
@@ -152,6 +167,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
+  },
+  shortcutActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
   },
   maxButton: {
     minHeight: 30,

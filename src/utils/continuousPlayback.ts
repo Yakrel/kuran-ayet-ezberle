@@ -44,3 +44,7 @@ export function resolveContinuousRepeatStep(currentRepeat: number, repeatCount: 
     nextRepeat: repeatCount,
   };
 }
+
+export function isContinuousPlaybackEndState(trackPlayerState: string | undefined) {
+  return trackPlayerState === 'ended';
+}
