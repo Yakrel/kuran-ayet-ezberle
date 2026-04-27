@@ -36,8 +36,7 @@ export type TranslationStrings = {
   nextPage: string;
   swipeHint: string;
   autoScroll: string;
-  quranFont: string;
-  fontPreview: string;
+  showTranscription: string;
   version: string;
   developedBy: string;
   about: string;

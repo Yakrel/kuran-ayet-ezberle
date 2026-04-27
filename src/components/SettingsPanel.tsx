@@ -4,7 +4,6 @@ import { Picker } from '@react-native-picker/picker';
 import { Feather } from '@expo/vector-icons';
 import type { TranslationOption } from '../types/quran';
 import type { LanguageCode } from '../i18n/types';
-import type { QuranFontId, QuranFontOption } from '../constants/quranFonts';
 import { useTheme } from '../hooks/useTheme';
 import { ThemeType } from '../constants/colors';
 
@@ -16,24 +15,16 @@ type SettingsPanelProps = {
   onTranslationChange: (authorId: number) => void;
   autoScrollEnabled: boolean;
   onAutoScrollChange: (enabled: boolean) => void;
-  quranFontId: QuranFontId;
-  quranFontOptions: QuranFontOption[];
-  onQuranFontChange: (fontId: QuranFontId) => void;
+  showTranscription: boolean;
+  onShowTranscriptionChange: (enabled: boolean) => void;
   playbackRate: number;
   onPlaybackRateChange: (rate: number) => void;
-  quranFontText: string;
-  fontPreviewText: string;
-  quranFontPreview: string;
-  quranFontFamily: string;
-  quranFontPreviewStyle: {
-    fontSize: number;
-    lineHeight: number;
-  };
   languageText: string;
   languageTurkishText: string;
   languageEnglishText: string;
   translationText: string;
   autoScrollText: string;
+  showTranscriptionText: string;
   themeText: string;
   themeDarkText: string;
   themePaperText: string;
@@ -52,7 +43,7 @@ type SelectOption<T extends string | number> = {
   label: string;
 };
 
-type ActiveSelectKey = 'language' | 'theme' | 'speed' | 'translation' | 'font' | null;
+type ActiveSelectKey = 'language' | 'theme' | 'speed' | 'translation' | null;
 
 export function SettingsPanel({
   language,
@@ -62,21 +53,16 @@ export function SettingsPanel({
   onTranslationChange,
   autoScrollEnabled,
   onAutoScrollChange,
-  quranFontId,
-  quranFontOptions,
-  onQuranFontChange,
+  showTranscription,
+  onShowTranscriptionChange,
   playbackRate,
   onPlaybackRateChange,
-  quranFontText,
-  fontPreviewText,
-  quranFontPreview,
-  quranFontFamily,
-  quranFontPreviewStyle,
   languageText,
   languageTurkishText,
   languageEnglishText,
   translationText,
   autoScrollText,
+  showTranscriptionText,
   themeText,
   themeDarkText,
   themePaperText,
@@ -121,15 +107,6 @@ export function SettingsPanel({
     [translationOptionsForLanguage]
   );
 
-  const quranFontPickerOptions = useMemo<Array<SelectOption<QuranFontId>>>(
-    () =>
-      quranFontOptions.map((option) => ({
-        value: option.id,
-        label: option.label,
-      })),
-    [quranFontOptions]
-  );
-
   const activeSelectTitle = activeSelect === 'language'
     ? languageText
     : activeSelect === 'theme'
@@ -138,8 +115,6 @@ export function SettingsPanel({
     ? playbackSpeedText
     : activeSelect === 'translation'
     ? translationText
-    : activeSelect === 'font'
-    ? quranFontText
     : '';
 
   const activeSelectOptions = activeSelect === 'language'
@@ -150,8 +125,6 @@ export function SettingsPanel({
     ? speedOptions
     : activeSelect === 'translation'
     ? translationPickerOptions
-    : activeSelect === 'font'
-    ? quranFontPickerOptions
     : [];
 
   const activeSelectValue = activeSelect === 'language'
@@ -162,8 +135,6 @@ export function SettingsPanel({
     ? playbackRate
     : activeSelect === 'translation'
     ? selectedTranslationAuthorId
-    : activeSelect === 'font'
-    ? quranFontId
     : null;
 
   function closeSelect() {
@@ -237,28 +208,28 @@ export function SettingsPanel({
       {renderSelectField('translation', translationText, selectedTranslationAuthorId, translationPickerOptions, (nextAuthorId) => onTranslationChange(Number(nextAuthorId)))}
 
       <View style={styles.settingsGroup}>
-        {renderSelectField('font', quranFontText, quranFontId, quranFontPickerOptions, onQuranFontChange)}
-        <View style={[styles.fontPreviewCard, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
-          <Text style={[styles.fontPreviewLabel, { color: theme.colors.TEXT_TERTIARY }]}>{fontPreviewText}</Text>
-          <Text
-            style={[
-              styles.fontPreviewArabic,
-              quranFontPreviewStyle,
-              { fontFamily: quranFontFamily, color: theme.colors.TEXT_PRIMARY }
-            ]}
-          >
-            {quranFontPreview}
-          </Text>
-        </View>
-      </View>
-
-      <View style={styles.settingsGroup}>
         <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{autoScrollText}</Text>
         <View style={[styles.switchRow, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
           <Text style={[styles.switchValue, { color: theme.colors.TEXT_SECONDARY }]}>{autoScrollEnabled ? onText : offText}</Text>
           <Switch
             value={autoScrollEnabled}
             onValueChange={onAutoScrollChange}
+            trackColor={{
+              false: theme.colors.BORDER_SECONDARY,
+              true: theme.colors.ACCENT_PRIMARY,
+            }}
+            thumbColor={theme.colors.TEXT_PRIMARY}
+          />
+        </View>
+      </View>
+
+      <View style={styles.settingsGroup}>
+        <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{showTranscriptionText}</Text>
+        <View style={[styles.switchRow, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
+          <Text style={[styles.switchValue, { color: theme.colors.TEXT_SECONDARY }]}>{showTranscription ? onText : offText}</Text>
+          <Switch
+            value={showTranscription}
+            onValueChange={onShowTranscriptionChange}
             trackColor={{
               false: theme.colors.BORDER_SECONDARY,
               true: theme.colors.ACCENT_PRIMARY,
@@ -326,8 +297,6 @@ export function SettingsPanel({
                         onPlaybackRateChange(Number(option.value));
                       } else if (activeSelect === 'translation') {
                         onTranslationChange(Number(option.value));
-                      } else if (activeSelect === 'font') {
-                        onQuranFontChange(option.value as QuranFontId);
                       }
                       closeSelect();
                     }}
@@ -416,24 +385,6 @@ const styles = StyleSheet.create({
   switchValue: {
     fontSize: 16,
     fontWeight: '600',
-  },
-  fontPreviewCard: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    gap: 8,
-  },
-  fontPreviewLabel: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 0.4,
-  },
-  fontPreviewArabic: {
-    textAlign: 'right',
-    writingDirection: 'rtl',
   },
   footerButtons: {
     gap: 10,

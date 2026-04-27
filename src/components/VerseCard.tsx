@@ -11,6 +11,7 @@ type VerseCardProps = {
     fontSize: number;
     lineHeight: number;
   };
+  showTranscription: boolean;
   isCurrentVerse?: boolean;
   onLongPress: (verse: Verse) => void;
   onPlayFromVerse: (verse: Verse) => void;
@@ -22,6 +23,7 @@ export function VerseCard({
   verse,
   quranFontFamily,
   quranTextStyle,
+  showTranscription,
   isCurrentVerse,
   onLongPress,
   onPlayFromVerse,
@@ -69,6 +71,11 @@ export function VerseCard({
         >
           {verse.verse}
         </Text>
+        {showTranscription ? (
+          <Text style={[styles.transcriptionText, { color: theme.colors.TEXT_SECONDARY }]}>
+            {verse.transcription}
+          </Text>
+        ) : null}
       </View>
 
       <View style={[styles.translationBlock, { borderTopColor: theme.colors.BORDER_PRIMARY }]}>
@@ -132,7 +139,7 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   arabicBlock: {
-    gap: 4,
+    gap: 8,
     paddingLeft: 40,
   },
   arabicText: {
@@ -143,6 +150,13 @@ const styles = StyleSheet.create({
   translationBlock: {
     paddingTop: 8,
     borderTopWidth: 1,
+  },
+  transcriptionText: {
+    fontSize: 14,
+    lineHeight: 22,
+    fontWeight: '500',
+    textAlign: 'left',
+    writingDirection: 'ltr',
   },
   translationText: {
     lineHeight: 20,

@@ -12,6 +12,7 @@ function makeVerse(verseNumber: number): Verse {
     verse_number: verseNumber,
     page: 1,
     verse: `verse ${verseNumber}`,
+    transcription: `transcription ${verseNumber}`,
     translation: {
       text: `translation ${verseNumber}`,
     },

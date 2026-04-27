@@ -8,6 +8,7 @@ function makeVerse(surahId: number, verseNumber: number, page: number): Verse {
     verse_number: verseNumber,
     page,
     verse: `verse ${verseNumber}`,
+    transcription: `transcription ${verseNumber}`,
     translation: {
       text: `translation ${verseNumber}`,
     },

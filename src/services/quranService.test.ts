@@ -11,6 +11,8 @@ describe('quranService', () => {
     const matchingVerse = pageVerses.find((verse) => verse.surah_id === 1 && verse.verse_number === 1);
 
     expect(matchingVerse?.translation.text).toBe(firstVerse.translation.text);
+    expect(matchingVerse?.verse).toBe(firstVerse.verse);
+    expect(matchingVerse?.transcription).toBe(firstVerse.transcription);
     expect(matchingVerse?.timing).toEqual(firstVerse.timing);
   });
 
@@ -19,6 +21,8 @@ describe('quranService', () => {
 
     expect(pageVerses.length).toBeGreaterThan(0);
     expect(pageVerses[0]?.translation.text).not.toBe('');
+    expect(pageVerses[0]?.verse).not.toBe('');
+    expect(pageVerses[0]?.transcription).not.toBe('');
   });
 
   it('throws when the requested translation is not embedded', async () => {

@@ -16,6 +16,7 @@ type VerseListProps = {
     fontSize: number;
     lineHeight: number;
   };
+  showTranscription: boolean;
   swipeHintText: string;
   autoScrollEnabled: boolean;
   onVerseLongPress: (verse: Verse) => void;
@@ -32,6 +33,7 @@ export function VerseList({
   currentVerse,
   quranFontFamily,
   quranTextStyle,
+  showTranscription,
   swipeHintText,
   autoScrollEnabled,
   onVerseLongPress,
@@ -155,6 +157,7 @@ export function VerseList({
                 verse={item}
                 quranFontFamily={quranFontFamily}
                 quranTextStyle={quranTextStyle}
+                showTranscription={showTranscription}
                 isCurrentVerse={isCurrent}
                 onLongPress={onVerseLongPress}
                 onPlayFromVerse={onPlayFromVerse}

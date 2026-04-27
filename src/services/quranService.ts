@@ -8,6 +8,7 @@ type RawVerse = {
   verse_number: number;
   page: number;
   verse: string;
+  transcription: string;
   translations: RawTranslationMap;
 };
 
@@ -62,7 +63,21 @@ function getVerseKey(surahId: number, verseNumber: number) {
 }
 
 function normalizeArabicVerseText(text: string): string {
-  return text.normalize('NFC');
+  const normalizedText = text.normalize('NFC');
+  if (normalizedText.trim().length === 0) {
+    throw new Error('Embedded Quran text is empty.');
+  }
+
+  return normalizedText;
+}
+
+function normalizeTranscription(rawSurah: RawSurah, rawVerse: RawVerse): string {
+  const transcription = rawVerse.transcription?.trim();
+  if (!transcription) {
+    throw new Error(`Embedded transcription is missing for ayah ${rawSurah.id}:${rawVerse.verse_number}.`);
+  }
+
+  return transcription;
 }
 
 function getTranslationText(verse: RawVerse, translationAuthorId: number): string {
@@ -112,6 +127,7 @@ function mapVerse(
     verse_number: rawVerse.verse_number,
     page: rawVerse.page,
     verse: normalizeArabicVerseText(rawVerse.verse),
+    transcription: normalizeTranscription(rawSurah, rawVerse),
     translation: {
       text: getTranslationText(rawVerse, translationAuthorId),
     },

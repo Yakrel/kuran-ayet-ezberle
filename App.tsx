@@ -10,10 +10,6 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as SplashScreen from 'expo-splash-screen';
-import { Amiri_400Regular } from '@expo-google-fonts/amiri';
-import { Lateef_400Regular } from '@expo-google-fonts/lateef';
-import { NotoNaskhArabic_400Regular } from '@expo-google-fonts/noto-naskh-arabic';
-import { ScheherazadeNew_400Regular } from '@expo-google-fonts/scheherazade-new';
 
 import { CompactHeader } from './src/components/CompactHeader';
 import { AboutSheet } from './src/components/AboutSheet';
@@ -29,10 +25,7 @@ import {
   TOTAL_QURAN_PAGES,
 } from './src/constants/defaults';
 import { SURAH_LIST } from './src/constants/surahList';
-import {
-  QURAN_FONT_OPTIONS,
-  QURAN_FONT_PREVIEW_TEXT,
-} from './src/constants/quranFonts';
+import { QURAN_FONT_FAMILY, QURAN_TEXT_STYLE } from './src/constants/quranFonts';
 import { useAppSettings } from './src/hooks/useAppSettings';
 import { useComputedState } from './src/hooks/useComputedState';
 import { useI18n } from './src/hooks/useI18n';
@@ -71,10 +64,7 @@ type MainAppProps = {
 
 function MainApp({ settings }: MainAppProps) {
   const [fontsLoaded] = useFonts({
-    Amiri_400Regular,
-    Lateef_400Regular,
-    NotoNaskhArabic_400Regular,
-    ScheherazadeNew_400Regular,
+    [QURAN_FONT_FAMILY]: require('./assets/fonts/UthmanicHafs_V22.ttf'),
   });
 
   const {
@@ -82,16 +72,16 @@ function MainApp({ settings }: MainAppProps) {
     language,
     selectedSurahId,
     selectedTranslationAuthorId,
-    selectedQuranFontId,
     isAutoScrollEnabled,
+    showTranscription,
     themeType,
     practiceState,
     setLanguage,
     setSelectedSurahId,
     setSelectedTranslationAuthorId,
-    setSelectedQuranFontId,
     setThemeType,
     setIsAutoScrollEnabled,
+    setShowTranscription,
     setPracticeState,
   } = settings;
   const { text } = useI18n(language);
@@ -125,18 +115,6 @@ function MainApp({ settings }: MainAppProps) {
   );
 
   const computed = useComputedState(surahDetail, currentPage, surahs, selectedSurahId);
-
-  const selectedQuranFont = useMemo(
-    () => {
-      const font = QURAN_FONT_OPTIONS.find((option) => option.id === selectedQuranFontId);
-      if (!font) {
-        throw new Error(`Quran font ${selectedQuranFontId} is not configured.`);
-      }
-
-      return font;
-    },
-    [selectedQuranFontId]
-  );
 
   const translationOptionsForLanguage = useMemo(
     () => TRANSLATION_OPTIONS.filter((option) => option.language === language),
@@ -678,8 +656,9 @@ function MainApp({ settings }: MainAppProps) {
             currentPage={currentPage}
             currentPageVerses={computed.currentPageVerses}
             currentVerse={currentVerse}
-            quranFontFamily={selectedQuranFont.fontFamily}
-            quranTextStyle={selectedQuranFont.verseTextStyle}
+            quranFontFamily={QURAN_FONT_FAMILY}
+            quranTextStyle={QURAN_TEXT_STYLE}
+            showTranscription={showTranscription}
             swipeHintText={text.swipeHint}
             autoScrollEnabled={isAutoScrollEnabled}
             onVerseLongPress={handleVerseLongPress}
@@ -701,15 +680,11 @@ function MainApp({ settings }: MainAppProps) {
           onTranslationChange={handleTranslationChange}
           autoScrollEnabled={isAutoScrollEnabled}
           onAutoScrollChange={setIsAutoScrollEnabled}
+          showTranscription={showTranscription}
+          onShowTranscriptionChange={setShowTranscription}
           onThemeChange={setThemeType}
-          quranFontId={selectedQuranFontId}
-          quranFontOptions={QURAN_FONT_OPTIONS}
-          onQuranFontChange={setSelectedQuranFontId}
           playbackRate={player.playbackRate}
           onPlaybackRateChange={player.setPlaybackRate}
-          quranFontPreview={QURAN_FONT_PREVIEW_TEXT}
-          quranFontFamily={selectedQuranFont.fontFamily}
-          quranFontPreviewStyle={selectedQuranFont.previewTextStyle}
           onAboutPress={() => {
             setIsSettingsOpen(false);
             setIsAboutOpen(true);

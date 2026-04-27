@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ThemeType } from '../constants/colors';
-import type { QuranFontId } from '../constants/quranFonts';
 import type { LanguageCode } from '../i18n/types';
 import { Storage } from '../services/storage';
 import { inferDeviceLanguage } from '../utils/language';
@@ -29,9 +28,9 @@ export function useAppSettings() {
         language: await Storage.getLanguage(),
         selectedTranslationAuthorId: await Storage.getSelectedTranslation(),
         selectedSurahId: await Storage.getSelectedSurah(),
-        selectedQuranFontId: (await Storage.getQuranFont()) as QuranFontId | null,
         themeType: (await Storage.getTheme()) as ThemeType | null,
         isAutoScrollEnabled: await Storage.getAutoScroll(),
+        showTranscription: await Storage.getShowTranscription(),
         practiceState: await Storage.getPracticeState(),
       };
 
@@ -107,11 +106,6 @@ export function useAppSettings() {
     }
   }, [setPartialSettings]);
 
-  const setSelectedQuranFontId = useCallback((nextFontId: QuranFontId) => {
-    setPartialSettings('selectedQuranFontId', nextFontId);
-    void Storage.setQuranFont(nextFontId);
-  }, [setPartialSettings]);
-
   const setThemeType = useCallback((nextThemeType: ThemeType) => {
     setPartialSettings('themeType', nextThemeType);
     void Storage.setTheme(nextThemeType);
@@ -120,6 +114,11 @@ export function useAppSettings() {
   const setIsAutoScrollEnabled = useCallback((enabled: boolean) => {
     setPartialSettings('isAutoScrollEnabled', enabled);
     void Storage.setAutoScroll(enabled);
+  }, [setPartialSettings]);
+
+  const setShowTranscription = useCallback((enabled: boolean) => {
+    setPartialSettings('showTranscription', enabled);
+    void Storage.setShowTranscription(enabled);
   }, [setPartialSettings]);
 
   const setPracticeState = useCallback((nextPracticeState: PracticeState) => {
@@ -134,9 +133,9 @@ export function useAppSettings() {
     setLanguage,
     setSelectedTranslationAuthorId,
     setSelectedSurahId,
-    setSelectedQuranFontId,
     setThemeType,
     setIsAutoScrollEnabled,
+    setShowTranscription,
     setPracticeState,
   };
 }

@@ -25,6 +25,7 @@ export type Verse = {
   verse_number: number;
   page: number;
   verse: string;
+  transcription: string;
   translation: VerseTranslation;
   timing: VerseTiming;
 };

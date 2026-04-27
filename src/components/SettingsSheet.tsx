@@ -3,7 +3,6 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import type { ThemeType } from '../constants/colors';
 import type { LanguageCode, TranslationStrings } from '../i18n/types';
 import type { TranslationOption } from '../types/quran';
-import type { QuranFontId, QuranFontOption } from '../constants/quranFonts';
 import { useTheme } from '../hooks/useTheme';
 import { theme as staticTheme } from '../styles/theme';
 import { SettingsPanel } from './SettingsPanel';
@@ -18,18 +17,11 @@ type SettingsSheetProps = {
   onTranslationChange: (authorId: number) => void;
   autoScrollEnabled: boolean;
   onAutoScrollChange: (enabled: boolean) => void;
+  showTranscription: boolean;
+  onShowTranscriptionChange: (enabled: boolean) => void;
   onThemeChange: (theme: ThemeType) => void;
-  quranFontId: QuranFontId;
-  quranFontOptions: QuranFontOption[];
-  onQuranFontChange: (fontId: QuranFontId) => void;
   playbackRate: number;
   onPlaybackRateChange: (rate: number) => void;
-  quranFontPreview: string;
-  quranFontFamily: string;
-  quranFontPreviewStyle: {
-    fontSize: number;
-    lineHeight: number;
-  };
   onAboutPress: () => void;
   onManageDownloadsPress: () => void;
   text: TranslationStrings;
@@ -57,13 +49,12 @@ export function SettingsSheet({
           <ScrollView contentContainerStyle={styles.modalScroll}>
             <SettingsPanel
               {...panelProps}
-              quranFontText={text.quranFont}
-              fontPreviewText={text.fontPreview}
               languageText={text.language}
               languageTurkishText={text.languageTurkish}
               languageEnglishText={text.languageEnglish}
               translationText={text.translation}
               autoScrollText={text.autoScroll}
+              showTranscriptionText={text.showTranscription}
               themeText={text.theme}
               themeDarkText={text.themeDark}
               themePaperText={text.themePaper}
