@@ -4,6 +4,7 @@ import type { LanguageCode } from '../i18n/types';
 
 const KEYS = {
   LANGUAGE: '@app_language',
+  QURAN_FONT: '@app_quran_font',
   PRACTICE_STATE: '@app_practice_state',
   SELECTED_SURAH: '@app_selected_surah',
   SELECTED_TRANSLATION: '@app_selected_translation',
@@ -41,6 +42,13 @@ export const Storage = {
       throw new Error(`Invalid persisted language: ${val}.`);
     }
     return val as LanguageCode;
+  },
+
+  async setQuranFont(fontId: string) {
+    await AsyncStorage.setItem(KEYS.QURAN_FONT, fontId);
+  },
+  async getQuranFont() {
+    return await AsyncStorage.getItem(KEYS.QURAN_FONT);
   },
 
   async setSelectedSurah(id: number) {

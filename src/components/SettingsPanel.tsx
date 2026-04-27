@@ -6,6 +6,8 @@ import type { TranslationOption } from '../types/quran';
 import type { LanguageCode } from '../i18n/types';
 import { useTheme } from '../hooks/useTheme';
 import { ThemeType } from '../constants/colors';
+import type { QuranFontId, QuranFontOption } from '../constants/quranFonts';
+import { QURAN_FONT_PREVIEW_TEXT } from '../constants/quranFonts';
 
 type SettingsPanelProps = {
   language: LanguageCode;
@@ -13,6 +15,9 @@ type SettingsPanelProps = {
   selectedTranslationAuthorId: number;
   translationOptionsForLanguage: TranslationOption[];
   onTranslationChange: (authorId: number) => void;
+  quranFontId: QuranFontId;
+  quranFontOptions: QuranFontOption[];
+  onQuranFontChange: (fontId: QuranFontId) => void;
   autoScrollEnabled: boolean;
   onAutoScrollChange: (enabled: boolean) => void;
   showTranscription: boolean;
@@ -23,6 +28,7 @@ type SettingsPanelProps = {
   languageTurkishText: string;
   languageEnglishText: string;
   translationText: string;
+  quranFontText: string;
   autoScrollText: string;
   showTranscriptionText: string;
   themeText: string;
@@ -43,7 +49,7 @@ type SelectOption<T extends string | number> = {
   label: string;
 };
 
-type ActiveSelectKey = 'language' | 'theme' | 'speed' | 'translation' | null;
+type ActiveSelectKey = 'language' | 'theme' | 'speed' | 'translation' | 'quranFont' | null;
 
 export function SettingsPanel({
   language,
@@ -51,6 +57,9 @@ export function SettingsPanel({
   selectedTranslationAuthorId,
   translationOptionsForLanguage,
   onTranslationChange,
+  quranFontId,
+  quranFontOptions,
+  onQuranFontChange,
   autoScrollEnabled,
   onAutoScrollChange,
   showTranscription,
@@ -61,6 +70,7 @@ export function SettingsPanel({
   languageTurkishText,
   languageEnglishText,
   translationText,
+  quranFontText,
   autoScrollText,
   showTranscriptionText,
   themeText,
@@ -107,6 +117,20 @@ export function SettingsPanel({
     [translationOptionsForLanguage]
   );
 
+  const quranFontPickerOptions = useMemo<Array<SelectOption<QuranFontId>>>(
+    () =>
+      quranFontOptions.map((option) => ({
+        value: option.id,
+        label: option.label,
+      })),
+    [quranFontOptions]
+  );
+
+  const selectedQuranFont = quranFontOptions.find((option) => option.id === quranFontId);
+  if (!selectedQuranFont) {
+    throw new Error(`Selected Quran font is not configured: ${quranFontId}.`);
+  }
+
   const activeSelectTitle = activeSelect === 'language'
     ? languageText
     : activeSelect === 'theme'
@@ -115,6 +139,8 @@ export function SettingsPanel({
     ? playbackSpeedText
     : activeSelect === 'translation'
     ? translationText
+    : activeSelect === 'quranFont'
+    ? quranFontText
     : '';
 
   const activeSelectOptions = activeSelect === 'language'
@@ -125,6 +151,8 @@ export function SettingsPanel({
     ? speedOptions
     : activeSelect === 'translation'
     ? translationPickerOptions
+    : activeSelect === 'quranFont'
+    ? quranFontPickerOptions
     : [];
 
   const activeSelectValue = activeSelect === 'language'
@@ -135,10 +163,42 @@ export function SettingsPanel({
     ? playbackRate
     : activeSelect === 'translation'
     ? selectedTranslationAuthorId
+    : activeSelect === 'quranFont'
+    ? quranFontId
     : null;
 
   function closeSelect() {
     setActiveSelect(null);
+  }
+
+  function renderQuranFontField(font: QuranFontOption) {
+    return (
+      <View style={styles.settingsGroup}>
+        <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{quranFontText}</Text>
+        <Pressable
+          onPress={() => setActiveSelect('quranFont')}
+          style={({ pressed }) => [
+            styles.themedSelectButton,
+            { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG },
+            pressed && { opacity: 0.8 }
+          ]}
+        >
+          <Text style={[styles.themedSelectValue, { color: theme.colors.TEXT_PRIMARY }]} numberOfLines={1}>
+            {font.label}
+          </Text>
+          <Feather name="chevron-down" size={18} color={theme.colors.PICKER_ICON} />
+        </Pressable>
+        <Text
+          style={[
+            styles.fontPreviewText,
+            font.previewTextStyle,
+            { color: theme.colors.TEXT_SECONDARY, fontFamily: font.fontFamily },
+          ]}
+        >
+          {QURAN_FONT_PREVIEW_TEXT}
+        </Text>
+      </View>
+    );
   }
 
   function renderSelectField<T extends string | number>(
@@ -206,6 +266,7 @@ export function SettingsPanel({
       {renderSelectField('theme', themeText, themeType, themeOptions, (nextTheme) => onThemeChange(nextTheme as ThemeType))}
       {renderSelectField('speed', playbackSpeedText, playbackRate, speedOptions, (nextRate) => onPlaybackRateChange(Number(nextRate)))}
       {renderSelectField('translation', translationText, selectedTranslationAuthorId, translationPickerOptions, (nextAuthorId) => onTranslationChange(Number(nextAuthorId)))}
+      {renderQuranFontField(selectedQuranFont)}
 
       <View style={styles.settingsGroup}>
         <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{autoScrollText}</Text>
@@ -284,6 +345,10 @@ export function SettingsPanel({
             <ScrollView contentContainerStyle={styles.selectOptions}>
               {activeSelectOptions.map((option) => {
                 const isSelected = activeSelectValue === option.value;
+                const optionFont =
+                  activeSelect === 'quranFont'
+                    ? quranFontOptions.find((font) => font.id === option.value)
+                    : undefined;
 
                 return (
                   <Pressable
@@ -297,6 +362,8 @@ export function SettingsPanel({
                         onPlaybackRateChange(Number(option.value));
                       } else if (activeSelect === 'translation') {
                         onTranslationChange(Number(option.value));
+                      } else if (activeSelect === 'quranFont') {
+                        onQuranFontChange(option.value as QuranFontId);
                       }
                       closeSelect();
                     }}
@@ -308,7 +375,23 @@ export function SettingsPanel({
                       }
                     ]}
                   >
-                    <Text style={[styles.selectOptionText, { color: theme.colors.TEXT_PRIMARY }]}>{option.label}</Text>
+                    <View style={styles.selectOptionCopy}>
+                      <Text style={[styles.selectOptionText, { color: theme.colors.TEXT_PRIMARY }]}>{option.label}</Text>
+                      {activeSelect === 'quranFont' ? (
+                        <Text
+                          style={[
+                            styles.selectOptionPreview,
+                            optionFont?.previewTextStyle,
+                            {
+                              color: theme.colors.TEXT_SECONDARY,
+                              fontFamily: optionFont?.fontFamily,
+                            },
+                          ]}
+                        >
+                          {QURAN_FONT_PREVIEW_TEXT}
+                        </Text>
+                      ) : null}
+                    </View>
                     {isSelected ? <Feather name="check" size={16} color={theme.colors.ACCENT_PRIMARY} /> : null}
                   </Pressable>
                 );
@@ -372,6 +455,11 @@ const styles = StyleSheet.create({
     flex: 1,
     fontSize: 16,
     fontWeight: '500',
+  },
+  fontPreviewText: {
+    textAlign: 'right',
+    writingDirection: 'rtl',
+    paddingHorizontal: 2,
   },
   switchRow: {
     minHeight: 48,
@@ -444,15 +532,23 @@ const styles = StyleSheet.create({
     minHeight: 48,
     borderWidth: 1,
     borderRadius: 12,
+    paddingVertical: 10,
     paddingHorizontal: 14,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 12,
   },
+  selectOptionCopy: {
+    flex: 1,
+    gap: 4,
+  },
   selectOptionText: {
     fontSize: 15,
     fontWeight: '500',
-    flex: 1,
+  },
+  selectOptionPreview: {
+    textAlign: 'right',
+    writingDirection: 'rtl',
   },
 });

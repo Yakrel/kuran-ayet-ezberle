@@ -1,6 +1,12 @@
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFonts } from 'expo-font';
+import { Amiri_400Regular } from '@expo-google-fonts/amiri';
+import { AmiriQuran_400Regular } from '@expo-google-fonts/amiri-quran';
+import { Lateef_400Regular } from '@expo-google-fonts/lateef';
+import { NotoNaskhArabic_400Regular } from '@expo-google-fonts/noto-naskh-arabic';
+import { NotoSansArabic_400Regular } from '@expo-google-fonts/noto-sans-arabic';
+import { ScheherazadeNew_400Regular } from '@expo-google-fonts/scheherazade-new';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
@@ -25,7 +31,10 @@ import {
   TOTAL_QURAN_PAGES,
 } from './src/constants/defaults';
 import { SURAH_LIST } from './src/constants/surahList';
-import { QURAN_FONT_FAMILY, QURAN_TEXT_STYLE } from './src/constants/quranFonts';
+import {
+  QURAN_FONT_OPTIONS,
+  UTHMANIC_HAFS_FONT_FAMILY,
+} from './src/constants/quranFonts';
 import { useAppSettings } from './src/hooks/useAppSettings';
 import { useComputedState } from './src/hooks/useComputedState';
 import { useI18n } from './src/hooks/useI18n';
@@ -64,7 +73,13 @@ type MainAppProps = {
 
 function MainApp({ settings }: MainAppProps) {
   const [fontsLoaded] = useFonts({
-    [QURAN_FONT_FAMILY]: require('./assets/fonts/UthmanicHafs_V22.ttf'),
+    Amiri_400Regular,
+    AmiriQuran_400Regular,
+    Lateef_400Regular,
+    NotoNaskhArabic_400Regular,
+    NotoSansArabic_400Regular,
+    ScheherazadeNew_400Regular,
+    [UTHMANIC_HAFS_FONT_FAMILY]: require('./assets/fonts/UthmanicHafs_V22.ttf'),
   });
 
   const {
@@ -72,6 +87,7 @@ function MainApp({ settings }: MainAppProps) {
     language,
     selectedSurahId,
     selectedTranslationAuthorId,
+    selectedQuranFontId,
     isAutoScrollEnabled,
     showTranscription,
     themeType,
@@ -79,6 +95,7 @@ function MainApp({ settings }: MainAppProps) {
     setLanguage,
     setSelectedSurahId,
     setSelectedTranslationAuthorId,
+    setSelectedQuranFontId,
     setThemeType,
     setIsAutoScrollEnabled,
     setShowTranscription,
@@ -115,6 +132,15 @@ function MainApp({ settings }: MainAppProps) {
   );
 
   const computed = useComputedState(surahDetail, currentPage, surahs, selectedSurahId);
+
+  const selectedQuranFont = useMemo(() => {
+    const font = QURAN_FONT_OPTIONS.find((option) => option.id === selectedQuranFontId);
+    if (!font) {
+      throw new Error(`Quran font ${selectedQuranFontId} is not configured.`);
+    }
+
+    return font;
+  }, [selectedQuranFontId]);
 
   const translationOptionsForLanguage = useMemo(
     () => TRANSLATION_OPTIONS.filter((option) => option.language === language),
@@ -656,8 +682,8 @@ function MainApp({ settings }: MainAppProps) {
             currentPage={currentPage}
             currentPageVerses={computed.currentPageVerses}
             currentVerse={currentVerse}
-            quranFontFamily={QURAN_FONT_FAMILY}
-            quranTextStyle={QURAN_TEXT_STYLE}
+            quranFontFamily={selectedQuranFont.fontFamily}
+            quranTextStyle={selectedQuranFont.verseTextStyle}
             showTranscription={showTranscription}
             swipeHintText={text.swipeHint}
             autoScrollEnabled={isAutoScrollEnabled}
@@ -678,6 +704,9 @@ function MainApp({ settings }: MainAppProps) {
           selectedTranslationAuthorId={selectedTranslationAuthorId}
           translationOptionsForLanguage={translationOptionsForLanguage}
           onTranslationChange={handleTranslationChange}
+          quranFontId={selectedQuranFontId}
+          quranFontOptions={QURAN_FONT_OPTIONS}
+          onQuranFontChange={setSelectedQuranFontId}
           autoScrollEnabled={isAutoScrollEnabled}
           onAutoScrollChange={setIsAutoScrollEnabled}
           showTranscription={showTranscription}

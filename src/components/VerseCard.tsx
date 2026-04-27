@@ -71,15 +71,18 @@ export function VerseCard({
         >
           {verse.verse}
         </Text>
+      </View>
+
+      <View style={styles.verseDetailBlock}>
         {showTranscription ? (
           <Text style={[styles.transcriptionText, { color: theme.colors.TEXT_SECONDARY }]}>
             {verse.transcription}
           </Text>
         ) : null}
-      </View>
 
-      <View style={[styles.translationBlock, { borderTopColor: theme.colors.BORDER_PRIMARY }]}>
-        <Text style={[styles.translationText, { color: theme.colors.TEXT_MUTED }]}>{verse.translation.text}</Text>
+        <View style={[styles.translationBlock, { borderTopColor: theme.colors.BORDER_PRIMARY }]}>
+          <Text style={[styles.translationText, { color: theme.colors.TEXT_MUTED }]}>{verse.translation.text}</Text>
+        </View>
       </View>
 
       {showPlayAction ? (
@@ -139,13 +142,15 @@ const styles = StyleSheet.create({
     fontSize: 10,
   },
   arabicBlock: {
-    gap: 8,
     paddingLeft: 40,
   },
   arabicText: {
     textAlign: 'right',
     writingDirection: 'rtl',
     fontWeight: '400',
+  },
+  verseDetailBlock: {
+    gap: 8,
   },
   translationBlock: {
     paddingTop: 8,

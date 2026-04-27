@@ -17,6 +17,12 @@
     "build:production": "eas build -p android --profile production"
   },
   "dependencies": {
+    "@expo-google-fonts/amiri": "^0.4.1",
+    "@expo-google-fonts/amiri-quran": "^0.4.1",
+    "@expo-google-fonts/lateef": "^0.4.2",
+    "@expo-google-fonts/noto-naskh-arabic": "^0.4.5",
+    "@expo-google-fonts/noto-sans-arabic": "^0.4.3",
+    "@expo-google-fonts/scheherazade-new": "^0.4.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-native-picker/picker": "2.11.4",
     "expo": "~55.0.8",

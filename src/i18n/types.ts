@@ -32,6 +32,7 @@ export type TranslationStrings = {
   active: string;
   meal: string;
   translation: string;
+  quranFont: string;
   previousPage: string;
   nextPage: string;
   swipeHint: string;

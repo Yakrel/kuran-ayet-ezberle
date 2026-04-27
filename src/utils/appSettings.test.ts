@@ -14,6 +14,7 @@ describe('resolveInitialAppSettings', () => {
         language: null,
         selectedTranslationAuthorId: null,
         selectedSurahId: null,
+        selectedQuranFontId: null,
         themeType: null,
         isAutoScrollEnabled: null,
         showTranscription: null,
@@ -37,6 +38,7 @@ describe('resolveInitialAppSettings', () => {
         language: 'tr',
         selectedTranslationAuthorId: 11,
         selectedSurahId: 2,
+        selectedQuranFontId: 'amiriQuran',
         themeType: 'PAPER',
         isAutoScrollEnabled: false,
         showTranscription: false,
@@ -55,6 +57,7 @@ describe('resolveInitialAppSettings', () => {
     expect(result.nextState.selectedTranslationAuthorId).toBe(11);
     expect(result.nextState.language).toBe('tr');
     expect(result.nextState.selectedSurahId).toBe(20);
+    expect(result.nextState.selectedQuranFontId).toBe('amiriQuran');
     expect(result.nextState.showTranscription).toBe(false);
     expect(result.nextState.practiceState).toEqual({
       surahId: 20,
@@ -74,6 +77,7 @@ describe('resolveInitialAppSettings', () => {
           language: 'tr',
           selectedTranslationAuthorId: 32,
           selectedSurahId: null,
+          selectedQuranFontId: null,
           themeType: null,
           isAutoScrollEnabled: null,
           showTranscription: null,

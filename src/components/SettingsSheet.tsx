@@ -3,6 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import type { ThemeType } from '../constants/colors';
 import type { LanguageCode, TranslationStrings } from '../i18n/types';
 import type { TranslationOption } from '../types/quran';
+import type { QuranFontId, QuranFontOption } from '../constants/quranFonts';
 import { useTheme } from '../hooks/useTheme';
 import { theme as staticTheme } from '../styles/theme';
 import { SettingsPanel } from './SettingsPanel';
@@ -15,6 +16,9 @@ type SettingsSheetProps = {
   selectedTranslationAuthorId: number;
   translationOptionsForLanguage: TranslationOption[];
   onTranslationChange: (authorId: number) => void;
+  quranFontId: QuranFontId;
+  quranFontOptions: QuranFontOption[];
+  onQuranFontChange: (fontId: QuranFontId) => void;
   autoScrollEnabled: boolean;
   onAutoScrollChange: (enabled: boolean) => void;
   showTranscription: boolean;
@@ -53,6 +57,7 @@ export function SettingsSheet({
               languageTurkishText={text.languageTurkish}
               languageEnglishText={text.languageEnglish}
               translationText={text.translation}
+              quranFontText={text.quranFont}
               autoScrollText={text.autoScroll}
               showTranscriptionText={text.showTranscription}
               themeText={text.theme}
