@@ -32,6 +32,7 @@ type CompactHeaderProps = {
   onEndVerseChange: (value: string) => void;
   onRepeatCountChange: (value: string) => void;
   maxVerseInSurah?: number;
+  pageEndVerseNumber?: number | null;
   
   playbackStatus: 'idle' | 'loading' | 'playing' | 'paused' | 'stopped';
   onStart: () => void;
@@ -61,6 +62,7 @@ type CompactHeaderProps = {
     nextPage: string;
     settings: string;
     lastVerse: string;
+    pageEndVerse: string;
     cancel: string;
     confirm: string;
     max: string;
@@ -86,6 +88,7 @@ export function CompactHeader({
   onEndVerseChange,
   onRepeatCountChange,
   maxVerseInSurah,
+  pageEndVerseNumber,
   playbackStatus,
   onStart,
   onPause,
@@ -252,6 +255,11 @@ export function CompactHeader({
         onSubmit={onEndVerseChange}
         maxValue={maxVerseInSurah}
         maxActionLabel={text.lastVerse}
+        quickActions={
+          pageEndVerseNumber
+            ? [{ label: text.pageEndVerse, value: String(pageEndVerseNumber), icon: 'corner-down-right' }]
+            : []
+        }
         maxLabel={text.max}
         cancelLabel={text.cancel}
         submitLabel={text.confirm}
@@ -263,6 +271,11 @@ export function CompactHeader({
         title={text.repeat}
         initialValue={repeatCountInput}
         onSubmit={onRepeatCountChange}
+        quickActions={[
+          { label: '5x', value: '5', icon: 'repeat' },
+          { label: '10x', value: '10', icon: 'repeat' },
+          { label: '20x', value: '20', icon: 'repeat' },
+        ]}
         maxLabel={text.max}
         cancelLabel={text.cancel}
         submitLabel={text.confirm}

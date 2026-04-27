@@ -1,4 +1,9 @@
 import { getTrackPlayerModule } from './trackPlayer';
+import {
+  pauseContinuousPlayback,
+  resumeContinuousPlayback,
+  stopContinuousPlayback,
+} from './continuousPlaybackController';
 
 export async function playbackService() {
   const trackPlayerModule = getTrackPlayerModule();
@@ -14,14 +19,14 @@ export async function playbackService() {
   const { Event } = trackPlayerModule;
 
   TrackPlayer.addEventListener(Event.RemotePlay, () => {
-    void TrackPlayer.play();
+    void resumeContinuousPlayback();
   });
 
   TrackPlayer.addEventListener(Event.RemotePause, () => {
-    void TrackPlayer.pause();
+    void pauseContinuousPlayback();
   });
 
   TrackPlayer.addEventListener(Event.RemoteStop, () => {
-    void TrackPlayer.stop();
+    void stopContinuousPlayback();
   });
 }

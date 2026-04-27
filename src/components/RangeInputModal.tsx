@@ -4,6 +4,8 @@ import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
 import { onlyDigits } from '../utils/parsers';
 
+type FeatherIconName = React.ComponentProps<typeof Feather>['name'];
+
 type RangeInputModalProps = {
   visible: boolean;
   onClose: () => void;
@@ -14,6 +16,11 @@ type RangeInputModalProps = {
   minActionLabel?: string;
   maxValue?: number;
   maxActionLabel?: string;
+  quickActions?: Array<{
+    label: string;
+    value: string;
+    icon?: FeatherIconName;
+  }>;
   maxLabel: string;
   cancelLabel: string;
   submitLabel: string;
@@ -30,6 +37,7 @@ export function RangeInputModal({
   minActionLabel,
   maxValue,
   maxActionLabel,
+  quickActions = [],
   maxLabel,
   cancelLabel,
   submitLabel,
@@ -65,7 +73,7 @@ export function RangeInputModal({
             </Pressable>
           </View>
 
-          {(minValue !== undefined || maxValue !== undefined) && (
+          {(minValue !== undefined || maxValue !== undefined || quickActions.length > 0) && (
             <View style={styles.hintRow}>
               <Text style={[styles.hint, { color: theme.colors.TEXT_MUTED }]}>
                 {maxValue !== undefined ? `${maxLabel}: ${maxValue}` : ''}
@@ -89,6 +97,18 @@ export function RangeInputModal({
                     <Text style={[styles.maxButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{maxActionLabel}</Text>
                   </Pressable>
                 ) : null}
+                {quickActions.map((action) => (
+                  <Pressable
+                    key={`${action.label}:${action.value}`}
+                    style={[styles.maxButton, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}
+                    onPress={() => setValue(action.value)}
+                  >
+                    {action.icon ? (
+                      <Feather name={action.icon} size={13} color={theme.colors.ACCENT_PRIMARY} />
+                    ) : null}
+                    <Text style={[styles.maxButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{action.label}</Text>
+                  </Pressable>
+                ))}
               </View>
             </View>
           )}
@@ -171,6 +191,9 @@ const styles = StyleSheet.create({
   shortcutActions: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'flex-end',
+    flexShrink: 1,
+    flexWrap: 'wrap',
     gap: 8,
   },
   maxButton: {

@@ -3,7 +3,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFonts } from 'expo-font';
 import {
   ActivityIndicator,
-  AppState,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -48,6 +47,7 @@ import { ThemeProvider, useTheme } from './src/hooks/useTheme';
 import type { VerseLocation } from './src/types/navigation';
 import type { Verse } from './src/types/quran';
 import { parsePositiveInt, parseSurahId } from './src/utils/parsers';
+import { getPageEndVerseNumber } from './src/utils/rangeSelection';
 
 void SplashScreen.preventAutoHideAsync();
 
@@ -174,6 +174,10 @@ function MainApp({ settings }: MainAppProps) {
     onActiveVerseChange: handleActiveVerseChange,
   });
   const currentPlayingVerse = player.activeVerse;
+  const pageEndVerseNumber = useMemo(
+    () => getPageEndVerseNumber(computed.currentPageVerses, currentPage, selectedSurahId),
+    [computed.currentPageVerses, currentPage, selectedSurahId]
+  );
   const downloadManager = useDownloadManager({
     isOpen: isDownloadManagerOpen,
     text,
@@ -229,18 +233,6 @@ function MainApp({ settings }: MainAppProps) {
       endVerse: nextEndVerse,
     };
   }, [getCurrentRangeSize]);
-
-  useEffect(() => {
-    const subscription = AppState.addEventListener('change', (nextState) => {
-      if (nextState === 'background') {
-        void player.stopPlayback();
-      }
-    });
-
-    return () => {
-      subscription.remove();
-    };
-  }, [player.stopPlayback]);
 
   useEffect(() => {
     const normalizedCurrentPage = Math.max(1, currentPage);
@@ -642,6 +634,7 @@ function MainApp({ settings }: MainAppProps) {
             onEndVerseChange={setEndVerseInput}
             onRepeatCountChange={setRepeatCountInput}
             maxVerseInSurah={surahDetail?.verse_count}
+            pageEndVerseNumber={pageEndVerseNumber}
             playbackStatus={player.playbackStatus}
             onStart={() => void handleStartPlayback()}
             onPause={() => void player.pausePlayback()}
@@ -666,6 +659,7 @@ function MainApp({ settings }: MainAppProps) {
               nextPage: text.nextPage,
               settings: text.settings,
               lastVerse: text.lastVerse,
+              pageEndVerse: text.pageEndVerse,
               cancel: text.cancel,
               confirm: text.confirm,
               max: text.max,

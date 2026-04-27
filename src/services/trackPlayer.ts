@@ -27,6 +27,7 @@ type TrackPlayerModule = {
     Off: unknown;
   };
   AppKilledPlaybackBehavior: {
+    ContinuePlayback: unknown;
     StopPlaybackAndRemoveNotification: unknown;
   };
 };

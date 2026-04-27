@@ -10,6 +10,7 @@ export type TranslationStrings = {
   endVerse: string;
   firstVerse: string;
   lastVerse: string;
+  pageEndVerse: string;
   verseCount: string;
   ayahUnit: string;
   repeat: string;
