@@ -35,7 +35,7 @@ Android production builds produce an APK. iOS builds are intentionally not confi
 
 ## Data sources
 
-- Quran text: QPC Hafs text via Quran.com/Quran.Foundation content API.
+- Quran text: Uthmani text via Quran.com/Quran.Foundation content API.
 - Translations and Turkish transcription: https://api.acikkuran.com
 - Audio and ayah timing: QUL/Tarteel recitation `13` for Saad Al-Ghamdi.
 - The app uses embedded full-surah MP3 references and timing data from `assets/data/recitations/qul-recitation-13.json`.

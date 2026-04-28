@@ -77,6 +77,18 @@ jobs:
       - name: Run Expo prebuild
         run: CI=1 npx expo prebuild --platform android --no-install
 
+      - name: Build Android development APK
+        working-directory: android
+        run: ./gradlew :app:assembleDebug --stacktrace --warning-mode all
+
+      - name: Upload Android development APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-development-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Build Android production APK
         working-directory: android
         env:
@@ -107,6 +119,7 @@ jobs:
           script: |
             const keepPerName = 5;
             const artifactNames = new Set([
+              'android-development-apk',
               'android-production-apk',
             ]);
 
