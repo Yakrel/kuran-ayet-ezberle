@@ -23,7 +23,7 @@ export type QuranFontOption = {
 
 export const DEFAULT_QURAN_FONT_ID: QuranFontId = 'scheherazade';
 export const UTHMANIC_HAFS_FONT_FAMILY = 'UthmanicHafs';
-export const QURAN_FONT_PREVIEW_TEXT = 'ذَٰلِكَ ٱلْكِتَـٰبُ لَا رَيْبَ ۛ فِيهِ ۛ';
+export const QURAN_FONT_PREVIEW_TEXT = 'لَا أُقْسِمُ بِيَوْمِ الْقِيَامَةِ';
 
 export const QURAN_FONT_OPTIONS: QuranFontOption[] = [
   {

@@ -30,17 +30,17 @@ function loadCurrentQuranData() {
   return JSON.parse(readFileSync(QURAN_DATA_PATH, 'utf8'));
 }
 
-function fetchUthmaniByKey(surahIds) {
+function fetchImlaeiByKey(surahIds) {
   const byKey = new Map();
 
   for (const surahId of surahIds) {
-    console.log(`Fetching Uthmani text for surah ${surahId}/${surahIds.length}...`);
-    const payload = fetchJson(`https://api.quran.com/api/v4/quran/verses/uthmani?chapter_number=${surahId}`);
+    console.log(`Fetching Imlaei text for surah ${surahId}/${surahIds.length}...`);
+    const payload = fetchJson(`https://api.quran.com/api/v4/quran/verses/imlaei?chapter_number=${surahId}`);
     const verses = payload.verses ?? [];
     for (const verse of verses) {
-      assertNonEmptyString(verse.verse_key, `Uthmani verse key is missing for surah ${surahId}.`);
-      assertNonEmptyString(verse.text_uthmani, `Uthmani text is missing for ${verse.verse_key}.`);
-      byKey.set(verse.verse_key, verse.text_uthmani.normalize('NFC').trim());
+      assertNonEmptyString(verse.verse_key, `Imlaei verse key is missing for surah ${surahId}.`);
+      assertNonEmptyString(verse.text_imlaei, `Imlaei text is missing for ${verse.verse_key}.`);
+      byKey.set(verse.verse_key, verse.text_imlaei.normalize('NFC').trim());
     }
   }
 
@@ -71,7 +71,7 @@ function buildDataset() {
   const currentData = loadCurrentQuranData();
   const surahs = currentData.surahs ?? [];
   const surahIds = surahs.map((surah) => surah.id);
-  const uthmaniByKey = fetchUthmaniByKey(surahIds);
+  const imlaeiByKey = fetchImlaeiByKey(surahIds);
   const transcriptionsByKey = fetchTranscriptionsByKey(surahIds);
   let verseCount = 0;
 
@@ -90,15 +90,15 @@ function buildDataset() {
         ...surah,
         verses: surah.verses.map((verse) => {
           const verseKey = getVerseKey(surah.id, verse.verse_number);
-          const uthmaniText = uthmaniByKey.get(verseKey);
+          const imlaeiText = imlaeiByKey.get(verseKey);
           const transcription = transcriptionsByKey.get(verseKey);
-          assertNonEmptyString(uthmaniText, `Uthmani text is missing for ${verseKey}.`);
+          assertNonEmptyString(imlaeiText, `Imlaei text is missing for ${verseKey}.`);
           assertNonEmptyString(transcription, `Transcription is missing for ${verseKey}.`);
           verseCount += 1;
 
           return {
             ...verse,
-            verse: uthmaniText,
+            verse: imlaeiText,
             transcription,
           };
         }),
@@ -109,8 +109,8 @@ function buildDataset() {
   if (verseCount !== TOTAL_VERSE_COUNT) {
     throw new Error(`Expected ${TOTAL_VERSE_COUNT} ayahs, found ${verseCount}.`);
   }
-  if (uthmaniByKey.size !== TOTAL_VERSE_COUNT) {
-    throw new Error(`Expected ${TOTAL_VERSE_COUNT} Uthmani ayahs, found ${uthmaniByKey.size}.`);
+  if (imlaeiByKey.size !== TOTAL_VERSE_COUNT) {
+    throw new Error(`Expected ${TOTAL_VERSE_COUNT} Imlaei ayahs, found ${imlaeiByKey.size}.`);
   }
   if (transcriptionsByKey.size !== TOTAL_VERSE_COUNT) {
     throw new Error(`Expected ${TOTAL_VERSE_COUNT} transcriptions, found ${transcriptionsByKey.size}.`);
