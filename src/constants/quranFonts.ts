@@ -23,6 +23,8 @@ export type QuranFontOption = {
 
 export const DEFAULT_QURAN_FONT_ID: QuranFontId = 'scheherazade';
 export const UTHMANIC_HAFS_FONT_FAMILY = 'UthmanicHafs';
+// Keep this sample in Imlaei form. The app intentionally displays Imlaei
+// ayah text to avoid Uthmani/QPC marks that confused repeat-training users.
 export const QURAN_FONT_PREVIEW_TEXT = 'لَا أُقْسِمُ بِيَوْمِ الْقِيَامَةِ';
 
 export const QURAN_FONT_OPTIONS: QuranFontOption[] = [

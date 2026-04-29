@@ -6,6 +6,9 @@ const ROOT = process.cwd();
 const QURAN_DATA_PATH = resolve(ROOT, 'assets/data/quran.json');
 const TOTAL_VERSE_COUNT = 6236;
 
+// Product decision: use Quran.com's Imlaei text for display.
+// It keeps the trainer readable by avoiding mushaf-specific Uthmani/QPC signs
+// such as tatweel, alef wasla, and pause glyphs that looked like rendering bugs.
 function fetchJson(url) {
   const response = execFileSync('curl', ['-sfL', url], {
     cwd: ROOT,
