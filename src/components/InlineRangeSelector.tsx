@@ -6,9 +6,11 @@ import { useTheme } from '../hooks/useTheme';
 type InlineRangeSelectorProps = {
   startVerse: string;
   endVerse: string;
+  playbackRateLabel: string;
   repeatCount: string;
   onStartPress: () => void;
   onEndPress: () => void;
+  onSpeedPress: () => void;
   onRepeatPress: () => void;
   startLabel: string;
   endLabel: string;
@@ -18,9 +20,11 @@ type InlineRangeSelectorProps = {
 export function InlineRangeSelector({
   startVerse,
   endVerse,
+  playbackRateLabel,
   repeatCount,
   onStartPress,
   onEndPress,
+  onSpeedPress,
   onRepeatPress,
   startLabel,
   endLabel,
@@ -67,7 +71,22 @@ export function InlineRangeSelector({
       <Pressable
         style={[
           styles.inputPill,
-          styles.repeatPill,
+          styles.iconPill,
+          {
+            backgroundColor: themeType === 'DARK' ? 'rgba(245, 158, 11, 0.16)' : 'rgba(202, 138, 4, 0.14)',
+            borderColor: theme.colors.BORDER_SECONDARY,
+          },
+        ]}
+        onPress={onSpeedPress}
+      >
+        <Feather name="sliders" size={12} color={theme.colors.ACCENT_PRIMARY} />
+        <Text style={[styles.pillValue, { color: theme.colors.TEXT_PRIMARY }]}>{playbackRateLabel}</Text>
+      </Pressable>
+
+      <Pressable
+        style={[
+          styles.inputPill,
+          styles.iconPill,
           {
             backgroundColor: themeType === 'DARK' ? 'rgba(96, 165, 250, 0.16)' : 'rgba(38, 139, 210, 0.14)',
             borderColor: theme.colors.BORDER_SECONDARY,
@@ -98,7 +117,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     minWidth: 44,
   },
-  repeatPill: {
+  iconPill: {
     gap: 4,
   },
   pillLabel: {

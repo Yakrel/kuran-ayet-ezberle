@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Verse } from '../types/quran';
 import {
   getPlaybackSnapshot,
-  initializeContinuousPlayback,
   pauseContinuousPlayback,
   resumeContinuousPlayback,
   setContinuousPlaybackRate,
@@ -44,10 +43,6 @@ export function useContinuousPlayer({ onError, onActiveVerseChange }: UseContinu
       setPlayerState(nextSnapshot);
     });
     const unsubscribeErrors = subscribeToPlaybackErrors(onError);
-
-    void initializeContinuousPlayback().catch((error) => {
-      onError(error instanceof Error ? error.message : String(error));
-    });
 
     return () => {
       unsubscribeSnapshot();

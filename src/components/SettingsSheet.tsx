@@ -24,8 +24,6 @@ type SettingsSheetProps = {
   showTranscription: boolean;
   onShowTranscriptionChange: (enabled: boolean) => void;
   onThemeChange: (theme: ThemeType) => void;
-  playbackRate: number;
-  onPlaybackRateChange: (rate: number) => void;
   onAboutPress: () => void;
   onManageDownloadsPress: () => void;
   text: TranslationStrings;
@@ -63,7 +61,6 @@ export function SettingsSheet({
               themeText={text.theme}
               themeDarkText={text.themeDark}
               themePaperText={text.themePaper}
-              playbackSpeedText={text.playbackSpeed}
               aboutText={text.about}
               manageDownloadsText={text.manageDownloads}
               onText={text.on}
@@ -80,14 +77,18 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(2, 6, 23, 0.72)',
-    justifyContent: 'center',
-    padding: staticTheme.spacing.XL,
+    justifyContent: 'flex-end',
   },
   modalContent: {
-    maxHeight: '88%',
+    width: '100%',
+    maxHeight: '90%',
     borderRadius: staticTheme.borderRadius.XXLARGE,
+    borderBottomLeftRadius: 0,
+    borderBottomRightRadius: 0,
     borderWidth: 1,
-    padding: staticTheme.spacing.LG,
+    paddingHorizontal: staticTheme.spacing.LG,
+    paddingTop: staticTheme.spacing.LG,
+    paddingBottom: staticTheme.spacing.MD,
     gap: staticTheme.spacing.MD,
   },
   modalHeader: {
@@ -107,6 +108,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   modalScroll: {
-    gap: staticTheme.spacing.MD,
+    paddingBottom: staticTheme.spacing.LG,
   },
 });

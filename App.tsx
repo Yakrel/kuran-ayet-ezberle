@@ -28,6 +28,7 @@ import { TRANSLATION_OPTIONS } from './src/constants/authors';
 import {
   APP_VERSION,
   DEVELOPER_NAME,
+  DEFAULT_RANGE_SIZE,
   TOTAL_QURAN_PAGES,
 } from './src/constants/defaults';
 import { SURAH_LIST } from './src/constants/surahList';
@@ -200,12 +201,12 @@ function MainApp({ settings }: MainAppProps) {
   const getCurrentRangeSize = useCallback(() => {
     const startVerse = parsePositiveInt(startVerseInput);
     const endVerse = parsePositiveInt(endVerseInput);
-    if (startVerse === null || endVerse === null) {
-      throw new Error(text.rangeInputError);
+    if (startVerse === null || endVerse === null || endVerse < startVerse) {
+      return DEFAULT_RANGE_SIZE;
     }
 
     return Math.max(endVerse - startVerse, 0);
-  }, [endVerseInput, startVerseInput, text.rangeInputError]);
+  }, [endVerseInput, startVerseInput]);
 
   const applyViewportToVerse = useCallback((verse: Verse) => {
     setCurrentPage((previousPage) => (previousPage === verse.page ? previousPage : verse.page));
@@ -644,6 +645,8 @@ function MainApp({ settings }: MainAppProps) {
             onPause={() => void player.pausePlayback()}
             onResume={() => void player.resumePlayback()}
             onStop={() => void player.stopPlayback()}
+            playbackRate={player.playbackRate}
+            onPlaybackRateChange={(rate) => void player.setPlaybackRate(rate)}
             onSettingsPress={() => setIsSettingsOpen(true)}
             text={{
               surah: text.surah,
@@ -662,11 +665,14 @@ function MainApp({ settings }: MainAppProps) {
               previousPage: text.previousPage,
               nextPage: text.nextPage,
               settings: text.settings,
+              playbackSpeed: text.playbackSpeed,
+              invalidPlaybackSpeed: text.invalidPlaybackSpeed,
               lastVerse: text.lastVerse,
               pageEndVerse: text.pageEndVerse,
               cancel: text.cancel,
               confirm: text.confirm,
               max: text.max,
+              rangeInputError: text.rangeInputError,
             }}
           />
         </View>
@@ -712,8 +718,6 @@ function MainApp({ settings }: MainAppProps) {
           showTranscription={showTranscription}
           onShowTranscriptionChange={setShowTranscription}
           onThemeChange={setThemeType}
-          playbackRate={player.playbackRate}
-          onPlaybackRateChange={player.setPlaybackRate}
           onAboutPress={() => {
             setIsSettingsOpen(false);
             setIsAboutOpen(true);

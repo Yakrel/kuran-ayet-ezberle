@@ -9,6 +9,7 @@ import {
   buildContinuousPlaybackSession,
   type PlaybackSession,
 } from '../utils/continuousPlaybackSession';
+import { MAX_PLAYBACK_RATE, MIN_PLAYBACK_RATE } from '../utils/playbackRate';
 import { getTrackPlayerModule, getTrackPlayerUnavailableReason } from './trackPlayer';
 
 export type PlaybackStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'stopped';
@@ -534,6 +535,16 @@ export async function stopContinuousPlayback() {
 }
 
 export async function setContinuousPlaybackRate(rate: number) {
+  if (!Number.isFinite(rate) || rate < MIN_PLAYBACK_RATE || rate > MAX_PLAYBACK_RATE) {
+    notifyError(`Playback rate must be between ${MIN_PLAYBACK_RATE}x and ${MAX_PLAYBACK_RATE}x.`);
+    return;
+  }
+
+  setSnapshot({ playbackRate: rate });
+  if (!setupPromise) {
+    return;
+  }
+
   const TrackPlayer = getPlayerApi();
   if (!TrackPlayer) {
     notifyError(getTrackPlayerUnavailableReason() ?? 'TrackPlayer is unavailable.');
@@ -542,7 +553,6 @@ export async function setContinuousPlaybackRate(rate: number) {
 
   try {
     await TrackPlayer.setRate(rate);
-    setSnapshot({ playbackRate: rate });
 
     if (session && snapshot.playbackStatus === 'playing') {
       await scheduleBoundaryTimer();

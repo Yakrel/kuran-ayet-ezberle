@@ -22,8 +22,6 @@ type SettingsPanelProps = {
   onAutoScrollChange: (enabled: boolean) => void;
   showTranscription: boolean;
   onShowTranscriptionChange: (enabled: boolean) => void;
-  playbackRate: number;
-  onPlaybackRateChange: (rate: number) => void;
   languageText: string;
   languageTurkishText: string;
   languageEnglishText: string;
@@ -35,7 +33,6 @@ type SettingsPanelProps = {
   themeDarkText: string;
   themePaperText: string;
   onThemeChange: (theme: ThemeType) => void;
-  playbackSpeedText: string;
   aboutText: string;
   manageDownloadsText: string;
   onText: string;
@@ -49,7 +46,7 @@ type SelectOption<T extends string | number> = {
   label: string;
 };
 
-type ActiveSelectKey = 'language' | 'theme' | 'speed' | 'translation' | 'quranFont' | null;
+type ActiveSelectKey = 'language' | 'theme' | 'translation' | 'quranFont' | null;
 
 export function SettingsPanel({
   language,
@@ -64,8 +61,6 @@ export function SettingsPanel({
   onAutoScrollChange,
   showTranscription,
   onShowTranscriptionChange,
-  playbackRate,
-  onPlaybackRateChange,
   languageText,
   languageTurkishText,
   languageEnglishText,
@@ -77,7 +72,6 @@ export function SettingsPanel({
   themeDarkText,
   themePaperText,
   onThemeChange,
-  playbackSpeedText,
   aboutText,
   manageDownloadsText,
   onText,
@@ -98,14 +92,6 @@ export function SettingsPanel({
   const themeOptions: Array<SelectOption<ThemeType>> = [
     { value: 'DARK', label: themeDarkText },
     { value: 'PAPER', label: themePaperText },
-  ];
-
-  const speedOptions: Array<SelectOption<number>> = [
-    { value: 0.5, label: '0.5x' },
-    { value: 0.75, label: '0.75x' },
-    { value: 1.0, label: '1.0x' },
-    { value: 1.25, label: '1.25x' },
-    { value: 1.5, label: '1.5x' },
   ];
 
   const translationPickerOptions = useMemo<Array<SelectOption<number>>>(
@@ -135,8 +121,6 @@ export function SettingsPanel({
     ? languageText
     : activeSelect === 'theme'
     ? themeText
-    : activeSelect === 'speed'
-    ? playbackSpeedText
     : activeSelect === 'translation'
     ? translationText
     : activeSelect === 'quranFont'
@@ -147,8 +131,6 @@ export function SettingsPanel({
     ? languageOptions
     : activeSelect === 'theme'
     ? themeOptions
-    : activeSelect === 'speed'
-    ? speedOptions
     : activeSelect === 'translation'
     ? translationPickerOptions
     : activeSelect === 'quranFont'
@@ -159,8 +141,6 @@ export function SettingsPanel({
     ? language
     : activeSelect === 'theme'
     ? themeType
-    : activeSelect === 'speed'
-    ? playbackRate
     : activeSelect === 'translation'
     ? selectedTranslationAuthorId
     : activeSelect === 'quranFont'
@@ -262,43 +242,48 @@ export function SettingsPanel({
 
   return (
     <View style={styles.settingsPanel}>
-      {renderSelectField('language', languageText, language, languageOptions, onLanguageChange)}
-      {renderSelectField('theme', themeText, themeType, themeOptions, (nextTheme) => onThemeChange(nextTheme as ThemeType))}
-      {renderSelectField('speed', playbackSpeedText, playbackRate, speedOptions, (nextRate) => onPlaybackRateChange(Number(nextRate)))}
+      <View style={styles.compactGrid}>
+        {renderSelectField('language', languageText, language, languageOptions, onLanguageChange)}
+        {renderSelectField('theme', themeText, themeType, themeOptions, (nextTheme) => onThemeChange(nextTheme as ThemeType))}
+      </View>
+
       {renderSelectField('translation', translationText, selectedTranslationAuthorId, translationPickerOptions, (nextAuthorId) => onTranslationChange(Number(nextAuthorId)))}
+
+      <View style={styles.compactGrid}>
+        <View style={styles.settingsGroup}>
+          <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{autoScrollText}</Text>
+          <View style={[styles.switchRow, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
+            <Text style={[styles.switchValue, { color: theme.colors.TEXT_SECONDARY }]}>{autoScrollEnabled ? onText : offText}</Text>
+            <Switch
+              value={autoScrollEnabled}
+              onValueChange={onAutoScrollChange}
+              trackColor={{
+                false: theme.colors.BORDER_SECONDARY,
+                true: theme.colors.ACCENT_PRIMARY,
+              }}
+              thumbColor={theme.colors.TEXT_PRIMARY}
+            />
+          </View>
+        </View>
+
+        <View style={styles.settingsGroup}>
+          <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{showTranscriptionText}</Text>
+          <View style={[styles.switchRow, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
+            <Text style={[styles.switchValue, { color: theme.colors.TEXT_SECONDARY }]}>{showTranscription ? onText : offText}</Text>
+            <Switch
+              value={showTranscription}
+              onValueChange={onShowTranscriptionChange}
+              trackColor={{
+                false: theme.colors.BORDER_SECONDARY,
+                true: theme.colors.ACCENT_PRIMARY,
+              }}
+              thumbColor={theme.colors.TEXT_PRIMARY}
+            />
+          </View>
+        </View>
+      </View>
+
       {renderQuranFontField(selectedQuranFont)}
-
-      <View style={styles.settingsGroup}>
-        <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{autoScrollText}</Text>
-        <View style={[styles.switchRow, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
-          <Text style={[styles.switchValue, { color: theme.colors.TEXT_SECONDARY }]}>{autoScrollEnabled ? onText : offText}</Text>
-          <Switch
-            value={autoScrollEnabled}
-            onValueChange={onAutoScrollChange}
-            trackColor={{
-              false: theme.colors.BORDER_SECONDARY,
-              true: theme.colors.ACCENT_PRIMARY,
-            }}
-            thumbColor={theme.colors.TEXT_PRIMARY}
-          />
-        </View>
-      </View>
-
-      <View style={styles.settingsGroup}>
-        <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{showTranscriptionText}</Text>
-        <View style={[styles.switchRow, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
-          <Text style={[styles.switchValue, { color: theme.colors.TEXT_SECONDARY }]}>{showTranscription ? onText : offText}</Text>
-          <Switch
-            value={showTranscription}
-            onValueChange={onShowTranscriptionChange}
-            trackColor={{
-              false: theme.colors.BORDER_SECONDARY,
-              true: theme.colors.ACCENT_PRIMARY,
-            }}
-            thumbColor={theme.colors.TEXT_PRIMARY}
-          />
-        </View>
-      </View>
 
       <View style={styles.footerButtons}>
         <Pressable 
@@ -358,8 +343,6 @@ export function SettingsPanel({
                         onLanguageChange(option.value as LanguageCode);
                       } else if (activeSelect === 'theme') {
                         onThemeChange(option.value as ThemeType);
-                      } else if (activeSelect === 'speed') {
-                        onPlaybackRateChange(Number(option.value));
                       } else if (activeSelect === 'translation') {
                         onTranslationChange(Number(option.value));
                       } else if (activeSelect === 'quranFont') {
@@ -406,13 +389,16 @@ export function SettingsPanel({
 
 const styles = StyleSheet.create({
   settingsPanel: {
-    marginTop: 16,
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 1,
-    gap: 16,
+    gap: 14,
+  },
+  compactGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
   },
   settingsGroup: {
+    flex: 1,
+    minWidth: 150,
     gap: 5,
   },
   settingsLabel: {
@@ -424,7 +410,7 @@ const styles = StyleSheet.create({
   settingsPickerWrapper: {
     borderWidth: 1,
     borderRadius: 12,
-    height: 48,
+    minHeight: 46,
     justifyContent: 'center',
   },
   settingsPicker: {
@@ -442,7 +428,7 @@ const styles = StyleSheet.create({
     }),
   },
   themedSelectButton: {
-    minHeight: 48,
+    minHeight: 46,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 14,
@@ -462,7 +448,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 2,
   },
   switchRow: {
-    minHeight: 48,
+    minHeight: 46,
     borderWidth: 1,
     borderRadius: 12,
     paddingHorizontal: 16,
@@ -475,10 +461,14 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   footerButtons: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: 10,
-    marginTop: 8,
+    marginTop: 2,
   },
   footerButton: {
+    flex: 1,
+    minWidth: 150,
     borderWidth: 1,
     borderRadius: 12,
     paddingVertical: 14,

@@ -24,6 +24,7 @@ type RangeInputModalProps = {
   maxLabel: string;
   cancelLabel: string;
   submitLabel: string;
+  validationErrorLabel?: string;
   placeholder?: string;
 };
 
@@ -41,24 +42,39 @@ export function RangeInputModal({
   maxLabel,
   cancelLabel,
   submitLabel,
+  validationErrorLabel,
   placeholder = '1',
 }: RangeInputModalProps) {
   const [value, setValue] = useState(initialValue);
+  const [error, setError] = useState<string | null>(null);
   const { theme, themeType } = useTheme();
 
   useEffect(() => {
     if (visible) {
       setValue(initialValue);
+      setError(null);
     }
   }, [initialValue, visible]);
 
   const handleSubmit = () => {
+    const parsedValue = Number.parseInt(value, 10);
+    const minimumValue = minValue ?? 1;
+    if (
+      !Number.isInteger(parsedValue) ||
+      parsedValue < minimumValue ||
+      (maxValue !== undefined && parsedValue > maxValue)
+    ) {
+      setError(validationErrorLabel ?? `${maxLabel}: ${maxValue ?? minimumValue}`);
+      return;
+    }
+
     onSubmit(value);
     onClose();
   };
 
   const handleClose = () => {
     setValue(initialValue);
+    setError(null);
     onClose();
   };
 
@@ -73,7 +89,7 @@ export function RangeInputModal({
             </Pressable>
           </View>
 
-          {(minValue !== undefined || maxValue !== undefined || quickActions.length > 0) && (
+          {(maxValue !== undefined || minActionLabel || maxActionLabel || quickActions.length > 0) && (
             <View style={styles.hintRow}>
               <Text style={[styles.hint, { color: theme.colors.TEXT_MUTED }]}>
                 {maxValue !== undefined ? `${maxLabel}: ${maxValue}` : ''}
@@ -82,7 +98,10 @@ export function RangeInputModal({
                 {minValue !== undefined && minActionLabel ? (
                   <Pressable
                     style={[styles.maxButton, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}
-                    onPress={() => setValue(String(minValue))}
+                    onPress={() => {
+                      setValue(String(minValue));
+                      setError(null);
+                    }}
                   >
                     <Feather name="skip-back" size={13} color={theme.colors.ACCENT_PRIMARY} />
                     <Text style={[styles.maxButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{minActionLabel}</Text>
@@ -91,7 +110,10 @@ export function RangeInputModal({
                 {maxValue !== undefined && maxActionLabel ? (
                   <Pressable
                     style={[styles.maxButton, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}
-                    onPress={() => setValue(String(maxValue))}
+                    onPress={() => {
+                      setValue(String(maxValue));
+                      setError(null);
+                    }}
                   >
                     <Feather name="skip-forward" size={13} color={theme.colors.ACCENT_PRIMARY} />
                     <Text style={[styles.maxButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{maxActionLabel}</Text>
@@ -101,7 +123,10 @@ export function RangeInputModal({
                   <Pressable
                     key={`${action.label}:${action.value}`}
                     style={[styles.maxButton, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}
-                    onPress={() => setValue(action.value)}
+                    onPress={() => {
+                      setValue(action.value);
+                      setError(null);
+                    }}
                   >
                     {action.icon ? (
                       <Feather name={action.icon} size={13} color={theme.colors.ACCENT_PRIMARY} />
@@ -115,15 +140,24 @@ export function RangeInputModal({
 
           <TextInput
             value={value}
-            onChangeText={(text) => setValue(onlyDigits(text))}
+            onChangeText={(text) => {
+              setValue(onlyDigits(text));
+              setError(null);
+            }}
             onSubmitEditing={handleSubmit}
             keyboardType="number-pad"
             autoFocus
             selectTextOnFocus
-            style={[styles.input, { color: theme.colors.TEXT_PRIMARY, backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}
+            style={[
+              styles.input,
+              { color: theme.colors.TEXT_PRIMARY, backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY },
+              error && { borderColor: theme.colors.ERROR },
+            ]}
             placeholder={placeholder}
             placeholderTextColor={theme.colors.TEXT_PLACEHOLDER}
           />
+
+          {error ? <Text style={[styles.errorText, { color: theme.colors.ERROR }]}>{error}</Text> : null}
 
           <View style={styles.actions}>
             <Pressable
@@ -217,6 +251,11 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '800',
     textAlign: 'center',
+  },
+  errorText: {
+    marginTop: -8,
+    fontSize: 12,
+    fontWeight: '700',
   },
   actions: {
     flexDirection: 'row',

@@ -53,9 +53,9 @@ export function DownloadManagerSheet({
             <Text style={[styles.downloadHint, { color: theme.colors.TEXT_MUTED }]}>
               {text.selectedReciterOnlyHint(selectedReciterLabel)}
             </Text>
-            <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.storageUsed}: ${cacheStats.megabytes} MB`}</Text>
             <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.readySurahs}: ${cacheStats.readySurahs}/${cacheStats.totalSurahs}`}</Text>
-            <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.cachedFiles}: ${cacheStats.files} MP3`}</Text>
+            <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.downloadedSurahFiles}: ${cacheStats.files} MP3`}</Text>
+            <Text style={[styles.downloadStat, { color: theme.colors.TEXT_PRIMARY }]}>{`${text.storageUsed}: ${cacheStats.megabytes} MB`}</Text>
             {downloadProgressLabel ? <Text style={[styles.downloadHint, { color: theme.colors.TEXT_MUTED }]}>{downloadProgressLabel}</Text> : null}
 
             <Pressable

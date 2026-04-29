@@ -25,6 +25,7 @@ export type TranslationStrings = {
   themeDark: string;
   themePaper: string;
   playbackSpeed: string;
+  invalidPlaybackSpeed: string;
   page: string;
   range: string;
   location: string;
@@ -53,6 +54,7 @@ export type TranslationStrings = {
   selectedReciterOnlyHint: (reciter: string) => string;
   storageUsed: string;
   readySurahs: string;
+  downloadedSurahFiles: string;
   downloadingSelectedReciter: (reciter: string) => string;
   downloadCompleteForReciter: (reciter: string) => string;
   lowStorageWarning: string;

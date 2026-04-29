@@ -3,10 +3,12 @@ import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { SurahPicker } from './SurahPicker';
 import { InlineRangeSelector } from './InlineRangeSelector';
+import { PlaybackSpeedModal } from './PlaybackSpeedModal';
 import { RangeInputModal } from './RangeInputModal';
 import type { SurahSummary } from '../types/quran';
 import { useTheme } from '../hooks/useTheme';
 import { onlyDigits } from '../utils/parsers';
+import { formatPlaybackRate } from '../utils/playbackRate';
 import { UI_SIZES } from '../constants/spacing';
 import { TOTAL_QURAN_PAGES } from '../constants/defaults';
 
@@ -39,6 +41,8 @@ type CompactHeaderProps = {
   onPause: () => void;
   onResume: () => void;
   onStop: () => void;
+  playbackRate: number;
+  onPlaybackRateChange: (rate: number) => void;
   
   // Settings
   onSettingsPress: () => void;
@@ -61,11 +65,14 @@ type CompactHeaderProps = {
     previousPage: string;
     nextPage: string;
     settings: string;
+    playbackSpeed: string;
+    invalidPlaybackSpeed: string;
     lastVerse: string;
     pageEndVerse: string;
     cancel: string;
     confirm: string;
     max: string;
+    rangeInputError: string;
   };
 };
 
@@ -94,11 +101,13 @@ export function CompactHeader({
   onPause,
   onResume,
   onStop,
+  playbackRate,
+  onPlaybackRateChange,
   onSettingsPress,
   text,
 }: CompactHeaderProps) {
   const { theme, themeType } = useTheme();
-  const [rangeModalType, setRangeModalType] = useState<'start' | 'end' | 'repeat' | null>(null);
+  const [rangeModalType, setRangeModalType] = useState<'start' | 'end' | 'repeat' | 'speed' | null>(null);
   const normalizedCurrentPageInput = currentPageInput === '0' ? '1' : currentPageInput;
 
   const isPlaying = playbackStatus === 'playing';
@@ -182,9 +191,11 @@ export function CompactHeader({
           <InlineRangeSelector
             startVerse={startVerseInput}
             endVerse={endVerseInput}
+            playbackRateLabel={formatPlaybackRate(playbackRate)}
             repeatCount={repeatCountInput}
             onStartPress={() => setRangeModalType('start')}
             onEndPress={() => setRangeModalType('end')}
+            onSpeedPress={() => setRangeModalType('speed')}
             onRepeatPress={() => setRangeModalType('repeat')}
             startLabel={text.startVerse}
             endLabel={text.endVerse}
@@ -245,6 +256,7 @@ export function CompactHeader({
         maxLabel={text.max}
         cancelLabel={text.cancel}
         submitLabel={text.confirm}
+        validationErrorLabel={text.rangeInputError}
         placeholder="1"
       />
       <RangeInputModal
@@ -253,6 +265,7 @@ export function CompactHeader({
         title={text.endVerse}
         initialValue={endVerseInput}
         onSubmit={onEndVerseChange}
+        minValue={1}
         maxValue={maxVerseInSurah}
         maxActionLabel={text.lastVerse}
         quickActions={
@@ -263,6 +276,7 @@ export function CompactHeader({
         maxLabel={text.max}
         cancelLabel={text.cancel}
         submitLabel={text.confirm}
+        validationErrorLabel={text.rangeInputError}
         placeholder="1"
       />
       <RangeInputModal
@@ -271,6 +285,7 @@ export function CompactHeader({
         title={text.repeat}
         initialValue={repeatCountInput}
         onSubmit={onRepeatCountChange}
+        minValue={1}
         quickActions={[
           { label: '5x', value: '5', icon: 'repeat' },
           { label: '10x', value: '10', icon: 'repeat' },
@@ -279,7 +294,18 @@ export function CompactHeader({
         maxLabel={text.max}
         cancelLabel={text.cancel}
         submitLabel={text.confirm}
+        validationErrorLabel={text.rangeInputError}
         placeholder="1"
+      />
+      <PlaybackSpeedModal
+        visible={rangeModalType === 'speed'}
+        onClose={() => setRangeModalType(null)}
+        title={text.playbackSpeed}
+        currentRate={playbackRate}
+        onSubmit={onPlaybackRateChange}
+        invalidText={text.invalidPlaybackSpeed}
+        cancelLabel={text.cancel}
+        submitLabel={text.confirm}
       />
     </View>
   );
