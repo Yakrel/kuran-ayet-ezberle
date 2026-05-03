@@ -156,8 +156,9 @@ export function CompactHeader({
               keyboardType="number-pad"
               style={[styles.pageInput, { color: theme.colors.TEXT_PRIMARY }]}
               selectTextOnFocus
+              allowFontScaling={false}
             />
-            <Text style={[styles.pageTotal, { color: theme.colors.TEXT_MUTED }]}>/{TOTAL_QURAN_PAGES}</Text>
+            <Text allowFontScaling={false} style={[styles.pageTotal, { color: theme.colors.TEXT_MUTED }]}>/{TOTAL_QURAN_PAGES}</Text>
           </View>
 
           <Pressable
@@ -234,7 +235,7 @@ export function CompactHeader({
                 accessibilityLabel={isPaused ? text.resume : text.start}
               >
                 <Feather name="play" size={16} color={themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff'} />
-                <Text style={[styles.actionButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>
+                <Text allowFontScaling={false} style={[styles.actionButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>
                   {isPaused ? text.resume : text.start}
                 </Text>
               </Pressable>

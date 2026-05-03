@@ -83,7 +83,7 @@ export function RangeInputModal({
       <View style={styles.overlay}>
         <View style={[styles.content, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}>
           <View style={styles.header}>
-            <Text style={[styles.title, { color: theme.colors.TEXT_PRIMARY }]}>{title}</Text>
+            <Text allowFontScaling={false} style={[styles.title, { color: theme.colors.TEXT_PRIMARY }]}>{title}</Text>
             <Pressable onPress={handleClose} style={[styles.closeButton, { backgroundColor: theme.colors.CARD_BG }]}>
               <Feather name="x" size={20} color={theme.colors.TEXT_SECONDARY} />
             </Pressable>
@@ -91,7 +91,7 @@ export function RangeInputModal({
 
           {(maxValue !== undefined || minActionLabel || maxActionLabel || quickActions.length > 0) && (
             <View style={styles.hintRow}>
-              <Text style={[styles.hint, { color: theme.colors.TEXT_MUTED }]}>
+              <Text allowFontScaling={false} style={[styles.hint, { color: theme.colors.TEXT_MUTED }]}>
                 {maxValue !== undefined ? `${maxLabel}: ${maxValue}` : ''}
               </Text>
               <View style={styles.shortcutActions}>
@@ -104,7 +104,7 @@ export function RangeInputModal({
                     }}
                   >
                     <Feather name="skip-back" size={13} color={theme.colors.ACCENT_PRIMARY} />
-                    <Text style={[styles.maxButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{minActionLabel}</Text>
+                    <Text allowFontScaling={false} style={[styles.maxButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{minActionLabel}</Text>
                   </Pressable>
                 ) : null}
                 {maxValue !== undefined && maxActionLabel ? (
@@ -116,7 +116,7 @@ export function RangeInputModal({
                     }}
                   >
                     <Feather name="skip-forward" size={13} color={theme.colors.ACCENT_PRIMARY} />
-                    <Text style={[styles.maxButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{maxActionLabel}</Text>
+                    <Text allowFontScaling={false} style={[styles.maxButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{maxActionLabel}</Text>
                   </Pressable>
                 ) : null}
                 {quickActions.map((action) => (
@@ -131,7 +131,7 @@ export function RangeInputModal({
                     {action.icon ? (
                       <Feather name={action.icon} size={13} color={theme.colors.ACCENT_PRIMARY} />
                     ) : null}
-                    <Text style={[styles.maxButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{action.label}</Text>
+                    <Text allowFontScaling={false} style={[styles.maxButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{action.label}</Text>
                   </Pressable>
                 ))}
               </View>
@@ -155,22 +155,23 @@ export function RangeInputModal({
             ]}
             placeholder={placeholder}
             placeholderTextColor={theme.colors.TEXT_PLACEHOLDER}
+            allowFontScaling={false}
           />
 
-          {error ? <Text style={[styles.errorText, { color: theme.colors.ERROR }]}>{error}</Text> : null}
+          {error ? <Text allowFontScaling={false} style={[styles.errorText, { color: theme.colors.ERROR }]}>{error}</Text> : null}
 
           <View style={styles.actions}>
             <Pressable
               style={[styles.actionButton, styles.cancelButton, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}
               onPress={handleClose}
             >
-              <Text style={[styles.cancelButtonText, { color: theme.colors.TEXT_SECONDARY }]}>{cancelLabel}</Text>
+              <Text allowFontScaling={false} style={[styles.cancelButtonText, { color: theme.colors.TEXT_SECONDARY }]}>{cancelLabel}</Text>
             </Pressable>
             <Pressable
               style={[styles.actionButton, styles.submitButton, { backgroundColor: theme.colors.ACCENT_PRIMARY }]}
               onPress={handleSubmit}
             >
-              <Text style={[styles.submitButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>{submitLabel}</Text>
+              <Text allowFontScaling={false} style={[styles.submitButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>{submitLabel}</Text>
             </Pressable>
           </View>
         </View>

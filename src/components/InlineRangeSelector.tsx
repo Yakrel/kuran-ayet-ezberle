@@ -44,8 +44,8 @@ export function InlineRangeSelector({
         ]}
         onPress={onStartPress}
       >
-        <Text style={[styles.pillLabel, { color: theme.colors.TEXT_TERTIARY }]}>{startLabel}</Text>
-        <Text style={[styles.pillValue, { color: theme.colors.TEXT_PRIMARY }]}>{startVerse}</Text>
+        <Text allowFontScaling={false} style={[styles.pillLabel, { color: theme.colors.TEXT_TERTIARY }]}>{startLabel}</Text>
+        <Text allowFontScaling={false} style={[styles.pillValue, { color: theme.colors.TEXT_PRIMARY }]}>{startVerse}</Text>
       </Pressable>
 
       <View style={styles.arrow}>
@@ -62,8 +62,8 @@ export function InlineRangeSelector({
         ]}
         onPress={onEndPress}
       >
-        <Text style={[styles.pillLabel, { color: theme.colors.TEXT_TERTIARY }]}>{endLabel}</Text>
-        <Text style={[styles.pillValue, { color: theme.colors.TEXT_PRIMARY }]}>{endVerse}</Text>
+        <Text allowFontScaling={false} style={[styles.pillLabel, { color: theme.colors.TEXT_TERTIARY }]}>{endLabel}</Text>
+        <Text allowFontScaling={false} style={[styles.pillValue, { color: theme.colors.TEXT_PRIMARY }]}>{endVerse}</Text>
       </Pressable>
 
       <View style={styles.divider} />
@@ -80,7 +80,7 @@ export function InlineRangeSelector({
         onPress={onSpeedPress}
       >
         <Feather name="sliders" size={12} color={theme.colors.ACCENT_PRIMARY} />
-        <Text style={[styles.pillValue, { color: theme.colors.TEXT_PRIMARY }]}>{playbackRateLabel}</Text>
+        <Text allowFontScaling={false} style={[styles.pillValue, { color: theme.colors.TEXT_PRIMARY }]}>{playbackRateLabel}</Text>
       </Pressable>
 
       <Pressable
@@ -95,7 +95,7 @@ export function InlineRangeSelector({
         onPress={onRepeatPress}
       >
         <Feather name="repeat" size={12} color={theme.colors.ACCENT_PRIMARY} />
-        <Text style={[styles.pillValue, { color: theme.colors.TEXT_PRIMARY }]}>{repeatCount}×</Text>
+        <Text allowFontScaling={false} style={[styles.pillValue, { color: theme.colors.TEXT_PRIMARY }]}>{repeatCount}×</Text>
       </Pressable>
     </View>
   );

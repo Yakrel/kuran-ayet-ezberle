@@ -103,6 +103,25 @@ function getPlayerApi() {
   return isTrackPlayerApi(candidate) ? candidate : null;
 }
 
+function isBenignPlayerCleanupError(error: unknown) {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const candidate = error as { code?: unknown; message?: unknown };
+  const code = typeof candidate.code === 'string' ? candidate.code : '';
+  const message = typeof candidate.message === 'string' ? candidate.message.toLowerCase() : '';
+
+  return (
+    code === 'player_not_initialized' ||
+    code === 'player_not_setup' ||
+    message.includes('not initialized') ||
+    message.includes('setupplayer') ||
+    message.includes('setup player') ||
+    message.includes('not setup')
+  );
+}
+
 function notifySnapshot() {
   for (const listener of snapshotListeners) {
     listener(snapshot);
@@ -229,6 +248,8 @@ async function ensurePlayerSetup() {
 }
 
 async function completeActiveSession(resetPlayer = true) {
+  const hadSession = session !== null;
+
   clearBoundaryTimer();
   continuousTransitionInFlight = false;
   continuousVerseIndex = 0;
@@ -239,9 +260,15 @@ async function completeActiveSession(resetPlayer = true) {
   });
 
   const TrackPlayer = getPlayerApi();
-  if (resetPlayer && TrackPlayer) {
-    await TrackPlayer.stop();
-    await TrackPlayer.reset();
+  if (resetPlayer && hadSession && TrackPlayer) {
+    try {
+      await TrackPlayer.stop();
+      await TrackPlayer.reset();
+    } catch (error) {
+      if (!isBenignPlayerCleanupError(error)) {
+        throw error;
+      }
+    }
   }
 
   session = null;

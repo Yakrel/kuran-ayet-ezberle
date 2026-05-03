@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Modal, Platform, ScrollView, StyleSheet, Switch, Text, View, Pressable } from 'react-native';
-import { Picker } from '@react-native-picker/picker';
+import { Modal, ScrollView, StyleSheet, Switch, Text, View, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import type { TranslationOption } from '../types/quran';
 import type { LanguageCode } from '../i18n/types';
@@ -80,8 +79,6 @@ export function SettingsPanel({
   onManageDownloadsPress,
 }: SettingsPanelProps) {
   const { theme, themeType } = useTheme();
-  const pickerMode = Platform.OS === 'android' && themeType === 'PAPER' ? 'dialog' : 'dropdown';
-  const useThemedSelect = Platform.OS === 'android' && themeType === 'PAPER';
   const [activeSelect, setActiveSelect] = useState<ActiveSelectKey>(null);
 
   const languageOptions: Array<SelectOption<LanguageCode>> = [
@@ -154,7 +151,7 @@ export function SettingsPanel({
   function renderQuranFontField(font: QuranFontOption) {
     return (
       <View style={styles.settingsGroup}>
-        <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{quranFontText}</Text>
+        <Text allowFontScaling={false} style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{quranFontText}</Text>
         <Pressable
           onPress={() => setActiveSelect('quranFont')}
           style={({ pressed }) => [
@@ -163,7 +160,7 @@ export function SettingsPanel({
             pressed && { opacity: 0.8 }
           ]}
         >
-          <Text style={[styles.themedSelectValue, { color: theme.colors.TEXT_PRIMARY }]} numberOfLines={1}>
+          <Text allowFontScaling={false} style={[styles.themedSelectValue, { color: theme.colors.TEXT_PRIMARY }]} numberOfLines={1}>
             {font.label}
           </Text>
           <Feather name="chevron-down" size={18} color={theme.colors.PICKER_ICON} />
@@ -194,48 +191,22 @@ export function SettingsPanel({
     }
     const selectedLabel = selectedOption.label;
 
-    if (useThemedSelect) {
-      return (
-        <View style={styles.settingsGroup}>
-          <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{label}</Text>
-          <Pressable
-            onPress={() => setActiveSelect(key)}
-            style={({ pressed }) => [
-              styles.themedSelectButton,
-              { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG },
-              pressed && { opacity: 0.8 }
-            ]}
-          >
-            <Text style={[styles.themedSelectValue, { color: theme.colors.TEXT_PRIMARY }]} numberOfLines={1}>
-              {selectedLabel}
-            </Text>
-            <Feather name="chevron-down" size={18} color={theme.colors.PICKER_ICON} />
-          </Pressable>
-        </View>
-      );
-    }
-
     return (
       <View style={styles.settingsGroup}>
-        <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{label}</Text>
-        <View style={[styles.settingsPickerWrapper, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
-          <Picker
-            selectedValue={value}
-            onValueChange={(nextValue) => onChange(nextValue as T)}
-            mode={pickerMode}
-            dropdownIconColor={theme.colors.PICKER_ICON}
-            style={[styles.settingsPicker, { color: theme.colors.TEXT_PRIMARY }]}
-          >
-            {options.map((option) => (
-              <Picker.Item
-                key={String(option.value)}
-                label={option.label}
-                value={option.value}
-                color={theme.colors.TEXT_SECONDARY}
-              />
-            ))}
-          </Picker>
-        </View>
+        <Text allowFontScaling={false} style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{label}</Text>
+        <Pressable
+          onPress={() => setActiveSelect(key)}
+          style={({ pressed }) => [
+            styles.themedSelectButton,
+            { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG },
+            pressed && { opacity: 0.8 }
+          ]}
+        >
+          <Text allowFontScaling={false} style={[styles.themedSelectValue, { color: theme.colors.TEXT_PRIMARY }]} numberOfLines={1}>
+            {selectedLabel}
+          </Text>
+          <Feather name="chevron-down" size={18} color={theme.colors.PICKER_ICON} />
+        </Pressable>
       </View>
     );
   }
@@ -251,9 +222,9 @@ export function SettingsPanel({
 
       <View style={styles.compactGrid}>
         <View style={styles.settingsGroup}>
-          <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{autoScrollText}</Text>
+          <Text allowFontScaling={false} style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{autoScrollText}</Text>
           <View style={[styles.switchRow, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
-            <Text style={[styles.switchValue, { color: theme.colors.TEXT_SECONDARY }]}>{autoScrollEnabled ? onText : offText}</Text>
+            <Text allowFontScaling={false} style={[styles.switchValue, { color: theme.colors.TEXT_SECONDARY }]}>{autoScrollEnabled ? onText : offText}</Text>
             <Switch
               value={autoScrollEnabled}
               onValueChange={onAutoScrollChange}
@@ -267,9 +238,9 @@ export function SettingsPanel({
         </View>
 
         <View style={styles.settingsGroup}>
-          <Text style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{showTranscriptionText}</Text>
+          <Text allowFontScaling={false} style={[styles.settingsLabel, { color: theme.colors.TEXT_TERTIARY }]}>{showTranscriptionText}</Text>
           <View style={[styles.switchRow, { borderColor: theme.colors.BORDER_SECONDARY, backgroundColor: theme.colors.CARD_BG }]}>
-            <Text style={[styles.switchValue, { color: theme.colors.TEXT_SECONDARY }]}>{showTranscription ? onText : offText}</Text>
+            <Text allowFontScaling={false} style={[styles.switchValue, { color: theme.colors.TEXT_SECONDARY }]}>{showTranscription ? onText : offText}</Text>
             <Switch
               value={showTranscription}
               onValueChange={onShowTranscriptionChange}
@@ -295,7 +266,7 @@ export function SettingsPanel({
           onPress={onManageDownloadsPress}
         >
           <Feather name="download-cloud" size={18} color={theme.colors.ACCENT_PRIMARY} />
-          <Text style={[styles.footerButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{manageDownloadsText}</Text>
+          <Text allowFontScaling={false} style={[styles.footerButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{manageDownloadsText}</Text>
         </Pressable>
 
         <Pressable 
@@ -307,7 +278,7 @@ export function SettingsPanel({
           onPress={onAboutPress}
         >
           <Feather name="info" size={18} color={theme.colors.ACCENT_PRIMARY} />
-          <Text style={[styles.footerButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{aboutText}</Text>
+          <Text allowFontScaling={false} style={[styles.footerButtonText, { color: theme.colors.TEXT_PRIMARY }]}>{aboutText}</Text>
         </Pressable>
       </View>
 
@@ -321,13 +292,13 @@ export function SettingsPanel({
             ]}
           >
             <View style={[styles.selectModalHeader, { borderBottomColor: theme.colors.BORDER_PRIMARY }]}>
-              <Text style={[styles.selectModalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{activeSelectTitle}</Text>
+              <Text allowFontScaling={false} style={[styles.selectModalTitle, { color: theme.colors.TEXT_PRIMARY }]}>{activeSelectTitle}</Text>
               <Pressable onPress={closeSelect} style={[styles.selectModalClose, { backgroundColor: theme.colors.CARD_BG }]}>
                 <Feather name="x" size={18} color={theme.colors.TEXT_PRIMARY} />
               </Pressable>
             </View>
 
-            <ScrollView contentContainerStyle={styles.selectOptions}>
+            <ScrollView contentContainerStyle={styles.selectOptions} keyboardShouldPersistTaps="always">
               {activeSelectOptions.map((option) => {
                 const isSelected = activeSelectValue === option.value;
                 const optionFont =
@@ -359,7 +330,7 @@ export function SettingsPanel({
                     ]}
                   >
                     <View style={styles.selectOptionCopy}>
-                      <Text style={[styles.selectOptionText, { color: theme.colors.TEXT_PRIMARY }]}>{option.label}</Text>
+                      <Text allowFontScaling={false} style={[styles.selectOptionText, { color: theme.colors.TEXT_PRIMARY }]}>{option.label}</Text>
                       {activeSelect === 'quranFont' ? (
                         <Text
                           style={[
@@ -406,26 +377,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-  },
-  settingsPickerWrapper: {
-    borderWidth: 1,
-    borderRadius: 12,
-    minHeight: 46,
-    justifyContent: 'center',
-  },
-  settingsPicker: {
-    backgroundColor: 'transparent',
-    fontSize: 16,
-    ...Platform.select({
-      android: {
-        marginLeft: 4,
-      },
-      web: {
-        height: '100%',
-        borderWidth: 0,
-        paddingLeft: 8,
-      }
-    }),
   },
   themedSelectButton: {
     minHeight: 46,

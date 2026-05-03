@@ -1,4 +1,5 @@
 import { StatusBar as ExpoStatusBar } from 'expo-status-bar';
+import { useKeepAwake } from 'expo-keep-awake';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFonts } from 'expo-font';
 import { Amiri_400Regular } from '@expo-google-fonts/amiri';
@@ -73,6 +74,8 @@ type MainAppProps = {
 };
 
 function MainApp({ settings }: MainAppProps) {
+  useKeepAwake('kuran-ayet-ezberle-foreground', { suppressDeactivateWarnings: true });
+
   const [fontsLoaded] = useFonts({
     Amiri_400Regular,
     AmiriQuran_400Regular,

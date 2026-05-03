@@ -65,7 +65,7 @@ export function PlaybackSpeedModal({
       <View style={styles.overlay}>
         <View style={[styles.content, { backgroundColor: theme.colors.SECONDARY_BG, borderColor: theme.colors.BORDER_PRIMARY }]}>
           <View style={styles.header}>
-            <Text style={[styles.title, { color: theme.colors.TEXT_PRIMARY }]}>{title}</Text>
+            <Text allowFontScaling={false} style={[styles.title, { color: theme.colors.TEXT_PRIMARY }]}>{title}</Text>
             <Pressable onPress={handleClose} style={[styles.closeButton, { backgroundColor: theme.colors.CARD_BG }]}>
               <Feather name="x" size={20} color={theme.colors.TEXT_SECONDARY} />
             </Pressable>
@@ -89,7 +89,7 @@ export function PlaybackSpeedModal({
                     setError(null);
                   }}
                 >
-                  <Text style={[styles.presetText, { color: theme.colors.TEXT_PRIMARY }]}>{formatPlaybackRate(rate)}</Text>
+                  <Text allowFontScaling={false} style={[styles.presetText, { color: theme.colors.TEXT_PRIMARY }]}>{formatPlaybackRate(rate)}</Text>
                 </Pressable>
               );
             })}
@@ -113,24 +113,25 @@ export function PlaybackSpeedModal({
               ]}
               placeholder={`${MIN_PLAYBACK_RATE}-${MAX_PLAYBACK_RATE}`}
               placeholderTextColor={theme.colors.TEXT_PLACEHOLDER}
+              allowFontScaling={false}
             />
-            <Text style={[styles.unit, { color: theme.colors.TEXT_MUTED }]}>x</Text>
+            <Text allowFontScaling={false} style={[styles.unit, { color: theme.colors.TEXT_MUTED }]}>x</Text>
           </View>
 
-          {error ? <Text style={[styles.errorText, { color: theme.colors.ERROR }]}>{error}</Text> : null}
+          {error ? <Text allowFontScaling={false} style={[styles.errorText, { color: theme.colors.ERROR }]}>{error}</Text> : null}
 
           <View style={styles.actions}>
             <Pressable
               style={[styles.actionButton, styles.cancelButton, { backgroundColor: theme.colors.CARD_BG, borderColor: theme.colors.BORDER_SECONDARY }]}
               onPress={handleClose}
             >
-              <Text style={[styles.cancelButtonText, { color: theme.colors.TEXT_SECONDARY }]}>{cancelLabel}</Text>
+              <Text allowFontScaling={false} style={[styles.cancelButtonText, { color: theme.colors.TEXT_SECONDARY }]}>{cancelLabel}</Text>
             </Pressable>
             <Pressable
               style={[styles.actionButton, { backgroundColor: theme.colors.ACCENT_PRIMARY }]}
               onPress={handleSubmit}
             >
-              <Text style={[styles.submitButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>{submitLabel}</Text>
+              <Text allowFontScaling={false} style={[styles.submitButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>{submitLabel}</Text>
             </Pressable>
           </View>
         </View>
