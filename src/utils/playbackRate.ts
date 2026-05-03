@@ -1,6 +1,6 @@
 export const MIN_PLAYBACK_RATE = 0.5;
 export const MAX_PLAYBACK_RATE = 2;
-export const PLAYBACK_RATE_PRESETS = [0.75, 1, 1.25, 1.5, 2] as const;
+export const PLAYBACK_RATE_PRESETS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2] as const;
 
 export function formatPlaybackRate(rate: number) {
   if (!Number.isFinite(rate)) {

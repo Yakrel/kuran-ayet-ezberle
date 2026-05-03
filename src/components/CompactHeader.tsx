@@ -1,14 +1,20 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { SurahPicker } from './SurahPicker';
 import { InlineRangeSelector } from './InlineRangeSelector';
 import { PlaybackSpeedModal } from './PlaybackSpeedModal';
-import { RangeInputModal } from './RangeInputModal';
+import { NumberOptionPickerModal, type NumberPickerOption } from './NumberOptionPickerModal';
 import type { SurahSummary } from '../types/quran';
 import { useTheme } from '../hooks/useTheme';
-import { onlyDigits } from '../utils/parsers';
+import { onlyDigits, parsePositiveInt } from '../utils/parsers';
 import { formatPlaybackRate } from '../utils/playbackRate';
+import {
+  buildNumberOptions,
+  getEndVerseOptionStart,
+  REPEAT_COUNT_PRESETS,
+  resolveStartVerseSelection,
+} from '../utils/presetControls';
 import { UI_SIZES } from '../constants/spacing';
 import { TOTAL_QURAN_PAGES } from '../constants/defaults';
 
@@ -109,10 +115,63 @@ export function CompactHeader({
   const { theme, themeType } = useTheme();
   const [rangeModalType, setRangeModalType] = useState<'start' | 'end' | 'repeat' | 'speed' | null>(null);
   const normalizedCurrentPageInput = currentPageInput === '0' ? '1' : currentPageInput;
+  const selectedStartVerse = parsePositiveInt(startVerseInput);
+  const selectedEndVerse = parsePositiveInt(endVerseInput);
+  const selectedRepeatCount = parsePositiveInt(repeatCountInput);
+  const maxVerse = maxVerseInSurah ?? null;
+  const endOptionStart = getEndVerseOptionStart(selectedStartVerse);
+
+  const startVerseOptions = useMemo(
+    () => maxVerse ? buildNumberOptions(1, maxVerse) : [],
+    [maxVerse]
+  );
+  const endVerseOptions = useMemo(
+    () => maxVerse ? buildNumberOptions(endOptionStart, maxVerse) : [],
+    [endOptionStart, maxVerse]
+  );
+  const repeatOptions = useMemo(
+    () => REPEAT_COUNT_PRESETS.map((count) => ({ label: `${count}x`, value: count })),
+    []
+  );
+  const endFeaturedOptions = useMemo(() => {
+    if (!maxVerse) {
+      return [];
+    }
+
+    const featuredOptions: NumberPickerOption[] = [
+      { label: text.lastVerse, value: maxVerse, icon: 'skip-forward' },
+    ];
+    if (pageEndVerseNumber && pageEndVerseNumber >= endOptionStart && pageEndVerseNumber <= maxVerse) {
+      featuredOptions.unshift({ label: text.pageEndVerse, value: pageEndVerseNumber, icon: 'corner-down-right' });
+    }
+
+    return featuredOptions;
+  }, [endOptionStart, maxVerse, pageEndVerseNumber, text.lastVerse, text.pageEndVerse]);
 
   const isPlaying = playbackStatus === 'playing';
   const isPaused = playbackStatus === 'paused';
   const isLoading = playbackStatus === 'loading';
+
+  function handleStartVerseSelect(nextStartVerse: number) {
+    if (!maxVerse) {
+      return;
+    }
+
+    const nextSelection = resolveStartVerseSelection(nextStartVerse, selectedEndVerse, maxVerse);
+    onStartVerseChange(String(nextSelection.startVerse));
+    if (nextSelection.endVerse !== selectedEndVerse) {
+      onEndVerseChange(String(nextSelection.endVerse));
+    }
+  }
+
+  function handleEndVerseSelect(nextEndVerse: number) {
+    if (!maxVerse) {
+      return;
+    }
+
+    const normalizedEndVerse = Math.min(Math.max(nextEndVerse, endOptionStart), maxVerse);
+    onEndVerseChange(String(normalizedEndVerse));
+  }
 
   return (
     <View style={styles.container}>
@@ -244,59 +303,31 @@ export function CompactHeader({
         </View>
       </View>
 
-      {/* Range Input Modals */}
-      <RangeInputModal
+      <NumberOptionPickerModal
         visible={rangeModalType === 'start'}
         onClose={() => setRangeModalType(null)}
         title={text.startVerse}
-        initialValue={startVerseInput}
-        onSubmit={onStartVerseChange}
-        minValue={1}
-        minActionLabel={text.firstVerse}
-        maxValue={maxVerseInSurah}
-        maxLabel={text.max}
-        cancelLabel={text.cancel}
-        submitLabel={text.confirm}
-        validationErrorLabel={text.rangeInputError}
-        placeholder="1"
+        selectedValue={selectedStartVerse}
+        options={startVerseOptions}
+        featuredOptions={maxVerse ? [{ label: text.firstVerse, value: 1, icon: 'skip-back' }] : []}
+        onSelect={handleStartVerseSelect}
       />
-      <RangeInputModal
+      <NumberOptionPickerModal
         visible={rangeModalType === 'end'}
         onClose={() => setRangeModalType(null)}
         title={text.endVerse}
-        initialValue={endVerseInput}
-        onSubmit={onEndVerseChange}
-        minValue={1}
-        maxValue={maxVerseInSurah}
-        maxActionLabel={text.lastVerse}
-        quickActions={
-          pageEndVerseNumber
-            ? [{ label: text.pageEndVerse, value: String(pageEndVerseNumber), icon: 'corner-down-right' }]
-            : []
-        }
-        maxLabel={text.max}
-        cancelLabel={text.cancel}
-        submitLabel={text.confirm}
-        validationErrorLabel={text.rangeInputError}
-        placeholder="1"
+        selectedValue={selectedEndVerse}
+        options={endVerseOptions}
+        featuredOptions={endFeaturedOptions}
+        onSelect={handleEndVerseSelect}
       />
-      <RangeInputModal
+      <NumberOptionPickerModal
         visible={rangeModalType === 'repeat'}
         onClose={() => setRangeModalType(null)}
         title={text.repeat}
-        initialValue={repeatCountInput}
-        onSubmit={onRepeatCountChange}
-        minValue={1}
-        quickActions={[
-          { label: '5x', value: '5', icon: 'repeat' },
-          { label: '10x', value: '10', icon: 'repeat' },
-          { label: '20x', value: '20', icon: 'repeat' },
-        ]}
-        maxLabel={text.max}
-        cancelLabel={text.cancel}
-        submitLabel={text.confirm}
-        validationErrorLabel={text.rangeInputError}
-        placeholder="1"
+        selectedValue={selectedRepeatCount}
+        options={repeatOptions}
+        onSelect={(repeatCount) => onRepeatCountChange(String(repeatCount))}
       />
       <PlaybackSpeedModal
         visible={rangeModalType === 'speed'}
@@ -304,9 +335,6 @@ export function CompactHeader({
         title={text.playbackSpeed}
         currentRate={playbackRate}
         onSubmit={onPlaybackRateChange}
-        invalidText={text.invalidPlaybackSpeed}
-        cancelLabel={text.cancel}
-        submitLabel={text.confirm}
       />
     </View>
   );
