@@ -83,6 +83,12 @@ function makeTrackPlayer() {
 async function flushAsyncHandlers() {
   await Promise.resolve();
   await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
+  await Promise.resolve();
 }
 
 async function loadController() {
@@ -156,6 +162,16 @@ describe('continuousPlaybackController', () => {
     expect(player.listenerCount(EVENTS.PlaybackError)).toBe(1);
   });
 
+  it('configures a lower-frequency progress event for background stability', async () => {
+    const { controller, player } = await loadController();
+
+    await controller.initializeContinuousPlayback();
+
+    expect(player.updateOptions).toHaveBeenCalledWith(expect.objectContaining({
+      progressUpdateEventInterval: 0.5,
+    }));
+  });
+
   it('does not call native stop/reset when there is no active session', async () => {
     const { controller, player } = await loadController();
 
@@ -191,5 +207,26 @@ describe('continuousPlaybackController', () => {
     expect(player.stop).toHaveBeenCalledTimes(1);
     expect(player.reset).toHaveBeenCalledTimes(2);
     expect(controller.getPlaybackSnapshot().playbackStatus).toBe('stopped');
+  });
+
+  it('turns background progress failures into a stopped session error', async () => {
+    const { controller, player } = await loadController();
+    const errors: Array<string | null> = [];
+    controller.subscribeToPlaybackErrors((message) => errors.push(message));
+
+    await controller.startContinuousPlayback({
+      surahDetail: makeSurahDetail(),
+      startVerseNumber: 1,
+      endVerseNumber: 2,
+      repeatCount: 2,
+    });
+
+    player.getProgress.mockRejectedValueOnce(new Error('Native progress unavailable'));
+    player.emit(EVENTS.PlaybackState, { state: 'playing' });
+    await flushAsyncHandlers();
+
+    expect(controller.getPlaybackSnapshot().playbackStatus).toBe('stopped');
+    expect(controller.getPlaybackSnapshot().activeVerse).toBeNull();
+    expect(errors).toContain('Native progress unavailable');
   });
 });
