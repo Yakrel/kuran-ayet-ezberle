@@ -53,7 +53,9 @@ type SnapshotListener = (snapshot: PlaybackSnapshot) => void;
 type ErrorListener = (message: string | null) => void;
 
 const PROGRESS_UPDATE_EVENT_INTERVAL_SECONDS = 0.5;
-const ANDROID_STREAM_CACHE_SIZE_KB = 512 * 1024;
+// RNTP 4.1.2/KotlinAudio documents maxCacheSize as kilobytes, but passes the
+// raw value to ExoPlayer's byte-based cache evictor on Android.
+const ANDROID_STREAM_CACHE_SIZE_BYTES = 512 * 1024 * 1024;
 
 let snapshot: PlaybackSnapshot = {
   playbackStatus: 'idle',
@@ -238,7 +240,7 @@ async function ensurePlayerSetup() {
     setupPromise = (async () => {
       try {
         await TrackPlayer.setupPlayer({
-          maxCacheSize: ANDROID_STREAM_CACHE_SIZE_KB,
+          maxCacheSize: ANDROID_STREAM_CACHE_SIZE_BYTES,
         });
       } catch (error) {
         const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';

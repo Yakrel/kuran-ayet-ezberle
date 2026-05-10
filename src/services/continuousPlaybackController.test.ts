@@ -178,7 +178,7 @@ describe('continuousPlaybackController', () => {
     await controller.initializeContinuousPlayback();
 
     expect(player.setupPlayer).toHaveBeenCalledWith({
-      maxCacheSize: 512 * 1024,
+      maxCacheSize: 512 * 1024 * 1024,
     });
   });
 
