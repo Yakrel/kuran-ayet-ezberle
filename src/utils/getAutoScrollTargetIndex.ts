@@ -18,3 +18,11 @@ export function getAutoScrollTargetIndex(activeIndex: number, visibleIndexes: nu
 
   return null;
 }
+
+export function getBoundedScrollIndex(index: number, itemCount: number) {
+  if (!Number.isInteger(index) || !Number.isInteger(itemCount) || itemCount <= 0) {
+    return null;
+  }
+
+  return Math.max(0, Math.min(index, itemCount - 1));
+}
