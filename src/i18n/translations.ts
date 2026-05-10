@@ -72,7 +72,7 @@ export const TRANSLATIONS: Translations = {
     max: 'En fazla',
     playFromVerse: 'Bu ayetten çal',
     cachedFiles: 'Hazır Ses Dosyaları',
-    aboutDescription: 'QUL sure sesi ve ayet zamanlaması ile kesintisiz tekrar deneyimi sunar.',
+    aboutDescription: 'CDN sure sesi ve ayet zamanlaması ile kesintisiz tekrar deneyimi sunar.',
   },
   en: {
     appName: APP_NAME,
@@ -144,6 +144,6 @@ export const TRANSLATIONS: Translations = {
     max: 'Max',
     playFromVerse: 'Play from this ayah',
     cachedFiles: 'Cached Audio Files',
-    aboutDescription: 'QUL surah audio and ayah timing power gapless repeat practice.',
+    aboutDescription: 'CDN surah audio and ayah timing power gapless repeat practice.',
   },
 };

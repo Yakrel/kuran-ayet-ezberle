@@ -37,8 +37,8 @@ Android production builds produce an APK. iOS builds are intentionally not confi
 
 - Quran text: Imlaei text via Quran.com/Quran.Foundation content API.
 - Translations and Turkish transcription: https://api.acikkuran.com
-- Audio and ayah timing: QUL/Tarteel recitation `13` for Saad Al-Ghamdi.
-- The app uses embedded full-surah MP3 references and timing data from `assets/data/recitations/qul-recitation-13.json`.
+- Audio and ayah timing: Saad Al-Ghamdi full-surah MP3 files from the audio CDN, with embedded ayah timing data.
+- The app uses embedded full-surah MP3 references and timing data from `assets/data/recitations/saad-al-ghamdi-recitation-13.json`.
 - Offline listening caches the same full-surah MP3 files under the app cache; it does not use a separate verse-by-verse audio source.
 
 ## License

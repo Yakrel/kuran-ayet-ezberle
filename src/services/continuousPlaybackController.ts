@@ -35,7 +35,7 @@ type TrackPlayerProgress = {
 };
 
 type TrackPlayerApi = {
-  setupPlayer: () => Promise<void>;
+  setupPlayer: (options?: unknown) => Promise<void>;
   updateOptions: (options: unknown) => Promise<void>;
   setRepeatMode: (mode: unknown) => Promise<unknown>;
   reset: () => Promise<void>;
@@ -53,6 +53,7 @@ type SnapshotListener = (snapshot: PlaybackSnapshot) => void;
 type ErrorListener = (message: string | null) => void;
 
 const PROGRESS_UPDATE_EVENT_INTERVAL_SECONDS = 0.5;
+const ANDROID_STREAM_CACHE_SIZE_KB = 512 * 1024;
 
 let snapshot: PlaybackSnapshot = {
   playbackStatus: 'idle',
@@ -236,7 +237,9 @@ async function ensurePlayerSetup() {
     const { Capability, RepeatMode } = playerModule;
     setupPromise = (async () => {
       try {
-        await TrackPlayer.setupPlayer();
+        await TrackPlayer.setupPlayer({
+          maxCacheSize: ANDROID_STREAM_CACHE_SIZE_KB,
+        });
       } catch (error) {
         const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
         if (code !== 'player_already_initialized') {

@@ -172,6 +172,16 @@ describe('continuousPlaybackController', () => {
     }));
   });
 
+  it('enables a bounded Android stream cache for repeated range playback', async () => {
+    const { controller, player } = await loadController();
+
+    await controller.initializeContinuousPlayback();
+
+    expect(player.setupPlayer).toHaveBeenCalledWith({
+      maxCacheSize: 512 * 1024,
+    });
+  });
+
   it('does not call native stop/reset when there is no active session', async () => {
     const { controller, player } = await loadController();
 
