@@ -35,9 +35,11 @@ The pairing usually persists until the phone forgets the paired computer, wirele
 
 Recommended network setup:
 
-- Reserve the phone's IP in the router DHCP settings, for example `192.168.1.233`.
+- The current POCO X6 Pro test phone is manually pinned to `192.168.1.233`.
+- If replacing the phone or changing networks, reserve the phone's IP in the router DHCP settings or set the same static IP on the phone.
 - Keep phone and server/container on the same LAN.
 - If the phone IP changes, read the new IP from Wireless debugging and reconnect.
+- If only the port changes, keep the same IP and use the new Wireless debugging port.
 
 ## Trigger CI APK build
 
