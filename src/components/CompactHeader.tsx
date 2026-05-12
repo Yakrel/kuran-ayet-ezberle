@@ -296,15 +296,12 @@ export function CompactHeader({
               </>
             ) : (
               <Pressable
-                style={[styles.actionButton, { backgroundColor: theme.colors.ACCENT_PRIMARY }]}
+                style={[styles.actionButton, styles.actionButtonSmall, { backgroundColor: theme.colors.ACCENT_PRIMARY }]}
                 onPress={isPaused ? onResume : onStart}
                 accessibilityRole="button"
                 accessibilityLabel={isPaused ? text.resume : text.start}
               >
                 <Feather name="play" size={16} color={themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff'} />
-                <Text allowFontScaling={false} style={[styles.actionButtonText, { color: themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff' }]}>
-                  {isPaused ? text.resume : text.start}
-                </Text>
               </Pressable>
             )}
           </View>
