@@ -444,7 +444,7 @@ const styles = StyleSheet.create({
   },
   actions: {
     flexDirection: 'row',
-    width: 86,
+    minWidth: 86,
     gap: 6,
     justifyContent: 'flex-end',
   },
