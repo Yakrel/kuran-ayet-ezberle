@@ -5,7 +5,7 @@ export type ReciterOption = {
   label: string;
   artist: string;
   recitationId: number;
-  qulDatasetAsset: string;
+  recitationDatasetAsset: string;
 };
 
 export const DEFAULT_RECITER_ID: ReciterId = 'ghamdi';
@@ -16,7 +16,7 @@ export const RECITER_OPTIONS: ReciterOption[] = [
     label: 'Saad Al-Ghamdi',
     artist: 'Saad Al-Ghamdi',
     recitationId: 13,
-    qulDatasetAsset: 'assets/data/recitations/qul-recitation-13.json',
+    recitationDatasetAsset: 'assets/data/recitations/saad-al-ghamdi-recitation-13.json',
   },
 ];
 

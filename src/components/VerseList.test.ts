@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getAutoScrollTargetIndex } from '../utils/getAutoScrollTargetIndex';
+import { getAutoScrollTargetIndex, getBoundedScrollIndex } from '../utils/getAutoScrollTargetIndex';
 
 describe('getAutoScrollTargetIndex', () => {
   it('keeps the list still when the active verse stays within the visible band', () => {
@@ -16,5 +16,19 @@ describe('getAutoScrollTargetIndex', () => {
 
   it('scrolls to the active verse when there is no visibility snapshot yet', () => {
     expect(getAutoScrollTargetIndex(4, [])).toBe(4);
+  });
+});
+
+describe('getBoundedScrollIndex', () => {
+  it('keeps an in-range scroll index unchanged', () => {
+    expect(getBoundedScrollIndex(3, 5)).toBe(3);
+  });
+
+  it('clamps a stale scroll index to the current list bounds', () => {
+    expect(getBoundedScrollIndex(20, 19)).toBe(18);
+  });
+
+  it('does not scroll an empty list', () => {
+    expect(getBoundedScrollIndex(0, 0)).toBeNull();
   });
 });

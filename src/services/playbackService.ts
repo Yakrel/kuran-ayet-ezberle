@@ -1,6 +1,5 @@
 import { getTrackPlayerModule } from './trackPlayer';
 import {
-  initializeContinuousPlayback,
   pauseContinuousPlayback,
   resumeContinuousPlayback,
   stopContinuousPlayback,
@@ -18,8 +17,6 @@ export async function playbackService() {
   }
 
   const { Event } = trackPlayerModule;
-
-  void initializeContinuousPlayback().catch(() => undefined);
 
   TrackPlayer.addEventListener(Event.RemotePlay, () => {
     void resumeContinuousPlayback();

@@ -35,7 +35,7 @@ type TrackPlayerProgress = {
 };
 
 type TrackPlayerApi = {
-  setupPlayer: () => Promise<void>;
+  setupPlayer: (options?: unknown) => Promise<void>;
   updateOptions: (options: unknown) => Promise<void>;
   setRepeatMode: (mode: unknown) => Promise<unknown>;
   reset: () => Promise<void>;
@@ -51,6 +51,11 @@ type TrackPlayerApi = {
 
 type SnapshotListener = (snapshot: PlaybackSnapshot) => void;
 type ErrorListener = (message: string | null) => void;
+
+const PROGRESS_UPDATE_EVENT_INTERVAL_SECONDS = 0.5;
+// RNTP 4.1.2/KotlinAudio documents maxCacheSize as kilobytes, but passes the
+// raw value to ExoPlayer's byte-based cache evictor on Android.
+const ANDROID_STREAM_CACHE_SIZE_BYTES = 512 * 1024 * 1024;
 
 let snapshot: PlaybackSnapshot = {
   playbackStatus: 'idle',
@@ -142,6 +147,22 @@ function notifyError(message: string | null) {
   }
 }
 
+function formatErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
+async function failActiveSession(error: unknown, resetPlayer = false) {
+  await completeActiveSession(resetPlayer);
+  setSnapshot({ playbackStatus: 'stopped' });
+  notifyError(formatErrorMessage(error));
+}
+
+function runPlayerTask(task: () => Promise<void>) {
+  void task().catch((error) => {
+    void failActiveSession(error, true);
+  });
+}
+
 function toPlaybackStatus(trackPlayerState: string | undefined): PlaybackStatus {
   switch (trackPlayerState) {
     case 'loading':
@@ -218,7 +239,9 @@ async function ensurePlayerSetup() {
     const { Capability, RepeatMode } = playerModule;
     setupPromise = (async () => {
       try {
-        await TrackPlayer.setupPlayer();
+        await TrackPlayer.setupPlayer({
+          maxCacheSize: ANDROID_STREAM_CACHE_SIZE_BYTES,
+        });
       } catch (error) {
         const code = typeof error === 'object' && error && 'code' in error ? String(error.code) : '';
         if (code !== 'player_already_initialized') {
@@ -233,7 +256,7 @@ async function ensurePlayerSetup() {
         android: {
           appKilledPlaybackBehavior: playerModule.AppKilledPlaybackBehavior.ContinuePlayback,
         },
-        progressUpdateEventInterval: 0.1,
+        progressUpdateEventInterval: PROGRESS_UPDATE_EVENT_INTERVAL_SECONDS,
       });
       await TrackPlayer.setRepeatMode(RepeatMode.Off);
       await TrackPlayer.setRate(snapshot.playbackRate);
@@ -266,7 +289,7 @@ async function completeActiveSession(resetPlayer = true) {
       await TrackPlayer.reset();
     } catch (error) {
       if (!isBenignPlayerCleanupError(error)) {
-        throw error;
+        notifyError(formatErrorMessage(error));
       }
     }
   }
@@ -340,14 +363,12 @@ async function scheduleBoundaryTimer(remainingMs?: number) {
   const timeoutMs = Math.max(Math.ceil(nextRemainingMs / playbackRateValue), 0);
 
   boundaryTimer = setTimeout(() => {
-    const run = async () => {
+    runPlayerTask(async () => {
       const didContinue = await advanceContinuousRangeEnd();
       if (didContinue && session) {
         await scheduleBoundaryTimer(session.rangeDurationMs);
       }
-    };
-
-    void run();
+    });
   }, timeoutMs);
 }
 
@@ -382,12 +403,12 @@ export async function initializeContinuousPlayback() {
       TrackPlayer.addEventListener(playerModule.Event.PlaybackState, (payload: unknown) => {
         const nextState = payload as { state?: string };
         if (isContinuousPlaybackEndState(nextState.state) && session) {
-          void (async () => {
+          runPlayerTask(async () => {
             const didContinue = await advanceContinuousRangeEnd();
             if (didContinue && session) {
               await scheduleBoundaryTimer(session.rangeDurationMs);
             }
-          })();
+          });
           return;
         }
 
@@ -398,7 +419,9 @@ export async function initializeContinuousPlayback() {
         }
 
         if (nextStatus === 'playing') {
-          void scheduleBoundaryTimer();
+          runPlayerTask(async () => {
+            await scheduleBoundaryTimer();
+          });
         }
 
         if (nextStatus === 'paused' || nextStatus === 'stopped' || nextStatus === 'idle') {
@@ -417,12 +440,12 @@ export async function initializeContinuousPlayback() {
           return;
         }
 
-        void (async () => {
+        runPlayerTask(async () => {
           const didContinue = await advanceContinuousRangeEnd();
           if (didContinue && session) {
             await scheduleBoundaryTimer(session.rangeDurationMs);
           }
-        })();
+        });
       });
 
       TrackPlayer.addEventListener(playerModule.Event.PlaybackProgressUpdated, (payload: unknown) => {
@@ -433,18 +456,20 @@ export async function initializeContinuousPlayback() {
         }
 
         const positionMs = Math.round(nextProgress.position * 1000);
-        syncContinuousActiveState(positionMs);
-        void continueFromRangeEndIfNeeded(positionMs);
+        runPlayerTask(async () => {
+          syncContinuousActiveState(positionMs);
+          await continueFromRangeEndIfNeeded(positionMs);
+        });
       });
 
       TrackPlayer.addEventListener(playerModule.Event.PlaybackError, (payload: unknown) => {
         const nextError = payload as { message?: string };
 
-        void (async () => {
+        runPlayerTask(async () => {
           await completeActiveSession(false);
           setSnapshot({ playbackStatus: 'stopped' });
           notifyError(nextError.message ? nextError.message : String(payload));
-        })();
+        });
       });
     })
     .catch((error) => {
@@ -531,9 +556,13 @@ export async function pauseContinuousPlayback() {
     return;
   }
 
-  clearBoundaryTimer();
-  await TrackPlayer.pause();
-  setSnapshot({ playbackStatus: 'paused' });
+  try {
+    clearBoundaryTimer();
+    await TrackPlayer.pause();
+    setSnapshot({ playbackStatus: 'paused' });
+  } catch (error) {
+    await failActiveSession(error, false);
+  }
 }
 
 export async function resumeContinuousPlayback() {
@@ -548,11 +577,16 @@ export async function resumeContinuousPlayback() {
     return;
   }
 
-  pendingPlayTransition = true;
-  await TrackPlayer.play();
-  pendingPlayTransition = false;
-  await scheduleBoundaryTimer();
-  setSnapshot({ playbackStatus: 'playing' });
+  try {
+    pendingPlayTransition = true;
+    await TrackPlayer.play();
+    pendingPlayTransition = false;
+    await scheduleBoundaryTimer();
+    setSnapshot({ playbackStatus: 'playing' });
+  } catch (error) {
+    pendingPlayTransition = false;
+    await failActiveSession(error, false);
+  }
 }
 
 export async function stopContinuousPlayback() {

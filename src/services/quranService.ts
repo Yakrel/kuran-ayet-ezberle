@@ -23,39 +23,39 @@ type QuranData = {
   surahs: RawSurah[];
 };
 
-type RawQulTiming = {
+type RawRecitationTiming = {
   time_from: number;
   time_to: number;
   duration: number;
 };
 
-type RawQulVerse = {
+type RawRecitationVerse = {
   verse_key: string;
   page_number: number;
-  timing: RawQulTiming | null;
+  timing: RawRecitationTiming | null;
 };
 
-type RawQulSurah = {
+type RawRecitationSurah = {
   id: number;
   audio: {
     url: string;
     duration: number;
     audio_size: number;
   } | null;
-  verses: RawQulVerse[];
+  verses: RawRecitationVerse[];
 };
 
-type QulDataset = {
+type RecitationDataset = {
   recitation_id: number;
-  surahs: RawQulSurah[];
+  surahs: RawRecitationSurah[];
 };
 
 let cachedQuranData: QuranData | null = null;
-let cachedQulDataset: QulDataset | null = null;
+let cachedRecitationDataset: RecitationDataset | null = null;
 let cachedSurahsById = new Map<number, RawSurah>();
-let cachedQulSurahsById = new Map<number, RawQulSurah>();
+let cachedRecitationSurahsById = new Map<number, RawRecitationSurah>();
 let cachedRawVersesByKey = new Map<string, RawVerse>();
-let cachedQulVersesByKey = new Map<string, RawQulVerse>();
+let cachedRecitationVersesByKey = new Map<string, RawRecitationVerse>();
 let cachedPageVerseKeys = new Map<number, string[]>();
 
 function getVerseKey(surahId: number, verseNumber: number) {
@@ -91,7 +91,7 @@ function getTranslationText(verse: RawVerse, translationAuthorId: number): strin
   return translationText;
 }
 
-function mapAudioAsset(rawSurah: RawQulSurah | undefined, surahId: number): SurahAudioAsset {
+function mapAudioAsset(rawSurah: RawRecitationSurah | undefined, surahId: number): SurahAudioAsset {
   if (!rawSurah?.audio) {
     throw new Error(`Embedded audio is missing for surah ${surahId}.`);
   }
@@ -115,10 +115,10 @@ function mapAudioAsset(rawSurah: RawQulSurah | undefined, surahId: number): Sura
 function mapVerse(
   rawSurah: RawSurah,
   rawVerse: RawVerse,
-  rawQulVerse: RawQulVerse | undefined,
+  rawRecitationVerse: RawRecitationVerse | undefined,
   translationAuthorId: number
 ): Verse {
-  if (!rawQulVerse?.timing) {
+  if (!rawRecitationVerse?.timing) {
     throw new Error(`Embedded timing is missing for ayah ${rawSurah.id}:${rawVerse.verse_number}.`);
   }
 
@@ -132,22 +132,22 @@ function mapVerse(
       text: getTranslationText(rawVerse, translationAuthorId),
     },
     timing: {
-      time_from_ms: rawQulVerse.timing.time_from,
-      time_to_ms: rawQulVerse.timing.time_to,
-      duration_ms: Math.max(0, rawQulVerse.timing.time_to - rawQulVerse.timing.time_from),
+      time_from_ms: rawRecitationVerse.timing.time_from,
+      time_to_ms: rawRecitationVerse.timing.time_to,
+      duration_ms: Math.max(0, rawRecitationVerse.timing.time_to - rawRecitationVerse.timing.time_from),
     },
   };
 }
 
-function buildIndexes(quranData: QuranData, qulDataset: QulDataset) {
+function buildIndexes(quranData: QuranData, recitationDataset: RecitationDataset) {
   if (cachedSurahsById.size > 0) {
     return;
   }
 
   cachedSurahsById = new Map<number, RawSurah>();
-  cachedQulSurahsById = new Map<number, RawQulSurah>();
+  cachedRecitationSurahsById = new Map<number, RawRecitationSurah>();
   cachedRawVersesByKey = new Map<string, RawVerse>();
-  cachedQulVersesByKey = new Map<string, RawQulVerse>();
+  cachedRecitationVersesByKey = new Map<string, RawRecitationVerse>();
   cachedPageVerseKeys = new Map<number, string[]>();
 
   for (const surah of quranData.surahs) {
@@ -165,10 +165,10 @@ function buildIndexes(quranData: QuranData, qulDataset: QulDataset) {
     }
   }
 
-  for (const qulSurah of qulDataset.surahs) {
-    cachedQulSurahsById.set(qulSurah.id, qulSurah);
-    for (const verse of qulSurah.verses) {
-      cachedQulVersesByKey.set(verse.verse_key, verse);
+  for (const recitationSurah of recitationDataset.surahs) {
+    cachedRecitationSurahsById.set(recitationSurah.id, recitationSurah);
+    for (const verse of recitationSurah.verses) {
+      cachedRecitationVersesByKey.set(verse.verse_key, verse);
     }
   }
 }
@@ -184,7 +184,7 @@ function mapVerseByKey(verseKey: string, translationAuthorId: number) {
     throw new Error(`Verse not found in local data: ${surahId}:${verseNumber}`);
   }
 
-  return mapVerse(surah, rawVerse, cachedQulVersesByKey.get(getVerseKey(surahId, verseNumber)), translationAuthorId);
+  return mapVerse(surah, rawVerse, cachedRecitationVersesByKey.get(getVerseKey(surahId, verseNumber)), translationAuthorId);
 }
 
 async function getQuranData(): Promise<QuranData> {
@@ -195,27 +195,27 @@ async function getQuranData(): Promise<QuranData> {
   return cachedQuranData;
 }
 
-function loadQulDatasetAsset(): QulDataset {
+function loadRecitationDatasetAsset(): RecitationDataset {
   const reciter = getReciterOption(DEFAULT_RECITER_ID);
-  switch (reciter.qulDatasetAsset) {
-    case 'assets/data/recitations/qul-recitation-13.json':
-      return require('../../assets/data/recitations/qul-recitation-13.json') as QulDataset;
+  switch (reciter.recitationDatasetAsset) {
+    case 'assets/data/recitations/saad-al-ghamdi-recitation-13.json':
+      return require('../../assets/data/recitations/saad-al-ghamdi-recitation-13.json') as RecitationDataset;
     default:
       throw new Error(`Missing embedded timing dataset for reciter: ${DEFAULT_RECITER_ID}`);
   }
 }
 
-async function getQulDataset(): Promise<QulDataset> {
-  if (!cachedQulDataset) {
-    cachedQulDataset = loadQulDatasetAsset();
+async function getRecitationDataset(): Promise<RecitationDataset> {
+  if (!cachedRecitationDataset) {
+    cachedRecitationDataset = loadRecitationDatasetAsset();
   }
 
-  return cachedQulDataset;
+  return cachedRecitationDataset;
 }
 
 async function ensureIndexes() {
-  const [quranData, qulDataset] = await Promise.all([getQuranData(), getQulDataset()]);
-  buildIndexes(quranData, qulDataset);
+  const [quranData, recitationDataset] = await Promise.all([getQuranData(), getRecitationDataset()]);
+  buildIndexes(quranData, recitationDataset);
 }
 
 export async function fetchSurahs(): Promise<SurahSummary[]> {
@@ -229,7 +229,7 @@ export async function fetchSurahDetail(
   await ensureIndexes();
 
   const surah = cachedSurahsById.get(surahId);
-  const qulSurah = cachedQulSurahsById.get(surahId);
+  const recitationSurah = cachedRecitationSurahsById.get(surahId);
   if (!surah) {
     throw new Error('Surah not found in local data');
   }
@@ -238,7 +238,7 @@ export async function fetchSurahDetail(
     id: surah.id,
     name: surah.name,
     verse_count: surah.verse_count,
-    audio: mapAudioAsset(qulSurah, surah.id),
+    audio: mapAudioAsset(recitationSurah, surah.id),
     recitation_id: getReciterOption(DEFAULT_RECITER_ID).recitationId,
     verses: surah.verses.map((verse) =>
       mapVerseByKey(getVerseKey(surah.id, verse.verse_number), translationAuthorId)
@@ -265,7 +265,7 @@ export async function getRecitationId() {
 }
 
 export async function fetchSurahAudioRefs(): Promise<Array<{ surahId: number; remoteUrl: string }>> {
-  const dataset = await getQulDataset();
+  const dataset = await getRecitationDataset();
   return dataset.surahs.map((surah) => {
     if (!surah.audio?.url) {
       throw new Error(`Embedded audio is missing for surah ${surah.id}.`);

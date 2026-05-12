@@ -5,7 +5,7 @@ import type { VerseLocation } from '../types/navigation';
 import { VerseCard } from './VerseCard';
 import { useTheme } from '../hooks/useTheme';
 import { UI_CONFIG } from '../constants/gestures';
-import { getAutoScrollTargetIndex } from '../utils/getAutoScrollTargetIndex';
+import { getAutoScrollTargetIndex, getBoundedScrollIndex } from '../utils/getAutoScrollTargetIndex';
 
 type VerseListProps = {
   currentPage: number;
@@ -48,10 +48,32 @@ export function VerseList({
   const visibleIndexesRef = useRef<number[]>([]);
   const lastAutoScrollIndexRef = useRef<number | null>(null);
   const scrollRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const itemCountRef = useRef(currentPageVerses.length);
   
   const viewabilityConfigRef = useRef({
     itemVisiblePercentThreshold: UI_CONFIG.VERSE_VISIBILITY_THRESHOLD,
   });
+
+  itemCountRef.current = currentPageVerses.length;
+
+  function scrollToBoundedIndex(index: number) {
+    const boundedIndex = getBoundedScrollIndex(index, itemCountRef.current);
+    if (boundedIndex === null) {
+      return null;
+    }
+
+    try {
+      verseListRef.current?.scrollToIndex({
+        index: boundedIndex,
+        animated: false,
+        viewPosition: 0.3,
+      });
+    } catch {
+      return null;
+    }
+
+    return boundedIndex;
+  }
 
   // Auto-scroll to active verse
   useEffect(() => {
@@ -63,7 +85,15 @@ export function VerseList({
       return;
     }
 
-    const activeIndex = currentPageVerses.findIndex((verse) => verse.verse_number === currentVerse.verse_number);
+    if (currentVerse.page !== currentPage) {
+      return;
+    }
+
+    const activeIndex = currentPageVerses.findIndex(
+      (verse) =>
+        verse.surah_id === currentVerse.surah_id &&
+        verse.verse_number === currentVerse.verse_number
+    );
     if (activeIndex === -1) {
       return;
     }
@@ -73,13 +103,11 @@ export function VerseList({
       return;
     }
 
-    lastAutoScrollIndexRef.current = targetIndex;
-    verseListRef.current?.scrollToIndex({
-      index: targetIndex,
-      animated: false,
-      viewPosition: 0.3,
-    });
-  }, [autoScrollEnabled, currentVerse, currentPageVerses]);
+    const boundedIndex = scrollToBoundedIndex(targetIndex);
+    if (boundedIndex !== null) {
+      lastAutoScrollIndexRef.current = boundedIndex;
+    }
+  }, [autoScrollEnabled, currentVerse, currentPage, currentPageVerses]);
 
   useEffect(() => {
     visibleIndexesRef.current = [];
@@ -127,18 +155,10 @@ export function VerseList({
             }
 
             const measuredIndex = Math.max(0, Math.min(index, highestMeasuredFrameIndex));
-            verseListRef.current?.scrollToIndex({
-              index: measuredIndex,
-              animated: false,
-              viewPosition: 0.3,
-            });
+            scrollToBoundedIndex(measuredIndex);
 
             scrollRetryTimerRef.current = setTimeout(() => {
-              verseListRef.current?.scrollToIndex({
-                index,
-                animated: false,
-                viewPosition: 0.3,
-              });
+              scrollToBoundedIndex(index);
             }, 80);
           }}
           viewabilityConfig={viewabilityConfigRef.current}

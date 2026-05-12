@@ -2,27 +2,38 @@ import React from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useTheme } from '../hooks/useTheme';
-import { formatPlaybackRate, PLAYBACK_RATE_PRESETS } from '../utils/playbackRate';
 
-type PlaybackSpeedModalProps = {
-  visible: boolean;
-  currentRate: number;
-  title: string;
-  onClose: () => void;
-  onSubmit: (rate: number) => void;
+type FeatherIconName = React.ComponentProps<typeof Feather>['name'];
+
+export type NumberPickerOption = {
+  label: string;
+  value: number;
+  icon?: FeatherIconName;
 };
 
-export function PlaybackSpeedModal({
+type NumberOptionPickerModalProps = {
+  visible: boolean;
+  title: string;
+  selectedValue: number | null;
+  options: NumberPickerOption[];
+  featuredOptions?: NumberPickerOption[];
+  onClose: () => void;
+  onSelect: (value: number) => void;
+};
+
+export function NumberOptionPickerModal({
   visible,
-  currentRate,
   title,
+  selectedValue,
+  options,
+  featuredOptions = [],
   onClose,
-  onSubmit,
-}: PlaybackSpeedModalProps) {
+  onSelect,
+}: NumberOptionPickerModalProps) {
   const { theme, themeType } = useTheme();
 
-  function handleSelect(rate: number) {
-    onSubmit(rate);
+  function handleSelect(value: number) {
+    onSelect(value);
     onClose();
   }
 
@@ -37,13 +48,38 @@ export function PlaybackSpeedModal({
             </Pressable>
           </View>
 
+          {featuredOptions.length > 0 ? (
+            <View style={[styles.featuredRow, { borderBottomColor: theme.colors.BORDER_SECONDARY }]}>
+              {featuredOptions.map((option) => {
+                const isSelected = option.value === selectedValue;
+
+                return (
+                  <Pressable
+                    key={`${option.label}:${option.value}`}
+                    style={[
+                      styles.featuredButton,
+                      {
+                        backgroundColor: isSelected ? theme.colors.TERTIARY_BG : theme.colors.CARD_BG,
+                        borderColor: isSelected ? theme.colors.ACCENT_PRIMARY : theme.colors.BORDER_SECONDARY,
+                      },
+                    ]}
+                    onPress={() => handleSelect(option.value)}
+                  >
+                    {option.icon ? <Feather name={option.icon} size={13} color={theme.colors.ACCENT_PRIMARY} /> : null}
+                    <Text allowFontScaling={false} style={[styles.featuredText, { color: theme.colors.TEXT_PRIMARY }]}>{option.label}</Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          ) : null}
+
           <ScrollView contentContainerStyle={styles.options} keyboardShouldPersistTaps="always">
-            {PLAYBACK_RATE_PRESETS.map((rate) => {
-              const isSelected = rate === currentRate;
+            {options.map((option) => {
+              const isSelected = option.value === selectedValue;
 
               return (
                 <Pressable
-                  key={rate}
+                  key={option.value}
                   style={[
                     styles.optionButton,
                     {
@@ -51,11 +87,9 @@ export function PlaybackSpeedModal({
                       borderColor: isSelected ? theme.colors.ACCENT_PRIMARY : theme.colors.BORDER_SECONDARY,
                     },
                   ]}
-                  onPress={() => handleSelect(rate)}
+                  onPress={() => handleSelect(option.value)}
                 >
-                  <Text allowFontScaling={false} style={[styles.optionText, { color: theme.colors.TEXT_PRIMARY }]}>
-                    {formatPlaybackRate(rate)}
-                  </Text>
+                  <Text allowFontScaling={false} style={[styles.optionText, { color: theme.colors.TEXT_PRIMARY }]}>{option.label}</Text>
                   {isSelected ? <Feather name="check" size={16} color={theme.colors.ACCENT_PRIMARY} /> : null}
                 </Pressable>
               );
@@ -75,7 +109,8 @@ const styles = StyleSheet.create({
   },
   content: {
     width: '100%',
-    maxWidth: 360,
+    maxHeight: '72%',
+    maxWidth: 380,
     alignSelf: 'center',
     borderRadius: 18,
     borderWidth: 1,
@@ -102,22 +137,43 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  options: {
-    padding: 14,
+  featuredRow: {
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
+    gap: 8,
+  },
+  featuredButton: {
+    minHeight: 32,
+    borderRadius: 10,
+    borderWidth: 1,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  featuredText: {
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  options: {
+    padding: 12,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   optionButton: {
-    minWidth: 82,
+    minWidth: 54,
     minHeight: 42,
     borderRadius: 12,
     borderWidth: 1,
-    paddingHorizontal: 12,
+    paddingHorizontal: 10,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: 5,
   },
   optionText: {
     fontSize: 15,
