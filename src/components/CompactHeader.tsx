@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { SurahPicker } from './SurahPicker';
 import { InlineRangeSelector } from './InlineRangeSelector';
@@ -248,19 +248,27 @@ export function CompactHeader({
       {/* Row 2: Playback State + Range + Controls */}
       <View style={[styles.row2, { backgroundColor: themeType === 'DARK' ? 'rgba(5, 150, 105, 0.12)' : 'rgba(42, 161, 152, 0.12)', borderColor: theme.colors.BORDER_PRIMARY }]}>
         <View style={styles.controlsSection}>
-          <InlineRangeSelector
-            startVerse={startVerseInput}
-            endVerse={endVerseInput}
-            playbackRateLabel={formatPlaybackRate(playbackRate)}
-            repeatCount={repeatCountInput}
-            onStartPress={() => setRangeModalType('start')}
-            onEndPress={() => setRangeModalType('end')}
-            onSpeedPress={() => setRangeModalType('speed')}
-            onRepeatPress={() => setRangeModalType('repeat')}
-            startLabel={text.startVerse}
-            endLabel={text.endVerse}
-            repeatLabel={text.repeat}
-          />
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            bounces={false}
+            style={{ flex: 1 }}
+            contentContainerStyle={{ alignItems: 'center', paddingRight: 8 }}
+          >
+            <InlineRangeSelector
+              startVerse={startVerseInput}
+              endVerse={endVerseInput}
+              playbackRateLabel={formatPlaybackRate(playbackRate)}
+              repeatCount={repeatCountInput}
+              onStartPress={() => setRangeModalType('start')}
+              onEndPress={() => setRangeModalType('end')}
+              onSpeedPress={() => setRangeModalType('speed')}
+              onRepeatPress={() => setRangeModalType('repeat')}
+              startLabel={text.startVerse}
+              endLabel={text.endVerse}
+              repeatLabel={text.repeat}
+            />
+          </ScrollView>
 
           <View style={styles.actions}>
             {isLoading ? (
@@ -433,7 +441,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: 6,
-    flexWrap: 'wrap',
   },
   actions: {
     flexDirection: 'row',
