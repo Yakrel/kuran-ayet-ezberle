@@ -85,7 +85,6 @@ export function DownloadManagerSheet({
 const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(2, 6, 23, 0.72)',
     justifyContent: 'center',
     padding: staticTheme.spacing.XL,
   },
