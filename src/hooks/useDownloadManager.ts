@@ -99,6 +99,24 @@ export function useDownloadManager({
     }
   }, [onError, refreshCacheStats, selectedReciter.label, text]);
 
+  const downloadSingleSurah = useCallback(async (surahId: number, remoteUrl: string, onProgress?: (progress: number) => void) => {
+    try {
+      const availableSpaceMB = await getAvailableSpaceMB();
+      if (availableSpaceMB < 512) {
+        throw new Error(text.lowStorageWarning);
+      }
+
+      const { downloadSurahAudio } = await import('../services/surahAudioCache');
+      await downloadSurahAudio(surahId, remoteUrl, (progress) => {
+        onProgress?.(progress.percent);
+      });
+
+      await refreshCacheStats();
+    } catch (error) {
+      throw error;
+    }
+  }, [refreshCacheStats, text]);
+
   const clearDownloads = useCallback(async () => {
     Alert.alert(text.clearReciterDownloads(selectedReciter.label), text.deleteReciterDownloads(selectedReciter.label), [
       { text: text.cancel, style: 'cancel' },
@@ -125,6 +143,7 @@ export function useDownloadManager({
     isDownloadingAll,
     downloadProgressLabel,
     downloadAll,
+    downloadSingleSurah,
     clearDownloads,
   };
 }

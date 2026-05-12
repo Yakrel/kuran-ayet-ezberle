@@ -10,6 +10,7 @@ import { NotoSansArabic_400Regular } from '@expo-google-fonts/noto-sans-arabic';
 import { ScheherazadeNew_400Regular } from '@expo-google-fonts/scheherazade-new';
 import {
   ActivityIndicator,
+  Alert,
   KeyboardAvoidingView,
   Platform,
   StyleSheet,
@@ -46,6 +47,7 @@ import { usePracticeStatePersistence } from './src/hooks/usePracticeStatePersist
 import { useSurahDetail } from './src/hooks/useSurahDetail';
 import { useSwipeGesture } from './src/hooks/useSwipeGesture';
 import { fetchPageVerses } from './src/services/quranService';
+import { getCachedSurahAudioUri } from './src/services/surahAudioCache';
 import { commonStyles } from './src/styles/common';
 import { ThemeProvider, useTheme } from './src/hooks/useTheme';
 import type { VerseLocation } from './src/types/navigation';
@@ -123,6 +125,7 @@ function MainApp({ settings }: MainAppProps) {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const [isDownloadManagerOpen, setIsDownloadManagerOpen] = useState(false);
+  const [isDownloadingSurah, setIsDownloadingSurah] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [verseActionKey, setVerseActionKey] = useState<string | null>(null);
 
@@ -397,6 +400,56 @@ function MainApp({ settings }: MainAppProps) {
     return { startVerse, endVerse, repeatCount };
   }, [endVerseInput, repeatCountInput, startVerseInput, text]);
 
+  const attemptPlaybackWithDownloadPrompt = async (
+    detail: typeof surahDetail,
+    executePlayback: () => Promise<void>
+  ) => {
+    if (!detail) return;
+    try {
+      const cachedUri = await getCachedSurahAudioUri(detail.id);
+      if (cachedUri) {
+        await executePlayback();
+        return;
+      }
+
+      const sizeMB = (detail.audio.size_bytes / (1024 * 1024)).toFixed(1);
+
+      Alert.alert(
+        'Kesintisiz Tekrar Deneyimi',
+        `İnternetsiz ve takılmadan ezber yapabilmek için bu sureyi (~${sizeMB} MB) cihazınıza indirmenizi öneririz.`,
+        [
+          { text: 'İptal', style: 'cancel' },
+          {
+            text: 'İnternetten Devam Et',
+            style: 'default',
+            onPress: () => {
+              void executePlayback().catch((error) => setErrorMessage(formatErrorMessage(error)));
+            },
+          },
+          {
+            text: 'İndir ve Çal',
+            style: 'default',
+            onPress: () => {
+              setIsDownloadingSurah(true);
+              downloadManager.downloadSingleSurah(detail.id, detail.audio.url)
+                .then(async () => {
+                  await executePlayback();
+                })
+                .catch((error) => {
+                  setErrorMessage(formatErrorMessage(error));
+                })
+                .finally(() => {
+                  setIsDownloadingSurah(false);
+                });
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      setErrorMessage(formatErrorMessage(error));
+    }
+  };
+
   const handleStartPlayback = async (overrideStartVerse?: number) => {
     try {
       const readySurahDetail = getReadySurahDetail();
@@ -405,19 +458,24 @@ function MainApp({ settings }: MainAppProps) {
       setErrorMessage(null);
       setStartVerseInput(String(startVerse));
       setEndVerseInput(String(endVerse));
-      logUiEvent('ui_start_playback', {
-        surahId: readySurahDetail.id,
-        page: currentPage,
-        startVerse,
-        endVerse,
-        repeatCount,
-      });
-      await player.startPlayback({
-        surahDetail: readySurahDetail,
-        startVerseNumber: startVerse,
-        endVerseNumber: endVerse,
-        repeatCount,
-      });
+
+      const executePlayback = async () => {
+        logUiEvent('ui_start_playback', {
+          surahId: readySurahDetail.id,
+          page: currentPage,
+          startVerse,
+          endVerse,
+          repeatCount,
+        });
+        await player.startPlayback({
+          surahDetail: readySurahDetail,
+          startVerseNumber: startVerse,
+          endVerseNumber: endVerse,
+          repeatCount,
+        });
+      };
+
+      await attemptPlaybackWithDownloadPrompt(readySurahDetail, executePlayback);
     } catch (error) {
       setErrorMessage(formatErrorMessage(error));
     }
@@ -599,12 +657,16 @@ function MainApp({ settings }: MainAppProps) {
       setVerseActionKey(null);
       setErrorMessage(null);
 
-      await player.startPlayback({
-        surahDetail: readySurahDetail,
-        startVerseNumber: startVerse,
-        endVerseNumber: endVerse,
-        repeatCount,
-      });
+      const executePlayback = async () => {
+        await player.startPlayback({
+          surahDetail: readySurahDetail,
+          startVerseNumber: startVerse,
+          endVerseNumber: endVerse,
+          repeatCount,
+        });
+      };
+
+      await attemptPlaybackWithDownloadPrompt(readySurahDetail, executePlayback);
     } catch (error) {
       setErrorMessage(formatErrorMessage(error));
     }
@@ -622,6 +684,11 @@ function MainApp({ settings }: MainAppProps) {
       <View style={[styles.backgroundGlowBottom, { backgroundColor: themeType === 'DARK' ? 'rgba(96, 165, 250, 0.08)' : 'rgba(38, 139, 210, 0.05)' }]} />
       <ExpoStatusBar style={themeType === 'DARK' ? 'light' : 'dark'} />
       <KeyboardAvoidingView behavior={Platform.select({ ios: 'padding', android: undefined })} style={commonStyles.flex}>
+        {isDownloadingSurah && (
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', zIndex: 999 }]}>
+            <ActivityIndicator size="large" color={theme.colors.ACCENT_PRIMARY} />
+          </View>
+        )}
         <View style={styles.header}>
           <CompactHeader
             surahs={surahs}
