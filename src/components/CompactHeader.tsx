@@ -252,8 +252,8 @@ export function CompactHeader({
             horizontal
             showsHorizontalScrollIndicator={false}
             bounces={false}
-            style={{ flex: 1 }}
-            contentContainerStyle={{ alignItems: 'center', paddingRight: 8 }}
+            style={styles.rangeScroller}
+            contentContainerStyle={styles.rangeScrollerContent}
           >
             <InlineRangeSelector
               startVerse={startVerseInput}
@@ -270,7 +270,7 @@ export function CompactHeader({
             />
           </ScrollView>
 
-          <View style={styles.actions}>
+          <View style={[styles.actions, isPlaying && styles.actionsPlaying]}>
             {isLoading ? (
               <View style={[styles.actionButton, styles.actionButtonSmall, { backgroundColor: theme.colors.ACCENT_PRIMARY }]}>
                 <Feather name="loader" size={16} color={themeType === 'DARK' ? theme.colors.TEXT_PRIMARY : '#fff'} />
@@ -439,11 +439,22 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: 6,
   },
+  rangeScroller: {
+    flex: 1,
+    minWidth: 0,
+  },
+  rangeScrollerContent: {
+    alignItems: 'center',
+    paddingRight: 2,
+  },
   actions: {
     flexDirection: 'row',
-    minWidth: 86,
+    flexShrink: 0,
     gap: 6,
     justifyContent: 'flex-end',
+  },
+  actionsPlaying: {
+    minWidth: 74,
   },
   actionButton: {
     height: 34,

@@ -214,8 +214,53 @@ describe('continuousPlaybackController', () => {
     player.emit(EVENTS.PlaybackProgressUpdated, { position: 3, duration: 10, buffered: 10 });
     await flushAsyncHandlers();
 
+    expect(player.seekTo).toHaveBeenCalledTimes(2);
+    expect(player.play).toHaveBeenCalledTimes(2);
+    expect(player.stop).not.toHaveBeenCalled();
+    expect(controller.getPlaybackSnapshot().currentRepeat).toBe(2);
+
+    player.emit(EVENTS.PlaybackProgressUpdated, { position: 1.1, duration: 10, buffered: 10 });
+    await flushAsyncHandlers();
+
+    player.emit(EVENTS.PlaybackProgressUpdated, { position: 3, duration: 10, buffered: 10 });
+    await flushAsyncHandlers();
+
     expect(player.stop).toHaveBeenCalledTimes(1);
     expect(player.reset).toHaveBeenCalledTimes(2);
+    expect(controller.getPlaybackSnapshot().playbackStatus).toBe('stopped');
+  });
+
+  it('does not shorten the next repeat when playback-state progress is stale after a seek', async () => {
+    vi.useFakeTimers();
+    const { controller, player } = await loadController();
+
+    await controller.startContinuousPlayback({
+      surahDetail: makeSurahDetail(),
+      startVerseNumber: 1,
+      endVerseNumber: 2,
+      repeatCount: 2,
+    });
+
+    player.emit(EVENTS.PlaybackProgressUpdated, { position: 3, duration: 10, buffered: 10 });
+    await flushAsyncHandlers();
+
+    player.getProgress.mockResolvedValueOnce({ position: 3, duration: 10, buffered: 10 });
+    player.emit(EVENTS.PlaybackState, { state: 'playing' });
+    await flushAsyncHandlers();
+
+    expect(player.seekTo).toHaveBeenCalledTimes(2);
+    expect(player.stop).not.toHaveBeenCalled();
+    expect(controller.getPlaybackSnapshot().currentRepeat).toBe(2);
+
+    vi.advanceTimersByTime(1999);
+    await flushAsyncHandlers();
+
+    expect(player.stop).not.toHaveBeenCalled();
+
+    vi.advanceTimersByTime(1);
+    await flushAsyncHandlers();
+
+    expect(player.stop).toHaveBeenCalledTimes(1);
     expect(controller.getPlaybackSnapshot().playbackStatus).toBe('stopped');
   });
 

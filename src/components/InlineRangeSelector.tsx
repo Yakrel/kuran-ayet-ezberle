@@ -87,6 +87,7 @@ export function InlineRangeSelector({
         style={[
           styles.inputPill,
           styles.iconPill,
+          styles.repeatPill,
           {
             backgroundColor: themeType === 'DARK' ? 'rgba(96, 165, 250, 0.16)' : 'rgba(38, 139, 210, 0.14)',
             borderColor: theme.colors.BORDER_SECONDARY,
@@ -95,7 +96,7 @@ export function InlineRangeSelector({
         onPress={onRepeatPress}
       >
         <Feather name="repeat" size={12} color={theme.colors.ACCENT_PRIMARY} />
-        <Text allowFontScaling={false} style={[styles.pillValue, { color: theme.colors.TEXT_PRIMARY }]}>{repeatCount}×</Text>
+        <Text allowFontScaling={false} style={[styles.pillValue, { color: theme.colors.TEXT_PRIMARY }]}>{repeatCount}x</Text>
       </Pressable>
     </View>
   );
@@ -119,6 +120,10 @@ const styles = StyleSheet.create({
   },
   iconPill: {
     gap: 4,
+  },
+  repeatPill: {
+    minWidth: 54,
+    paddingRight: 9,
   },
   pillLabel: {
     fontSize: 8,

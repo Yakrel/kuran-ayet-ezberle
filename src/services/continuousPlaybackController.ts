@@ -72,6 +72,7 @@ let playbackRequestId = 0;
 let continuousVerseIndex = 0;
 let pendingPlayTransition = false;
 let continuousTransitionInFlight = false;
+let pendingRangeRestart = false;
 
 const snapshotListeners = new Set<SnapshotListener>();
 const errorListeners = new Set<ErrorListener>();
@@ -214,6 +215,20 @@ function syncContinuousActiveState(positionMs: number) {
   syncVisibleState(nextBoundary.verse, snapshot.currentRepeat);
 }
 
+function shouldIgnorePendingRangeRestartProgress(positionMs: number) {
+  const currentSession = session;
+  if (!currentSession || !pendingRangeRestart) {
+    return false;
+  }
+
+  if (positionMs >= currentSession.rangeEndMs) {
+    return true;
+  }
+
+  pendingRangeRestart = false;
+  return false;
+}
+
 async function continueFromRangeEndIfNeeded(positionMs: number) {
   const currentSession = session;
   if (!currentSession || positionMs < currentSession.rangeEndMs) {
@@ -277,6 +292,7 @@ async function completeActiveSession(resetPlayer = true) {
   continuousTransitionInFlight = false;
   continuousVerseIndex = 0;
   pendingPlayTransition = false;
+  pendingRangeRestart = false;
   setSnapshot({
     currentRepeat: 1,
     activeVerse: null,
@@ -321,6 +337,7 @@ async function advanceContinuousRangeEnd() {
       }
 
       syncVisibleState(firstBoundary.verse, repeatStep.nextRepeat);
+      pendingRangeRestart = true;
       await currentPlayer.seekTo(currentSession.rangeStartMs / 1000);
       await currentPlayer.play();
       return true;
@@ -356,7 +373,11 @@ async function scheduleBoundaryTimer(remainingMs?: number) {
   if (nextRemainingMs === undefined) {
     const progress = await TrackPlayer.getProgress();
     const positionMs = Math.round(progress.position * 1000);
-    nextRemainingMs = Math.max(session.rangeEndMs - positionMs, 0);
+    if (shouldIgnorePendingRangeRestartProgress(positionMs)) {
+      nextRemainingMs = session.rangeDurationMs;
+    } else {
+      nextRemainingMs = Math.max(session.rangeEndMs - positionMs, 0);
+    }
   }
 
   const playbackRateValue = Math.max(snapshot.playbackRate, 0.1);
@@ -457,6 +478,10 @@ export async function initializeContinuousPlayback() {
 
         const positionMs = Math.round(nextProgress.position * 1000);
         runPlayerTask(async () => {
+          if (shouldIgnorePendingRangeRestartProgress(positionMs)) {
+            return;
+          }
+
           syncContinuousActiveState(positionMs);
           await continueFromRangeEndIfNeeded(positionMs);
         });
@@ -519,6 +544,7 @@ export async function startContinuousPlayback({
 
     session = nextSession;
     continuousVerseIndex = 0;
+    pendingRangeRestart = false;
     const firstBoundary = nextSession.boundaries[0];
     if (!firstBoundary) {
       throw new Error('Playback session has no ayah boundaries.');
