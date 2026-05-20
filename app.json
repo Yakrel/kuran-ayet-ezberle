@@ -46,6 +46,7 @@
     "plugins": [
       "expo-localization",
       "expo-font",
+      "./plugins/with-kotlinaudio-index-seeking",
       "./plugins/with-android-release-signing",
       [
         "expo-build-properties",

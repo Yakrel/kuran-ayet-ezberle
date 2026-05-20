@@ -8,6 +8,7 @@ export type SurahAudioDownloadProgress = {
 };
 
 const CACHE_DIR_NAME = 'surah-audio-cache/';
+const remoteAudioSizeBytesByUrl = new Map<string, number>();
 
 function getCacheDir() {
   const base = FileSystem.documentDirectory;
@@ -39,6 +40,27 @@ export async function getCachedSurahAudioUri(surahId: number) {
 export async function resolveSurahAudioUri(surahId: number, remoteUrl: string) {
   const cachedUri = await getCachedSurahAudioUri(surahId);
   return cachedUri !== null ? cachedUri : remoteUrl;
+}
+
+export async function getRemoteSurahAudioSizeBytes(remoteUrl: string) {
+  const cachedSize = remoteAudioSizeBytesByUrl.get(remoteUrl);
+  if (cachedSize !== undefined) {
+    return cachedSize;
+  }
+
+  const response = await fetch(remoteUrl, { method: 'HEAD' });
+  if (!response.ok) {
+    throw new Error(`Surah audio size could not be checked. HTTP status: ${response.status}.`);
+  }
+
+  const contentLength = response.headers.get('content-length');
+  const sizeBytes = Number(contentLength);
+  if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) {
+    throw new Error('Surah audio size is unavailable from the audio server.');
+  }
+
+  remoteAudioSizeBytesByUrl.set(remoteUrl, sizeBytes);
+  return sizeBytes;
 }
 
 export async function downloadSurahAudio(

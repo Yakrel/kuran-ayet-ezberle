@@ -1,3 +1,16 @@
+diff --git a/node_modules/react-native-track-player/android/build.gradle b/node_modules/react-native-track-player/android/build.gradle
+index 6fdcf04..1f82204 100644
+--- a/node_modules/react-native-track-player/android/build.gradle
++++ b/node_modules/react-native-track-player/android/build.gradle
+@@ -40,7 +40,7 @@ repositories {
+ }
+ 
+ dependencies {
+-    implementation 'com.github.doublesymmetry:kotlinaudio:v2.1.0'
++    implementation project(':kotlinaudio')
+     // used when building against local maven
+ //    implementation "com.github.doublesymmetry:kotlin-audio:2.1.0"
+ 
 diff --git a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt b/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt
 index b2409a0..102e8df 100644
 --- a/node_modules/react-native-track-player/android/src/main/java/com/doublesymmetry/trackplayer/module/MusicModule.kt

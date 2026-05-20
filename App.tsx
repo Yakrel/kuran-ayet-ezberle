@@ -47,7 +47,7 @@ import { usePracticeStatePersistence } from './src/hooks/usePracticeStatePersist
 import { useSurahDetail } from './src/hooks/useSurahDetail';
 import { useSwipeGesture } from './src/hooks/useSwipeGesture';
 import { fetchPageVerses } from './src/services/quranService';
-import { getCachedSurahAudioUri } from './src/services/surahAudioCache';
+import { getCachedSurahAudioUri, getRemoteSurahAudioSizeBytes } from './src/services/surahAudioCache';
 import { commonStyles } from './src/styles/common';
 import { ThemeProvider, useTheme } from './src/hooks/useTheme';
 import type { VerseLocation } from './src/types/navigation';
@@ -412,11 +412,17 @@ function MainApp({ settings }: MainAppProps) {
         return;
       }
 
-      const sizeMB = (detail.audio.size_bytes / (1024 * 1024)).toFixed(1);
+      let downloadSizeText = '';
+      try {
+        const sizeBytes = await getRemoteSurahAudioSizeBytes(detail.audio.url);
+        downloadSizeText = ` (~${(sizeBytes / (1024 * 1024)).toFixed(1)} MB)`;
+      } catch {
+        downloadSizeText = '';
+      }
 
       Alert.alert(
         'Kesintisiz Tekrar Deneyimi',
-        `İnternetsiz ve takılmadan ezber yapabilmek için bu sureyi (~${sizeMB} MB) cihazınıza indirmenizi öneririz.`,
+        `İnternetsiz ve takılmadan ezber yapabilmek için bu sureyi${downloadSizeText} cihazınıza indirmenizi öneririz.`,
         [
           { text: 'İptal', style: 'cancel' },
           {
