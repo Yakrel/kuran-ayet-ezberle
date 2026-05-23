@@ -1,0 +1,80 @@
+name: Android Native CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+concurrency:
+  group: android-native-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android-checks:
+    name: Gradle test, lint, APK
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+      ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+      ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4.0.1
+
+      - name: Run unit tests
+        working-directory: android
+        run: ./gradlew testDebugUnitTest --stacktrace --warning-mode all
+
+      - name: Run Android lint
+        working-directory: android
+        run: ./gradlew lintDebug --stacktrace --warning-mode all
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew :app:assembleDebug --stacktrace --warning-mode all
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-debug-apk
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Restore release keystore
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        run: |
+          test -n "${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}" || { echo "Missing ANDROID_SIGNING_KEYSTORE_BASE64" >&2; exit 1; }
+          echo "${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/release.keystore"
+
+      - name: Build release APK
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        working-directory: android
+        env:
+          ANDROID_SIGNING_STORE_FILE: ${{ runner.temp }}/release.keystore
+        run: ./gradlew :app:assembleRelease --stacktrace --warning-mode all
+
+      - name: Upload release APK
+        if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-release-apk
+          path: android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 14

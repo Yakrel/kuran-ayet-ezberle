@@ -1,0 +1,43 @@
+# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+# dependencies
+node_modules/
+
+# generated web artifacts
+dist/
+web-build/
+
+# Native
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+
+# debug
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env
+.env*.local
+
+# Codex local mount
+.codex
+
+# local Android output
+android/.gradle/
+android/build/
+android/app/build/
+
+# local audio backups
+/audio-backups
+release.keystore
+keystore-info.txt
