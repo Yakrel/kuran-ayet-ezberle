@@ -68,9 +68,10 @@ class PracticeViewModel @Inject constructor(
                 mutableUiState.value = mutableUiState.value.copy(sessionState = session)
             }
         }
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             runCatching {
-                val surahs = withContext(Dispatchers.IO) { quranRepository.surahs() }
+                quranRepository.initialize()
+                val surahs = quranRepository.surahs()
                 mutableUiState.value = mutableUiState.value.copy(surahs = surahs, loading = false)
                 reloadSelectedSurah()
             }.onFailure { setError(it) }

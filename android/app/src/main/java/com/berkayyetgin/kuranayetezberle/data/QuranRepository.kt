@@ -6,8 +6,12 @@ class QuranRepository @Inject constructor(
     private val dao: QuranDao,
     private val seeder: AssetQuranSeeder,
 ) {
-    suspend fun surahs(): List<SurahEntity> {
+    suspend fun initialize() {
         seeder.seedIfNeeded(dao)
+    }
+
+    suspend fun surahs(): List<SurahEntity> {
+        initialize()
         return dao.surahs()
     }
 
@@ -16,7 +20,7 @@ class QuranRepository @Inject constructor(
         translationAuthorId: String,
         recitationId: Int = 13,
     ): List<AyahWithDetails> {
-        seeder.seedIfNeeded(dao)
+        initialize()
         val rawAyahs = dao.ayahsForSurah(surahId, translationAuthorId, recitationId)
         val missing = rawAyahs.firstOrNull {
             it.translation.isNullOrBlank() || it.fromMs == null || it.toMs == null || it.toMs <= it.fromMs
@@ -39,7 +43,7 @@ class QuranRepository @Inject constructor(
     }
 
     suspend fun audioForSurah(surahId: Int, recitationId: Int = 13): SurahAudio {
-        seeder.seedIfNeeded(dao)
+        initialize()
         val audio = dao.audioForSurah(surahId, recitationId)
         checkNotNull(audio) { "Unsupported data: missing audio for surah $surahId" }
         return SurahAudio(
