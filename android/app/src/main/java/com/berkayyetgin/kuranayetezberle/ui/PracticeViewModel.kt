@@ -14,10 +14,12 @@ import com.berkayyetgin.kuranayetezberle.settings.AppSettings
 import com.berkayyetgin.kuranayetezberle.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 data class PracticeUiState(
     val loading: Boolean = true,
@@ -68,7 +70,7 @@ class PracticeViewModel @Inject constructor(
         }
         viewModelScope.launch {
             runCatching {
-                val surahs = quranRepository.surahs()
+                val surahs = withContext(Dispatchers.IO) { quranRepository.surahs() }
                 mutableUiState.value = mutableUiState.value.copy(surahs = surahs, loading = false)
                 reloadSelectedSurah()
             }.onFailure { setError(it) }
@@ -130,7 +132,7 @@ class PracticeViewModel @Inject constructor(
         runCatching {
             val state = mutableUiState.value
             val range = AyahRange(state.selectedSurahId, state.startAyah, state.endAyah)
-            val audio = quranRepository.audioForSurah(state.selectedSurahId)
+            val audio = withContext(Dispatchers.IO) { quranRepository.audioForSurah(state.selectedSurahId) }
             playbackCoordinator.start(
                 audio = audio,
                 ayahs = state.ayahs,
@@ -153,13 +155,18 @@ class PracticeViewModel @Inject constructor(
 
     fun downloadSelectedSurah() = viewModelScope.launch {
         runCatching {
-            audioCacheRepository.download(quranRepository.audioForSurah(mutableUiState.value.selectedSurahId))
+            val audio = withContext(Dispatchers.IO) {
+                quranRepository.audioForSurah(mutableUiState.value.selectedSurahId)
+            }
+            audioCacheRepository.download(audio)
         }.onFailure { setError(it) }
     }
 
     fun downloadAllSurahs() = viewModelScope.launch {
         runCatching {
-            val audios = quranRepository.surahs().map { quranRepository.audioForSurah(it.id) }
+            val audios = withContext(Dispatchers.IO) {
+                quranRepository.surahs().map { quranRepository.audioForSurah(it.id) }
+            }
             audioCacheRepository.downloadAll(audios)
         }.onFailure { setError(it) }
     }
@@ -172,10 +179,12 @@ class PracticeViewModel @Inject constructor(
         val state = mutableUiState.value
         if (state.surahs.isEmpty()) return
         runCatching {
-            val ayahs = quranRepository.ayahsForSurah(
-                surahId = state.selectedSurahId,
-                translationAuthorId = state.settings.translationAuthorId,
-            )
+            val ayahs = withContext(Dispatchers.IO) {
+                quranRepository.ayahsForSurah(
+                    surahId = state.selectedSurahId,
+                    translationAuthorId = state.settings.translationAuthorId,
+                )
+            }
             val page = ayahs.firstOrNull { it.number == state.startAyah }?.page ?: ayahs.firstOrNull()?.page ?: 1
             mutableUiState.value = mutableUiState.value.copy(
                 ayahs = ayahs,

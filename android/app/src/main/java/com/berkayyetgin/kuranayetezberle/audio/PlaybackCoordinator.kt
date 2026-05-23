@@ -26,6 +26,7 @@ class PlaybackCoordinator @Inject constructor(
     private val playerHolder: PlayerHolder,
 ) {
     private var ayahs: List<AyahWithDetails> = emptyList()
+    private var rangeAyahs: List<AyahWithDetails> = emptyList()
     private var range: AyahRange? = null
     private var listenerAttached = false
 
@@ -39,6 +40,7 @@ class PlaybackCoordinator @Inject constructor(
         requireBackgroundPlaybackSupported()
         this.ayahs = ayahs
         this.range = range
+        this.rangeAyahs = ayahs.filter { it.number in range.startAyah..range.endAyah }
         val start = ayahs.firstOrNull { it.number == range.startAyah }
             ?: error("Unsupported data: start ayah timing is missing.")
         ContextCompat.startForegroundService(context, Intent(context, PracticePlaybackService::class.java))
@@ -79,10 +81,6 @@ class PlaybackCoordinator @Inject constructor(
 
     private fun updatePosition(positionMs: Long) {
         val currentRange = range ?: return
-        val currentAyah = ayahs.lastOrNull {
-            it.number in currentRange.startAyah..currentRange.endAyah && positionMs >= it.fromMs
-        } ?: return
-        sessionController.markPosition(currentAyah.number)
         val end = ayahs.firstOrNull { it.number == currentRange.endAyah } ?: return
         if (positionMs >= end.toMs) {
             val finished = sessionController.finishRangeRepeat()
@@ -95,7 +93,25 @@ class PlaybackCoordinator @Inject constructor(
                 playerHolder.player.seekTo(start.fromMs)
                 playerHolder.player.play()
             }
+            return
         }
+        val currentAyah = ayahAt(positionMs) ?: return
+        sessionController.markPosition(currentAyah.number)
+    }
+
+    private fun ayahAt(positionMs: Long): AyahWithDetails? {
+        if (rangeAyahs.isEmpty()) return null
+        val index = rangeAyahs.binarySearch { ayah ->
+            when {
+                positionMs < ayah.fromMs -> 1
+                positionMs >= ayah.toMs -> -1
+                else -> 0
+            }
+        }
+        if (index >= 0) return rangeAyahs[index]
+        val insertionPoint = -index - 1
+        return rangeAyahs.getOrNull((insertionPoint - 1).coerceAtLeast(0))
+            ?.takeIf { positionMs >= it.fromMs && positionMs < it.toMs }
     }
 
     private fun requireBackgroundPlaybackSupported() {

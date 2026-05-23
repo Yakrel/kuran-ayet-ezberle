@@ -3,26 +3,43 @@ package com.berkayyetgin.kuranayetezberle.data
 import android.content.Context
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromStream
 
 class AssetQuranSeeder @Inject constructor(
     @ApplicationContext private val context: Context,
     private val json: Json,
 ) {
+    private val seedMutex = Mutex()
+    @Volatile private var seeded = false
+
     suspend fun seedIfNeeded(dao: QuranDao) {
-        if (dao.surahCount() > 0) return
-        dao.seed(loadSeed())
+        if (seeded) return
+        seedMutex.withLock {
+            if (seeded) return
+            withContext(Dispatchers.IO) {
+                if (dao.surahCount() == 0) {
+                    dao.seed(loadSeed())
+                }
+                seeded = true
+            }
+        }
     }
 
+    @OptIn(ExperimentalSerializationApi::class)
     private fun loadSeed(): QuranSeed {
-        val quran = context.assets.open("data/quran.json").bufferedReader().use { reader ->
-            json.decodeFromString(QuranJson.serializer(), reader.readText())
+        val quran = context.assets.open("data/quran.json").use { input ->
+            json.decodeFromStream(QuranJson.serializer(), input)
         }
         val recitation = context.assets.open("data/recitations/saad-al-ghamdi-recitation-13.json")
-            .bufferedReader()
-            .use { reader -> json.decodeFromString(RecitationJson.serializer(), reader.readText()) }
+            .use { input -> json.decodeFromStream(RecitationJson.serializer(), input) }
 
         val surahs = quran.surahs.map { SurahEntity(it.id, it.name, it.verseCount) }
         val ayahs = quran.surahs.flatMap { surah ->
