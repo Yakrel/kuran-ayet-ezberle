@@ -52,7 +52,7 @@ class PracticeViewModel @Inject constructor(
     val uiState: StateFlow<PracticeUiState> = mutableUiState.asStateFlow()
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(Dispatchers.IO) {
             settingsRepository.settings.collect { settings ->
                 val previousTranslationAuthor = mutableUiState.value.settings.translationAuthorId
                 mutableUiState.value = mutableUiState.value.copy(

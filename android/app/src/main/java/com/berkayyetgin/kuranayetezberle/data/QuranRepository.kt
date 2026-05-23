@@ -1,13 +1,23 @@
 package com.berkayyetgin.kuranayetezberle.data
 
 import javax.inject.Inject
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class QuranRepository @Inject constructor(
     private val dao: QuranDao,
     private val seeder: AssetQuranSeeder,
 ) {
+    private val initMutex = Mutex()
+    @Volatile private var initialized = false
+
     suspend fun initialize() {
-        seeder.seedIfNeeded(dao)
+        if (initialized) return
+        initMutex.withLock {
+            if (initialized) return
+            seeder.seedIfNeeded(dao)
+            initialized = true
+        }
     }
 
     suspend fun surahs(): List<SurahEntity> {
