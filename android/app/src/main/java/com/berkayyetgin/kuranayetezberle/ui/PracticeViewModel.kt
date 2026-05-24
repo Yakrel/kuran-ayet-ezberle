@@ -23,6 +23,14 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** Tracks the state of a background audio download operation. */
+sealed interface DownloadState {
+    data object Idle : DownloadState
+    data object InProgress : DownloadState
+    /** Download completed. [failureCount] > 0 means some surahs could not be downloaded. */
+    data class Done(val successCount: Int, val failureCount: Int) : DownloadState
+}
+
 data class PracticeUiState(
     val loading: Boolean = true,
     val surahs: List<SurahEntity> = emptyList(),
@@ -33,6 +41,10 @@ data class PracticeUiState(
     val selectedPage: Int = 1,
     val settings: AppSettings = AppSettings(),
     val sessionState: PlaybackSessionState = PlaybackSessionState.Idle,
+    /** Reflects whether the currently selected surah is fully available in the local cache. */
+    val isSelectedSurahCached: Boolean = false,
+    /** Reflects the state of any active download triggered by the user. */
+    val downloadState: DownloadState = DownloadState.Idle,
     val error: String? = null,
 ) {
     val selectedSurah: SurahEntity? get() = surahs.firstOrNull { it.id == selectedSurahId }
@@ -161,6 +173,13 @@ class PracticeViewModel @Inject constructor(
         mutableUiState.update { it.copy(error = null) }
     }
 
+    /** Clears the Done download state after the UI has shown the result to the user. */
+    fun clearDownloadDone() {
+        if (mutableUiState.value.downloadState is DownloadState.Done) {
+            mutableUiState.update { it.copy(downloadState = DownloadState.Idle) }
+        }
+    }
+
     fun setRepeatCount(value: Int) = viewModelScope.launch {
         stopIfSessionStarted()
         settingsRepository.setRepeatCount(value.coerceIn(1, 999))
@@ -215,27 +234,77 @@ class PracticeViewModel @Inject constructor(
 
     fun stop() = playbackCoordinator.stop()
 
+    /** Downloads the currently selected surah. No-ops if a download is already in progress. */
     fun downloadSelectedSurah() = viewModelScope.launch {
-        runCatching {
-            val audio = withContext(Dispatchers.IO) {
-                quranRepository.audioForSurah(mutableUiState.value.selectedSurahId)
+        if (mutableUiState.value.downloadState is DownloadState.InProgress) return@launch
+        mutableUiState.update { it.copy(downloadState = DownloadState.InProgress) }
+        val audio = runCatching {
+            withContext(Dispatchers.IO) { quranRepository.audioForSurah(mutableUiState.value.selectedSurahId) }
+        }.getOrElse { e ->
+            mutableUiState.update {
+                it.copy(
+                    downloadState = DownloadState.Idle,
+                    error = e.message ?: "İndirme başarısız.",
+                )
             }
-            audioCacheRepository.download(audio)
-        }.onFailure { setError(it) }
+            return@launch
+        }
+        runCatching { audioCacheRepository.download(audio) }
+            .onSuccess {
+                mutableUiState.update {
+                    it.copy(
+                        downloadState = DownloadState.Done(successCount = 1, failureCount = 0),
+                        isSelectedSurahCached = audioCacheRepository.isCached(audio),
+                    )
+                }
+            }
+            .onFailure { e ->
+                mutableUiState.update {
+                    it.copy(
+                        downloadState = DownloadState.Idle,
+                        error = e.message ?: "İndirme başarısız.",
+                    )
+                }
+            }
     }
 
+    /**
+     * Downloads all 114 surahs with per-surah error isolation (app-lifetime coroutine).
+     * No-ops if a download is already in progress.
+     */
     fun downloadAllSurahs() = viewModelScope.launch {
-        runCatching {
-            val audios = withContext(Dispatchers.IO) {
+        if (mutableUiState.value.downloadState is DownloadState.InProgress) return@launch
+        mutableUiState.update { it.copy(downloadState = DownloadState.InProgress) }
+        val audios = runCatching {
+            withContext(Dispatchers.IO) {
                 quranRepository.surahs().map { quranRepository.audioForSurah(it.id) }
             }
-            audioCacheRepository.downloadAll(audios)
-        }.onFailure { setError(it) }
+        }.getOrElse { e ->
+            mutableUiState.update {
+                it.copy(
+                    downloadState = DownloadState.Idle,
+                    error = e.message ?: "İndirme listesi alınamadı.",
+                )
+            }
+            return@launch
+        }
+        val result = audioCacheRepository.downloadAll(audios)
+        val currentAudio = runCatching {
+            quranRepository.audioForSurah(mutableUiState.value.selectedSurahId)
+        }.getOrNull()
+        mutableUiState.update {
+            it.copy(
+                downloadState = DownloadState.Done(result.successCount, result.failureCount),
+                isSelectedSurahCached = currentAudio?.let { a -> audioCacheRepository.isCached(a) } ?: false,
+            )
+        }
     }
 
     fun clearCache() = viewModelScope.launch {
         stopIfSessionStarted()
-        runCatching { audioCacheRepository.clear() }.onFailure { setError(it) }
+        runCatching { audioCacheRepository.clear() }
+            .onSuccess { mutableUiState.update { it.copy(isSelectedSurahCached = false) } }
+            .onFailure { setError(it) }
     }
 
     private suspend fun reloadSelectedSurah() {
@@ -248,8 +317,15 @@ class PracticeViewModel @Inject constructor(
                     translationAuthorId = state.settings.translationAuthorId,
                 )
             }
-            val page = ayahs.firstOrNull { it.number == state.startAyah }?.page ?: ayahs.firstOrNull()?.page ?: 1
-            mutableUiState.update { it.copy(ayahs = ayahs, selectedPage = page) }
+            val audio = runCatching {
+                withContext(Dispatchers.IO) { quranRepository.audioForSurah(state.selectedSurahId) }
+            }.getOrNull()
+            val isCached = audio?.let { audioCacheRepository.isCached(it) } ?: false
+            val page = ayahs.firstOrNull { it.number == state.startAyah }?.page
+                ?: ayahs.firstOrNull()?.page ?: 1
+            mutableUiState.update {
+                it.copy(ayahs = ayahs, selectedPage = page, isSelectedSurahCached = isCached)
+            }
         }.onFailure { setError(it) }
     }
 

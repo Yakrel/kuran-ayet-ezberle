@@ -37,7 +37,14 @@ class PlaybackCoordinator @Inject constructor(
     private var ayahs: List<AyahWithDetails> = emptyList()
     private var rangeAyahs: List<AyahWithDetails> = emptyList()
     private var range: AyahRange? = null
-    private var listenerAttached = false
+
+    /**
+     * Guards against re-entrant calls to [updatePosition] from the ticker.
+     * Since the ticker runs on Main.immediate (single-threaded), this is a plain boolean —
+     * no need for atomics or volatiles.
+     */
+    private var handlingBoundary = false
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var positionTicker: Job? = null
 
@@ -55,13 +62,15 @@ class PlaybackCoordinator @Inject constructor(
         check(rangeAyahs.isNotEmpty()) { "Unsupported data: selected ayah range is missing." }
         val start = ayahs.firstOrNull { it.number == range.startAyah }
             ?: error("Unsupported data: start ayah timing is missing.")
+
         ContextCompat.startForegroundService(context, Intent(context, PracticePlaybackService::class.java))
+
         val exoPlayer = playerHolder.player
-        if (!listenerAttached) {
-            exoPlayer.addListener(positionListener)
-            listenerAttached = true
-        }
-        exoPlayer.setMediaItem(MediaItem.fromUri(cacheRepository.playbackUri(audio)))
+        // Always re-register the listener to avoid stale state from a previous session.
+        exoPlayer.removeListener(playbackStateListener)
+        exoPlayer.addListener(playbackStateListener)
+
+        exoPlayer.setMediaItem(MediaItem.fromUri(cacheRepository.resolvePlaybackUri(audio)))
         exoPlayer.prepare()
         exoPlayer.playbackParameters = PlaybackParameters(speed)
         exoPlayer.seekTo(start.fromMs)
@@ -96,17 +105,16 @@ class PlaybackCoordinator @Inject constructor(
         sessionController.updateSpeed(speed)
     }
 
-    private val positionListener = object : Player.Listener {
-        override fun onEvents(player: Player, events: Player.Events) {
-            updatePosition(player.currentPosition)
-        }
-
+    /**
+     * Handles only playback state transitions (playing/paused) and playback errors.
+     *
+     * Position tracking is done **exclusively** by [positionTicker]. Removing the
+     * [Player.Listener.onEvents] override eliminates the double-firing of [updatePosition]
+     * that previously caused [finishRangeRepeat] to be called twice per boundary crossing.
+     */
+    private val playbackStateListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
-            if (isPlaying) {
-                startPositionTicker()
-            } else {
-                stopPositionTicker()
-            }
+            if (isPlaying) startPositionTicker() else stopPositionTicker()
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -115,26 +123,36 @@ class PlaybackCoordinator @Inject constructor(
     }
 
     private fun updatePosition(positionMs: Long) {
+        // Prevent re-entrant boundary handling: if seekTo() triggers onIsPlayingChanged which
+        // restarts the ticker mid-boundary handling, we must not re-enter this logic.
+        if (handlingBoundary) return
+
         val currentRange = range ?: return
         val end = ayahs.firstOrNull { it.number == currentRange.endAyah } ?: return
+
         if (positionMs >= end.toMs) {
-            when (sessionController.finishRangeRepeat()) {
-                RepeatBoundaryResult.Completed, RepeatBoundaryResult.Inactive -> stopFinishedPlayback()
-                RepeatBoundaryResult.Continue -> {
-                    val start = ayahs.first { it.number == currentRange.startAyah }
-                    playerHolder.player.seekTo(start.fromMs)
-                    playerHolder.player.play()
+            handlingBoundary = true
+            try {
+                when (sessionController.finishRangeRepeat()) {
+                    RepeatBoundaryResult.Completed, RepeatBoundaryResult.Inactive -> stopFinishedPlayback()
+                    RepeatBoundaryResult.Continue -> {
+                        val start = ayahs.first { it.number == currentRange.startAyah }
+                        playerHolder.player.seekTo(start.fromMs)
+                        playerHolder.player.play()
+                    }
                 }
+            } finally {
+                handlingBoundary = false
             }
             return
         }
+
         val currentAyah = ayahAt(positionMs) ?: return
         sessionController.markPosition(currentAyah.number)
     }
 
-    private fun ayahAt(positionMs: Long): AyahWithDetails? {
-        return PlaybackPositionPolicy.ayahAt(rangeAyahs, positionMs)
-    }
+    private fun ayahAt(positionMs: Long): AyahWithDetails? =
+        PlaybackPositionPolicy.ayahAt(rangeAyahs, positionMs)
 
     private fun requireBackgroundPlaybackSupported() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
