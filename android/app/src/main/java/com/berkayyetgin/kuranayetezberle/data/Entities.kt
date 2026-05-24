@@ -58,9 +58,12 @@ data class AyahTimingEntity(
     val toMs: Long,
 )
 
-@Entity(tableName = "reciter_audio")
+@Entity(
+    tableName = "reciter_audio",
+    primaryKeys = ["surahId", "recitationId"],
+)
 data class ReciterAudioEntity(
-    @PrimaryKey val surahId: Int,
+    val surahId: Int,
     val recitationId: Int,
     val url: String,
     val durationSeconds: Long,

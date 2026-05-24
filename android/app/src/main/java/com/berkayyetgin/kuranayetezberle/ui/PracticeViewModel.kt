@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.berkayyetgin.kuranayetezberle.audio.PlaybackCoordinator
 import com.berkayyetgin.kuranayetezberle.cache.AudioCacheRepository
 import com.berkayyetgin.kuranayetezberle.data.AyahWithDetails
+import com.berkayyetgin.kuranayetezberle.data.QuranPagePolicy
 import com.berkayyetgin.kuranayetezberle.data.QuranRepository
 import com.berkayyetgin.kuranayetezberle.data.SurahEntity
 import com.berkayyetgin.kuranayetezberle.domain.AyahRange
@@ -18,6 +19,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -35,7 +37,7 @@ data class PracticeUiState(
 ) {
     val selectedSurah: SurahEntity? get() = surahs.firstOrNull { it.id == selectedSurahId }
     val visibleAyahs: List<AyahWithDetails>
-        get() = ayahs.filter { it.page == selectedPage }.ifEmpty { ayahs }
+        get() = ayahs.filter { it.page == selectedPage }
     val activeAyah: Int?
         get() = when (val session = sessionState) {
             is PlaybackSessionState.Active -> session.activeAyah
@@ -66,9 +68,7 @@ class PracticeViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             settingsRepository.settings.collect { settings ->
                 val previousTranslationAuthor = mutableUiState.value.settings.translationAuthorId
-                mutableUiState.value = mutableUiState.value.copy(
-                    settings = settings,
-                )
+                mutableUiState.update { it.copy(settings = settings) }
                 if (previousTranslationAuthor != settings.translationAuthorId) {
                     reloadSelectedSurah()
                 }
@@ -85,18 +85,20 @@ class PracticeViewModel @Inject constructor(
                 val activePage = activeAyah?.let { ayah ->
                     current.ayahs.firstOrNull { it.number == ayah }?.page
                 }
-                mutableUiState.value = current.copy(
-                    sessionState = session,
-                    selectedPage = activePage ?: current.selectedPage,
-                    error = (session as? PlaybackSessionState.Error)?.message ?: current.error,
-                )
+                mutableUiState.update {
+                    it.copy(
+                        sessionState = session,
+                        selectedPage = activePage ?: it.selectedPage,
+                        error = (session as? PlaybackSessionState.Error)?.message ?: it.error,
+                    )
+                }
             }
         }
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
                 quranRepository.initialize()
                 val surahs = quranRepository.surahs()
-                mutableUiState.value = mutableUiState.value.copy(surahs = surahs, loading = false)
+                mutableUiState.update { it.copy(surahs = surahs, loading = false) }
                 reloadSelectedSurah()
             }.onFailure { setError(it) }
         }
@@ -105,11 +107,13 @@ class PracticeViewModel @Inject constructor(
     fun selectSurah(id: Int) = viewModelScope.launch {
         stopIfSessionStarted()
         val surah = mutableUiState.value.surahs.firstOrNull { it.id == id } ?: return@launch
-        mutableUiState.value = mutableUiState.value.copy(
-            selectedSurahId = id,
-            startAyah = 1,
-            endAyah = surah.verseCount.coerceAtMost(7),
-        )
+        mutableUiState.update {
+            it.copy(
+                selectedSurahId = id,
+                startAyah = 1,
+                endAyah = surah.verseCount.coerceAtMost(7),
+            )
+        }
         reloadSelectedSurah()
     }
 
@@ -118,22 +122,26 @@ class PracticeViewModel @Inject constructor(
         val state = mutableUiState.value
         val max = state.selectedSurah?.verseCount ?: value
         val start = value.coerceIn(1, max)
-        mutableUiState.value = state.copy(
-            startAyah = start,
-            endAyah = state.endAyah.coerceIn(start, max),
-            selectedPage = state.pageForAyah(start),
-        )
+        mutableUiState.update {
+            it.copy(
+                startAyah = start,
+                endAyah = it.endAyah.coerceIn(start, max),
+                selectedPage = it.pageForAyah(start),
+            )
+        }
     }
 
     fun setEndAyah(value: Int) {
         stopIfSessionStarted()
         val state = mutableUiState.value
         val max = state.selectedSurah?.verseCount ?: value
-        mutableUiState.value = state.copy(endAyah = value.coerceIn(state.startAyah, max))
+        mutableUiState.update { it.copy(endAyah = value.coerceIn(it.startAyah, max)) }
     }
 
     fun setPage(value: Int) {
-        mutableUiState.value = mutableUiState.value.copy(selectedPage = value.coerceIn(1, 604))
+        mutableUiState.update {
+            it.copy(selectedPage = value.coerceIn(QuranPagePolicy.FIRST_PAGE, QuranPagePolicy.LAST_PAGE))
+        }
     }
 
     fun setRepeatCount(value: Int) = viewModelScope.launch {
@@ -165,7 +173,7 @@ class PracticeViewModel @Inject constructor(
             check(state.canStart) { "Unsupported state: selected ayah range is not ready." }
             val range = AyahRange(state.selectedSurahId, state.startAyah, state.endAyah)
             val audio = withContext(Dispatchers.IO) { quranRepository.audioForSurah(state.selectedSurahId) }
-            mutableUiState.value = state.copy(error = null)
+            mutableUiState.update { it.copy(error = null) }
             playbackCoordinator.start(
                 audio = audio,
                 ayahs = state.ayahs,
@@ -220,19 +228,18 @@ class PracticeViewModel @Inject constructor(
                 )
             }
             val page = ayahs.firstOrNull { it.number == state.startAyah }?.page ?: ayahs.firstOrNull()?.page ?: 1
-            mutableUiState.value = mutableUiState.value.copy(
-                ayahs = ayahs,
-                selectedPage = page,
-            )
+            mutableUiState.update { it.copy(ayahs = ayahs, selectedPage = page) }
         }.onFailure { setError(it) }
     }
 
     private fun setError(error: Throwable) {
         stopIfSessionStarted()
-        mutableUiState.value = mutableUiState.value.copy(
-            loading = false,
-            error = error.message ?: "Unsupported state.",
-        )
+        mutableUiState.update {
+            it.copy(
+                loading = false,
+                error = error.message ?: "Unsupported state.",
+            )
+        }
         sessionController.fail(error.message ?: "Unsupported state.")
     }
 

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -26,7 +27,6 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,16 +34,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.berkayyetgin.kuranayetezberle.data.AyahWithDetails
 import com.berkayyetgin.kuranayetezberle.domain.PlaybackSessionState
 import com.berkayyetgin.kuranayetezberle.ui.theme.AppTheme
 
 @Composable
 fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
-    val state by viewModel.uiState.collectAsState()
+    val state by viewModel.uiState.collectAsStateWithLifecycle()
     AppTheme(darkTheme = state.settings.darkTheme) {
         Column(
             modifier = Modifier
@@ -197,6 +199,7 @@ private fun NumberField(label: String, value: Int, modifier: Modifier = Modifier
             next.toIntOrNull()?.let(onChange)
         },
         label = { Text(label) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         singleLine = true,
         modifier = modifier,
     )

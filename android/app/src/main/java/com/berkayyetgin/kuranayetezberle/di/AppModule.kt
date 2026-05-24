@@ -27,6 +27,7 @@ object AppModule {
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): QuranDatabase =
         Room.databaseBuilder(context, QuranDatabase::class.java, "quran.db")
+            .addMigrations(QuranDatabase.MIGRATION_1_2)
             .fallbackToDestructiveMigration(false)
             .build()
 

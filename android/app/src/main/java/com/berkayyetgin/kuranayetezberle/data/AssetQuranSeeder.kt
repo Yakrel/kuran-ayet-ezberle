@@ -40,14 +40,21 @@ class AssetQuranSeeder @Inject constructor(
         }
         val recitation = context.assets.open("data/recitations/saad-al-ghamdi-recitation-13.json")
             .use { input -> json.decodeFromStream(RecitationJson.serializer(), input) }
+        val pagesByVerseKey = recitation.surahs
+            .flatMap { it.verses }
+            .associate { verse ->
+                verse.verseKey to QuranPagePolicy.requireValidPage(verse.pageNumber, verse.verseKey)
+            }
 
         val surahs = quran.surahs.map { SurahEntity(it.id, it.name, it.verseCount) }
         val ayahs = quran.surahs.flatMap { surah ->
             surah.verses.map { verse ->
+                val verseKey = "${surah.id}:${verse.verseNumber}"
                 AyahEntity(
                     surahId = surah.id,
                     number = verse.verseNumber,
-                    page = verse.page + 1,
+                    page = pagesByVerseKey[verseKey]
+                        ?: error("Unsupported data: missing page metadata for $verseKey."),
                     arabic = verse.verse,
                     transcription = verse.transcription.orEmpty(),
                 )
@@ -99,7 +106,6 @@ private data class QuranSurahJson(
 @Serializable
 private data class QuranVerseJson(
     @SerialName("verse_number") val verseNumber: Int,
-    val page: Int,
     val verse: String,
     val translations: Map<String, String>,
     val transcription: String? = null,
@@ -128,6 +134,7 @@ private data class RecitationAudioJson(
 @Serializable
 private data class RecitationVerseJson(
     @SerialName("verse_key") val verseKey: String,
+    @SerialName("page_number") val pageNumber: Int,
     val timing: RecitationTimingJson,
 )
 
