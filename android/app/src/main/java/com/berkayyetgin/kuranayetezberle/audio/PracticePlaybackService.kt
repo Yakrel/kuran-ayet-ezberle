@@ -33,26 +33,21 @@ class PracticePlaybackService : MediaSessionService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
-        val state = sessionController.state.value
-        if (state is PlaybackSessionState.Idle || state is PlaybackSessionState.Stopped ||
-            state is PlaybackSessionState.Completed || state is PlaybackSessionState.Error
-        ) {
-            return null
-        }
         return mediaSession
     }
 
     fun stopPlaybackService() {
-        playerHolder.player.pause()
-        playerHolder.player.stop()
-        mediaSession?.release()
-        mediaSession = null
-        remoteCommandPlayer = null
         stopSelf()
     }
 
     override fun onDestroy() {
-        stopPlaybackService()
+        playerHolder.player.pause()
+        playerHolder.player.stop()
+        mediaSession?.run {
+            release()
+            mediaSession = null
+        }
+        remoteCommandPlayer = null
         super.onDestroy()
     }
 }

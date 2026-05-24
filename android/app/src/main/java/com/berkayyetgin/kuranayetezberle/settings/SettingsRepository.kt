@@ -17,7 +17,7 @@ private val Context.dataStore by preferencesDataStore("settings")
 data class AppSettings(
     val translationAuthorId: String = "6",
     val showTranscription: Boolean = true,
-    val darkTheme: Boolean = false,
+    val darkTheme: Boolean? = null,
     val playbackSpeed: Float = 1f,
     val repeatCount: Int = 20,
     val arabicTextSizeSp: Float = 30f,
@@ -30,7 +30,7 @@ class SettingsRepository @Inject constructor(
         AppSettings(
             translationAuthorId = preferences[Keys.translationAuthorId] ?: "6",
             showTranscription = preferences[Keys.showTranscription] ?: true,
-            darkTheme = preferences[Keys.darkTheme] ?: false,
+            darkTheme = preferences[Keys.darkTheme],
             playbackSpeed = preferences[Keys.playbackSpeed] ?: 1f,
             repeatCount = preferences[Keys.repeatCount] ?: 20,
             arabicTextSizeSp = preferences[Keys.arabicTextSizeSp] ?: 30f,

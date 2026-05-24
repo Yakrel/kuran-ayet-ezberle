@@ -1,6 +1,7 @@
 package com.berkayyetgin.kuranayetezberle.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -14,12 +15,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Settings
@@ -43,6 +50,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +58,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -63,16 +72,41 @@ import com.berkayyetgin.kuranayetezberle.R
 import com.berkayyetgin.kuranayetezberle.data.AyahWithDetails
 import com.berkayyetgin.kuranayetezberle.domain.PlaybackSessionState
 import com.berkayyetgin.kuranayetezberle.ui.theme.AppTheme
+import java.util.Locale
 
 private val ArabicFontFamily = FontFamily(Font(R.font.uthmanic_hafs_v22))
+
+private fun String.normalizeTurkish(): String {
+    return this.lowercase(Locale("tr", "TR"))
+        .replace('â', 'a')
+        .replace('î', 'i')
+        .replace('û', 'u')
+        .replace('Â', 'a')
+        .replace('Î', 'i')
+        .replace('Û', 'u')
+        .replace('ç', 'c')
+        .replace('ğ', 'g')
+        .replace('ı', 'i')
+        .replace('ö', 'o')
+        .replace('ş', 's')
+        .replace('ü', 'u')
+}
+
+private fun String.matchesSurahQuery(query: String): Boolean {
+    val normalizedSource = this.normalizeTurkish()
+    val normalizedQuery = query.normalizeTurkish()
+    return normalizedSource.contains(normalizedQuery)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showSettings by rememberSaveable { mutableStateOf(false) }
+    
+    val resolvedDarkTheme = state.settings.darkTheme ?: isSystemInDarkTheme()
 
-    AppTheme(darkTheme = state.settings.darkTheme) {
+    AppTheme(darkTheme = resolvedDarkTheme) {
         Scaffold(
             modifier = Modifier
                 .fillMaxSize()
@@ -93,7 +127,7 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
                     onSettingsClick = { showSettings = true },
                 )
                 PlaybackControls(state, viewModel)
-                state.error?.let { ErrorStrip(it) }
+                state.error?.let { ErrorStrip(it, viewModel::clearError) }
                 AyahList(
                     ayahs = state.visibleAyahs,
                     activeAyah = state.activeAyah,
@@ -108,6 +142,7 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
             SettingsSheet(
                 state = state,
                 viewModel = viewModel,
+                resolvedDarkTheme = resolvedDarkTheme,
                 onDismiss = { showSettings = false },
             )
         }
@@ -122,6 +157,7 @@ private fun PracticeHeader(
     onSettingsClick: () -> Unit,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var surahSearchQuery by remember { mutableStateOf("") }
 
     Column(
         modifier = Modifier
@@ -137,7 +173,10 @@ private fun PracticeHeader(
         ) {
             ExposedDropdownMenuBox(
                 expanded = expanded,
-                onExpandedChange = { expanded = !expanded },
+                onExpandedChange = { 
+                    expanded = !expanded
+                    if (!expanded) surahSearchQuery = ""
+                },
                 modifier = Modifier.weight(1f),
             ) {
                 OutlinedTextField(
@@ -151,15 +190,51 @@ private fun PracticeHeader(
                         .menuAnchor()
                         .fillMaxWidth(),
                 )
-                ExposedDropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                    state.surahs.forEach { surah ->
+                ExposedDropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { 
+                        expanded = false
+                        surahSearchQuery = ""
+                    }
+                ) {
+                    OutlinedTextField(
+                        value = surahSearchQuery,
+                        onValueChange = { surahSearchQuery = it },
+                        placeholder = { Text("Sure ara...") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                    
+                    val filteredSurahs = remember(surahSearchQuery, state.surahs) {
+                        if (surahSearchQuery.isBlank()) {
+                            state.surahs
+                        } else {
+                            state.surahs.filter { surah ->
+                                surah.name.matchesSurahQuery(surahSearchQuery) ||
+                                surah.id.toString() == surahSearchQuery
+                            }
+                        }
+                    }
+
+                    if (filteredSurahs.isEmpty()) {
                         DropdownMenuItem(
-                            text = { Text("${surah.id}. ${surah.name}") },
-                            onClick = {
-                                expanded = false
-                                viewModel.selectSurah(surah.id)
-                            },
+                            text = { Text("Sure bulunamadı", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                            onClick = {},
+                            enabled = false
                         )
+                    } else {
+                        filteredSurahs.forEach { surah ->
+                            DropdownMenuItem(
+                                text = { Text("${surah.id}. ${surah.name}") },
+                                onClick = {
+                                    expanded = false
+                                    surahSearchQuery = ""
+                                    viewModel.selectSurah(surah.id)
+                                },
+                            )
+                        }
                     }
                 }
             }
@@ -177,7 +252,39 @@ private fun PracticeHeader(
             NumberField("Baş", state.startAyah, Modifier.width(78.dp)) { viewModel.setStartAyah(it) }
             NumberField("Son", state.endAyah, Modifier.width(78.dp)) { viewModel.setEndAyah(it) }
             NumberField("Tekrar", state.settings.repeatCount, Modifier.width(96.dp)) { viewModel.setRepeatCount(it) }
-            NumberField("Sayfa", state.selectedPage, Modifier.width(92.dp)) { viewModel.setPage(it) }
+            
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                val minPage = remember(state.ayahs) { state.ayahs.minOfOrNull { it.page } ?: 1 }
+                val maxPage = remember(state.ayahs) { state.ayahs.maxOfOrNull { it.page } ?: 604 }
+                
+                IconButton(
+                    onClick = { viewModel.setPage(state.selectedPage - 1) },
+                    enabled = state.selectedPage > minPage,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowLeft,
+                        contentDescription = "Önceki Sayfa",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+                NumberField("Sayfa", state.selectedPage, Modifier.width(60.dp)) { viewModel.setPage(it) }
+                IconButton(
+                    onClick = { viewModel.setPage(state.selectedPage + 1) },
+                    enabled = state.selectedPage < maxPage,
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowRight,
+                        contentDescription = "Sonraki Sayfa",
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+
             Text(
                 text = "${state.startAyah}-${state.endAyah} x ${state.settings.repeatCount}",
                 style = MaterialTheme.typography.titleMedium,
@@ -191,42 +298,98 @@ private fun PracticeHeader(
 @Composable
 private fun PlaybackControls(state: PracticeUiState, viewModel: PracticeViewModel) {
     val session = state.sessionState
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(8.dp))
-            .padding(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Button(onClick = viewModel::start, enabled = state.canStart) {
-            Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null)
-            Spacer(modifier = Modifier.width(6.dp))
-            Text("Başlat")
-        }
-        OutlinedButton(
-            onClick = viewModel::pauseOrResume,
-            enabled = session is PlaybackSessionState.Active || session is PlaybackSessionState.PausedByUser,
+    val isActiveSession = session is PlaybackSessionState.Active || session is PlaybackSessionState.PausedByUser
+
+    if (!isActiveSession) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Icon(
-                imageVector = if (session is PlaybackSessionState.PausedByUser) {
-                    Icons.Filled.PlayArrow
-                } else {
-                    Icons.Filled.Pause
-                },
-                contentDescription = if (session is PlaybackSessionState.PausedByUser) "Sürdür" else "Duraklat",
+            Button(
+                onClick = viewModel::start,
+                enabled = state.canStart,
+                shape = RoundedCornerShape(8.dp),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                Icon(imageVector = Icons.Filled.PlayArrow, contentDescription = null)
+                Spacer(modifier = Modifier.width(6.dp))
+                Text("Eğitimi Başlat", fontWeight = FontWeight.Bold)
+            }
+            Text(
+                text = sessionLabel(session),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-        TextButton(onClick = viewModel::stop) {
-            Icon(imageVector = Icons.Filled.Stop, contentDescription = "Durdur")
+    } else {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f), RoundedCornerShape(12.dp))
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                IconButton(
+                    onClick = viewModel::pauseOrResume,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(MaterialTheme.colorScheme.primary, CircleShape)
+                ) {
+                    Icon(
+                        imageVector = if (session is PlaybackSessionState.PausedByUser) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                        contentDescription = if (session is PlaybackSessionState.PausedByUser) "Sürdür" else "Duraklat",
+                        tint = MaterialTheme.colorScheme.onPrimary
+                    )
+                }
+                
+                IconButton(
+                    onClick = viewModel::stop,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(MaterialTheme.colorScheme.errorContainer, CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Stop,
+                        contentDescription = "Durdur",
+                        tint = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+            }
+            
+            Column(
+                horizontalAlignment = Alignment.End
+            ) {
+                Text(
+                    text = when (session) {
+                        is PlaybackSessionState.Active -> "Tekrar: ${session.currentRepeat} / ${session.repeatTarget}"
+                        is PlaybackSessionState.PausedByUser -> "Duraklatıldı"
+                        else -> ""
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = when (session) {
+                        is PlaybackSessionState.Active -> "Ayet: ${session.activeAyah}"
+                        is PlaybackSessionState.PausedByUser -> "Ayet: ${session.active.activeAyah}"
+                        else -> ""
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-        Text(
-            text = sessionLabel(session),
-            modifier = Modifier.weight(1f),
-            textAlign = TextAlign.End,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 
@@ -235,6 +398,7 @@ private fun PlaybackControls(state: PracticeUiState, viewModel: PracticeViewMode
 private fun SettingsSheet(
     state: PracticeUiState,
     viewModel: PracticeViewModel,
+    resolvedDarkTheme: Boolean,
     onDismiss: () -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -274,8 +438,8 @@ private fun SettingsSheet(
             )
             SwitchRow(
                 label = "Koyu tema",
-                checked = state.settings.darkTheme,
-                onCheckedChange = { viewModel.toggleDarkTheme() },
+                checked = resolvedDarkTheme,
+                onCheckedChange = { viewModel.toggleDarkTheme(resolvedDarkTheme) },
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -356,8 +520,21 @@ private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean
 }
 
 @Composable
-private fun NumberField(label: String, value: Int, modifier: Modifier = Modifier, onChange: (Int) -> Unit) {
+private fun NumberField(
+    label: String,
+    value: Int,
+    modifier: Modifier = Modifier,
+    onChange: (Int) -> Unit
+) {
+    var isFocused by remember { mutableStateOf(false) }
     var text by remember(value) { mutableStateOf(value.toString()) }
+
+    LaunchedEffect(value) {
+        if (!isFocused) {
+            text = value.toString()
+        }
+    }
+
     OutlinedTextField(
         value = text,
         onValueChange = { next ->
@@ -367,7 +544,12 @@ private fun NumberField(label: String, value: Int, modifier: Modifier = Modifier
         label = { Text(label) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         singleLine = true,
-        modifier = modifier,
+        modifier = modifier.onFocusChanged { focusState ->
+            isFocused = focusState.isFocused
+            if (!focusState.isFocused) {
+                text = value.toString()
+            }
+        },
     )
 }
 
@@ -379,7 +561,19 @@ private fun AyahList(
     arabicTextSizeSp: Float,
     modifier: Modifier = Modifier,
 ) {
+    val listState = rememberLazyListState()
+
+    LaunchedEffect(activeAyah) {
+        if (activeAyah != null) {
+            val index = ayahs.indexOfFirst { it.number == activeAyah }
+            if (index >= 0) {
+                listState.animateScrollToItem(index)
+            }
+        }
+    }
+
     LazyColumn(
+        state = listState,
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(bottom = 8.dp),
@@ -435,15 +629,33 @@ private fun AyahCard(
 }
 
 @Composable
-private fun ErrorStrip(message: String) {
-    Text(
-        text = message,
-        color = MaterialTheme.colorScheme.onErrorContainer,
+private fun ErrorStrip(message: String, onDismiss: () -> Unit) {
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .background(MaterialTheme.colorScheme.errorContainer, RoundedCornerShape(8.dp))
-            .padding(10.dp),
-    )
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = message,
+            color = MaterialTheme.colorScheme.onErrorContainer,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+        )
+        IconButton(
+            onClick = onDismiss,
+            modifier = Modifier.size(24.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "Kapat",
+                tint = MaterialTheme.colorScheme.onErrorContainer,
+                modifier = Modifier.size(16.dp)
+            )
+        }
+    }
 }
 
 private fun sessionLabel(state: PlaybackSessionState): String = when (state) {

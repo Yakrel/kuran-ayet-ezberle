@@ -112,6 +112,7 @@ class PracticeViewModel @Inject constructor(
                 selectedSurahId = id,
                 startAyah = 1,
                 endAyah = surah.verseCount.coerceAtMost(7),
+                error = null,
             )
         }
         reloadSelectedSurah()
@@ -127,6 +128,7 @@ class PracticeViewModel @Inject constructor(
                 startAyah = start,
                 endAyah = it.endAyah.coerceIn(start, max),
                 selectedPage = it.pageForAyah(start),
+                error = null,
             )
         }
     }
@@ -135,13 +137,28 @@ class PracticeViewModel @Inject constructor(
         stopIfSessionStarted()
         val state = mutableUiState.value
         val max = state.selectedSurah?.verseCount ?: value
-        mutableUiState.update { it.copy(endAyah = value.coerceIn(it.startAyah, max)) }
+        mutableUiState.update {
+            it.copy(
+                endAyah = value.coerceIn(it.startAyah, max),
+                error = null,
+            )
+        }
     }
 
     fun setPage(value: Int) {
+        val state = mutableUiState.value
+        val minPage = state.ayahs.minOfOrNull { it.page } ?: QuranPagePolicy.FIRST_PAGE
+        val maxPage = state.ayahs.maxOfOrNull { it.page } ?: QuranPagePolicy.LAST_PAGE
         mutableUiState.update {
-            it.copy(selectedPage = value.coerceIn(QuranPagePolicy.FIRST_PAGE, QuranPagePolicy.LAST_PAGE))
+            it.copy(
+                selectedPage = value.coerceIn(minPage, maxPage),
+                error = null,
+            )
         }
+    }
+
+    fun clearError() {
+        mutableUiState.update { it.copy(error = null) }
     }
 
     fun setRepeatCount(value: Int) = viewModelScope.launch {
@@ -163,8 +180,8 @@ class PracticeViewModel @Inject constructor(
         settingsRepository.setShowTranscription(!mutableUiState.value.settings.showTranscription)
     }
 
-    fun toggleDarkTheme() = viewModelScope.launch {
-        settingsRepository.setDarkTheme(!mutableUiState.value.settings.darkTheme)
+    fun toggleDarkTheme(currentDark: Boolean) = viewModelScope.launch {
+        settingsRepository.setDarkTheme(!currentDark)
     }
 
     fun setTranslationAuthor(authorId: String) = viewModelScope.launch {
