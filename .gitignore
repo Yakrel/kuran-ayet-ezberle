@@ -32,6 +32,9 @@ yarn-error.*
 # Codex local mount
 .codex
 
+# Antigravity CLI workspace
+.antigravitycli/
+
 # local Android output
 android/.gradle/
 android/build/
