@@ -20,6 +20,7 @@ data class AppSettings(
     val darkTheme: Boolean = false,
     val playbackSpeed: Float = 1f,
     val repeatCount: Int = 20,
+    val arabicTextSizeSp: Float = 30f,
 )
 
 class SettingsRepository @Inject constructor(
@@ -32,6 +33,7 @@ class SettingsRepository @Inject constructor(
             darkTheme = preferences[Keys.darkTheme] ?: false,
             playbackSpeed = preferences[Keys.playbackSpeed] ?: 1f,
             repeatCount = preferences[Keys.repeatCount] ?: 20,
+            arabicTextSizeSp = preferences[Keys.arabicTextSizeSp] ?: 30f,
         )
     }
 
@@ -40,6 +42,7 @@ class SettingsRepository @Inject constructor(
     suspend fun setTranslationAuthor(value: String) = context.dataStore.edit { it[Keys.translationAuthorId] = value }
     suspend fun setShowTranscription(value: Boolean) = context.dataStore.edit { it[Keys.showTranscription] = value }
     suspend fun setDarkTheme(value: Boolean) = context.dataStore.edit { it[Keys.darkTheme] = value }
+    suspend fun setArabicTextSizeSp(value: Float) = context.dataStore.edit { it[Keys.arabicTextSizeSp] = value }
 
     private object Keys {
         val translationAuthorId = stringPreferencesKey("translation_author_id")
@@ -47,5 +50,6 @@ class SettingsRepository @Inject constructor(
         val darkTheme = booleanPreferencesKey("dark_theme")
         val playbackSpeed = floatPreferencesKey("playback_speed")
         val repeatCount = intPreferencesKey("repeat_count")
+        val arabicTextSizeSp = floatPreferencesKey("arabic_text_size_sp")
     }
 }

@@ -155,6 +155,10 @@ class PracticeViewModel @Inject constructor(
         playbackCoordinator.setSpeed(speed)
     }
 
+    fun setArabicTextSizeSp(value: Float) = viewModelScope.launch {
+        settingsRepository.setArabicTextSizeSp(value.coerceIn(24f, 38f))
+    }
+
     fun toggleTranscription() = viewModelScope.launch {
         settingsRepository.setShowTranscription(!mutableUiState.value.settings.showTranscription)
     }
