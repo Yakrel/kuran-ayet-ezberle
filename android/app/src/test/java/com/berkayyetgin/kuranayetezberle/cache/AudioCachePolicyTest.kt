@@ -2,6 +2,7 @@ package com.berkayyetgin.kuranayetezberle.cache
 
 import com.berkayyetgin.kuranayetezberle.data.SurahAudio
 import java.io.File
+import kotlin.io.path.createTempDirectory
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -56,7 +57,7 @@ class AudioCachePolicyTest {
     }
 
     private fun withTempDir(block: (File) -> Unit) {
-        val dir = createTempDir(prefix = "audio-cache-policy")
+        val dir = createTempDirectory(prefix = "audio-cache-policy").toFile()
         try {
             block(dir)
         } finally {
