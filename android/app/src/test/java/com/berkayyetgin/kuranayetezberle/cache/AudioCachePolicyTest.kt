@@ -13,14 +13,14 @@ class AudioCachePolicyTest {
         recitationId = 13,
         url = "https://example.test/002.mp3",
         durationSeconds = 7054,
-        audioSize = 8L,
+        audioSize = 60 * 1024L, // 60 KB, larger than MIN_VALID_SIZE_BYTES (50 KB)
     )
 
     @Test
     fun validCacheRequiresExpectedSizeWhenMetadataIsKnown() {
         withTempDir { dir ->
             val file = File(dir, "13-2.mp3")
-            file.writeBytes(ByteArray(8))
+            file.writeBytes(ByteArray(60 * 1024))
 
             assertTrue(AudioCachePolicy.isValidCachedAudio(file, audio))
         }
@@ -30,7 +30,7 @@ class AudioCachePolicyTest {
     fun zeroByteAndPartialCacheAreInvalid() {
         withTempDir { dir ->
             val empty = File(dir, "empty.mp3").also { it.writeBytes(ByteArray(0)) }
-            val partial = File(dir, "partial.mp3").also { it.writeBytes(ByteArray(4)) }
+            val partial = File(dir, "partial.mp3").also { it.writeBytes(ByteArray(40 * 1024)) }
 
             assertFalse(AudioCachePolicy.isValidCachedAudio(empty, audio))
             assertFalse(AudioCachePolicy.isValidCachedAudio(partial, audio))
@@ -41,7 +41,7 @@ class AudioCachePolicyTest {
     fun unknownExpectedSizeAcceptsAnyNonEmptyFile() {
         withTempDir { dir ->
             val file = File(dir, "13-2.mp3")
-            file.writeBytes(ByteArray(4))
+            file.writeBytes(ByteArray(60 * 1024))
 
             assertTrue(AudioCachePolicy.isValidCachedAudio(file, audio.copy(audioSize = 0L)))
         }
