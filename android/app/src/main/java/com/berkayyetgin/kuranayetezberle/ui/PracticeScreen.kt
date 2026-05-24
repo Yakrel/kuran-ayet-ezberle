@@ -61,6 +61,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
@@ -149,9 +150,11 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
                 state.error?.let { ErrorStrip(it, viewModel::clearError) }
                 AyahList(
                     ayahs = state.visibleAyahs,
+                    selectedPage = state.selectedPage,
                     activeAyah = state.activeAyah,
                     showTranscription = state.settings.showTranscription,
                     arabicTextSizeSp = state.settings.arabicTextSizeSp,
+                    onPageSelected = viewModel::setPage,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -321,6 +324,50 @@ private fun PracticeHeader(
                 color = MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.SemiBold,
             )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Hızlı Seç:",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier
+                    .weight(1f)
+                    .androidx.compose.foundation.horizontalScroll(androidx.compose.foundation.rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(
+                    onClick = viewModel::selectPageRange,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text("Sayfayı Seç", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+                TextButton(
+                    onClick = viewModel::setStartToPageStart,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text("Baş: Sayfa Başı", fontSize = 12.sp)
+                }
+                TextButton(
+                    onClick = viewModel::setEndToPageEnd,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text("Son: Sayfa Sonu", fontSize = 12.sp)
+                }
+                TextButton(
+                    onClick = viewModel::selectSurahRange,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                ) {
+                    Text("Sureyi Seç", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
 }
@@ -706,20 +753,98 @@ private fun NumberField(
 // ─── Ayah List ───────────────────────────────────────────────────────────────
 
 @Composable
+private fun PageHeaderDivider(pageNumber: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        androidx.compose.material3.HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
+        Text(
+            text = "  Sayfa $pageNumber  ",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold,
+        )
+        androidx.compose.material3.HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = MaterialTheme.colorScheme.outlineVariant
+        )
+    }
+}
+
+@Composable
 private fun AyahList(
     ayahs: List<AyahWithDetails>,
+    selectedPage: Int,
     activeAyah: Int?,
     showTranscription: Boolean,
     arabicTextSizeSp: Float,
+    onPageSelected: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
+    val grouped = remember(ayahs) { ayahs.groupBy { it.page } }
 
     LaunchedEffect(activeAyah) {
         if (activeAyah != null) {
-            val index = ayahs.indexOfFirst { it.number == activeAyah }
-            if (index >= 0) listState.animateScrollToItem(index)
+            var targetIndex = 0
+            var found = false
+            for ((p, pageAyahs) in grouped) {
+                val idx = pageAyahs.indexOfFirst { it.number == activeAyah }
+                if (idx >= 0) {
+                    targetIndex += 1 + idx
+                    found = true
+                    break
+                }
+                targetIndex += 1 + pageAyahs.size
+            }
+            if (found) {
+                listState.animateScrollToItem(targetIndex)
+            }
         }
+    }
+
+    var lastScrolledPage by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(selectedPage) {
+        if (activeAyah == null && selectedPage != lastScrolledPage && !listState.isScrollInProgress) {
+            val pageIndex = grouped.keys.indexOf(selectedPage)
+            if (pageIndex >= 0) {
+                var targetIndex = 0
+                for ((p, pageAyahs) in grouped) {
+                    if (p == selectedPage) break
+                    targetIndex += 1 + pageAyahs.size
+                }
+                lastScrolledPage = selectedPage
+                listState.animateScrollToItem(targetIndex)
+            }
+        }
+    }
+
+    LaunchedEffect(listState) {
+        androidx.compose.runtime.snapshotFlow { listState.firstVisibleItemIndex }
+            .collect { firstVisibleIndex ->
+                if (listState.isScrollInProgress) {
+                    var currentIndex = 0
+                    var currentPage = grouped.keys.firstOrNull() ?: 1
+                    for ((p, pageAyahs) in grouped) {
+                        if (firstVisibleIndex >= currentIndex && firstVisibleIndex <= currentIndex + pageAyahs.size) {
+                            currentPage = p
+                            break
+                        }
+                        currentIndex += 1 + pageAyahs.size
+                    }
+                    if (currentPage != selectedPage) {
+                        lastScrolledPage = currentPage
+                        onPageSelected(currentPage)
+                    }
+                }
+            }
     }
 
     LazyColumn(
@@ -728,13 +853,18 @@ private fun AyahList(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(bottom = 8.dp),
     ) {
-        items(ayahs, key = { "${it.surahId}:${it.number}" }) { ayah ->
-            AyahCard(
-                ayah = ayah,
-                active = ayah.number == activeAyah,
-                showTranscription = showTranscription,
-                arabicTextSizeSp = arabicTextSizeSp,
-            )
+        grouped.forEach { (page, pageAyahs) ->
+            item(key = "page_header_$page") {
+                PageHeaderDivider(pageNumber = page)
+            }
+            items(pageAyahs, key = { "${it.surahId}:${it.number}" }) { ayah ->
+                AyahCard(
+                    ayah = ayah,
+                    active = ayah.number == activeAyah,
+                    showTranscription = showTranscription,
+                    arabicTextSizeSp = arabicTextSizeSp,
+                )
+            }
         }
     }
 }

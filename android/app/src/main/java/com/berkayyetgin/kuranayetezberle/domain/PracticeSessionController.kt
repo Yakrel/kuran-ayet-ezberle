@@ -69,6 +69,19 @@ class PracticeSessionController @Inject constructor() {
         mutableState.value = active.copy(speed = speed)
     }
 
+    fun updateRepeatTarget(repeatTarget: Int) {
+        require(repeatTarget in 1..999) { "Repeat count must be between 1 and 999." }
+        when (val current = mutableState.value) {
+            is PlaybackSessionState.Active -> {
+                mutableState.value = current.copy(repeatTarget = repeatTarget)
+            }
+            is PlaybackSessionState.PausedByUser -> {
+                mutableState.value = PlaybackSessionState.PausedByUser(current.active.copy(repeatTarget = repeatTarget))
+            }
+            else -> Unit
+        }
+    }
+
     fun stop() {
         mutableState.value = PlaybackSessionState.Stopped
     }

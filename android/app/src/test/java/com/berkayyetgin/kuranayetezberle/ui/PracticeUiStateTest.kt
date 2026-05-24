@@ -7,20 +7,7 @@ import org.junit.Test
 
 class PracticeUiStateTest {
     @Test
-    fun visibleAyahsDoesNotFallbackToWholeSurahWhenPageIsEmpty() {
-        val state = PracticeUiState(
-            ayahs = listOf(
-                ayah(number = 1, page = 1),
-                ayah(number = 2, page = 1),
-            ),
-            selectedPage = 2,
-        )
-
-        assertTrue(state.visibleAyahs.isEmpty())
-    }
-
-    @Test
-    fun visibleAyahsReturnsOnlySelectedPage() {
+    fun visibleAyahsReturnsAllSurahAyahsContinuously() {
         val state = PracticeUiState(
             ayahs = listOf(
                 ayah(number = 1, page = 1),
@@ -29,7 +16,7 @@ class PracticeUiStateTest {
             selectedPage = 2,
         )
 
-        assertEquals(listOf(2), state.visibleAyahs.map { it.number })
+        assertEquals(listOf(1, 2), state.visibleAyahs.map { it.number })
     }
 
     private fun ayah(number: Int, page: Int) = AyahWithDetails(

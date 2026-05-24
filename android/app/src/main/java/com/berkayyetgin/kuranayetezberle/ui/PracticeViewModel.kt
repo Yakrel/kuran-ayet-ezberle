@@ -49,7 +49,7 @@ data class PracticeUiState(
 ) {
     val selectedSurah: SurahEntity? get() = surahs.firstOrNull { it.id == selectedSurahId }
     val visibleAyahs: List<AyahWithDetails>
-        get() = ayahs.filter { it.page == selectedPage }
+        get() = ayahs
     val activeAyah: Int?
         get() = when (val session = sessionState) {
             is PlaybackSessionState.Active -> session.activeAyah
@@ -181,8 +181,9 @@ class PracticeViewModel @Inject constructor(
     }
 
     fun setRepeatCount(value: Int) = viewModelScope.launch {
-        stopIfSessionStarted()
-        settingsRepository.setRepeatCount(value.coerceIn(1, 999))
+        val coerced = value.coerceIn(1, 999)
+        settingsRepository.setRepeatCount(coerced)
+        sessionController.updateRepeatTarget(coerced)
     }
 
     fun setSpeed(value: Float) = viewModelScope.launch {
@@ -338,6 +339,55 @@ class PracticeViewModel @Inject constructor(
             )
         }
         sessionController.fail(error.message ?: "Unsupported state.")
+    }
+
+    fun selectPageRange() {
+        stopIfSessionStarted()
+        val state = mutableUiState.value
+        val pageAyahs = state.ayahs.filter { it.page == state.selectedPage }
+        if (pageAyahs.isEmpty()) return
+        val start = pageAyahs.minOf { it.number }
+        val end = pageAyahs.maxOf { it.number }
+        mutableUiState.update {
+            it.copy(
+                startAyah = start,
+                endAyah = end,
+                error = null,
+            )
+        }
+    }
+
+    fun setStartToPageStart() {
+        stopIfSessionStarted()
+        val state = mutableUiState.value
+        val pageAyahs = state.ayahs.filter { it.page == state.selectedPage }
+        if (pageAyahs.isEmpty()) return
+        val start = pageAyahs.minOf { it.number }
+        setStartAyah(start)
+    }
+
+    fun setEndToPageEnd() {
+        stopIfSessionStarted()
+        val state = mutableUiState.value
+        val pageAyahs = state.ayahs.filter { it.page == state.selectedPage }
+        if (pageAyahs.isEmpty()) return
+        val end = pageAyahs.maxOf { it.number }
+        setEndAyah(end)
+    }
+
+    fun selectSurahRange() {
+        stopIfSessionStarted()
+        val state = mutableUiState.value
+        if (state.ayahs.isEmpty()) return
+        val start = 1
+        val end = state.selectedSurah?.verseCount ?: state.ayahs.maxOf { it.number }
+        mutableUiState.update {
+            it.copy(
+                startAyah = start,
+                endAyah = end,
+                error = null,
+            )
+        }
     }
 
     private fun PracticeUiState.pageForAyah(ayahNumber: Int): Int =

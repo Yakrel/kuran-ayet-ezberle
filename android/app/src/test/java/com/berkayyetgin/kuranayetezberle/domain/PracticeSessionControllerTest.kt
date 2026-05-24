@@ -65,4 +65,19 @@ class PracticeSessionControllerTest {
         assertTrue(controller.state.value is PlaybackSessionState.PausedByUser)
         assertTrue(controller.onRemotePlay())
     }
+
+    @Test
+    fun updateRepeatTargetDynamicallyModifiesActiveAndPausedSessions() {
+        val controller = PracticeSessionController()
+        controller.start(AyahRange(2, 100, 105), repeatTarget = 20, speed = 1.25f)
+
+        controller.updateRepeatTarget(30)
+        val activeState = controller.state.value as PlaybackSessionState.Active
+        assertEquals(30, activeState.repeatTarget)
+
+        controller.pauseByUser()
+        controller.updateRepeatTarget(45)
+        val pausedState = controller.state.value as PlaybackSessionState.PausedByUser
+        assertEquals(45, pausedState.active.repeatTarget)
+    }
 }
