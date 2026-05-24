@@ -22,8 +22,14 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.filled.KeyboardArrowRight
@@ -526,6 +532,7 @@ private fun NumberField(
     modifier: Modifier = Modifier,
     onChange: (Int) -> Unit
 ) {
+    val focusManager = LocalFocusManager.current
     var isFocused by remember { mutableStateOf(false) }
     var text by remember(value) { mutableStateOf(value.toString()) }
 
@@ -542,7 +549,13 @@ private fun NumberField(
             next.toIntOrNull()?.let(onChange)
         },
         label = { Text(label) },
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Number,
+            imeAction = ImeAction.Done
+        ),
+        keyboardActions = KeyboardActions(
+            onDone = { focusManager.clearFocus() }
+        ),
         singleLine = true,
         modifier = modifier.onFocusChanged { focusState ->
             isFocused = focusState.isFocused
@@ -611,16 +624,18 @@ private fun AyahCard(
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.primary,
         )
-        Text(
-            text = ayah.arabic,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.End,
-            fontFamily = ArabicFontFamily,
-            fontSize = arabicTextSizeSp.sp,
-            lineHeight = (arabicTextSizeSp * 1.55f).sp,
-            fontWeight = FontWeight.Medium,
-            softWrap = true,
-        )
+        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+            Text(
+                text = ayah.arabic,
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Right,
+                fontFamily = ArabicFontFamily,
+                fontSize = arabicTextSizeSp.sp,
+                lineHeight = (arabicTextSizeSp * 1.55f).sp,
+                fontWeight = FontWeight.Medium,
+                softWrap = true,
+            )
+        }
         if (showTranscription && ayah.transcription.isNotBlank()) {
             Text(text = ayah.transcription, style = MaterialTheme.typography.bodyMedium)
         }
