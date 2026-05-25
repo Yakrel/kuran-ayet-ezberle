@@ -1,0 +1,268 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "d41f12b8925846f90031bf89d30b9b60",
+    "entities": [
+      {
+        "tableName": "surah",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `verseCount` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "verseCount",
+            "columnName": "verseCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "ayah",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`surahId` INTEGER NOT NULL, `number` INTEGER NOT NULL, `page` INTEGER NOT NULL, `arabic` TEXT NOT NULL, `transcription` TEXT NOT NULL, PRIMARY KEY(`surahId`, `number`), FOREIGN KEY(`surahId`) REFERENCES `surah`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "surahId",
+            "columnName": "surahId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "number",
+            "columnName": "number",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "page",
+            "columnName": "page",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "arabic",
+            "columnName": "arabic",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transcription",
+            "columnName": "transcription",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "surahId",
+            "number"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_ayah_surahId",
+            "unique": false,
+            "columnNames": [
+              "surahId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ayah_surahId` ON `${TABLE_NAME}` (`surahId`)"
+          },
+          {
+            "name": "index_ayah_page",
+            "unique": false,
+            "columnNames": [
+              "page"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ayah_page` ON `${TABLE_NAME}` (`page`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "surah",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "surahId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "ayah_translation",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`surahId` INTEGER NOT NULL, `ayahNumber` INTEGER NOT NULL, `authorId` TEXT NOT NULL, `text` TEXT NOT NULL, PRIMARY KEY(`surahId`, `ayahNumber`, `authorId`))",
+        "fields": [
+          {
+            "fieldPath": "surahId",
+            "columnName": "surahId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ayahNumber",
+            "columnName": "ayahNumber",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "authorId",
+            "columnName": "authorId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "text",
+            "columnName": "text",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "surahId",
+            "ayahNumber",
+            "authorId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_ayah_translation_surahId_ayahNumber",
+            "unique": false,
+            "columnNames": [
+              "surahId",
+              "ayahNumber"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ayah_translation_surahId_ayahNumber` ON `${TABLE_NAME}` (`surahId`, `ayahNumber`)"
+          }
+        ]
+      },
+      {
+        "tableName": "ayah_timing",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`surahId` INTEGER NOT NULL, `ayahNumber` INTEGER NOT NULL, `recitationId` INTEGER NOT NULL, `fromMs` INTEGER NOT NULL, `toMs` INTEGER NOT NULL, PRIMARY KEY(`surahId`, `ayahNumber`, `recitationId`))",
+        "fields": [
+          {
+            "fieldPath": "surahId",
+            "columnName": "surahId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ayahNumber",
+            "columnName": "ayahNumber",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recitationId",
+            "columnName": "recitationId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "fromMs",
+            "columnName": "fromMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "toMs",
+            "columnName": "toMs",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "surahId",
+            "ayahNumber",
+            "recitationId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_ayah_timing_surahId_ayahNumber",
+            "unique": false,
+            "columnNames": [
+              "surahId",
+              "ayahNumber"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_ayah_timing_surahId_ayahNumber` ON `${TABLE_NAME}` (`surahId`, `ayahNumber`)"
+          }
+        ]
+      },
+      {
+        "tableName": "reciter_audio",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`surahId` INTEGER NOT NULL, `recitationId` INTEGER NOT NULL, `url` TEXT NOT NULL, `durationSeconds` INTEGER NOT NULL, `audioSize` INTEGER NOT NULL, PRIMARY KEY(`surahId`, `recitationId`))",
+        "fields": [
+          {
+            "fieldPath": "surahId",
+            "columnName": "surahId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "recitationId",
+            "columnName": "recitationId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "url",
+            "columnName": "url",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "durationSeconds",
+            "columnName": "durationSeconds",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "audioSize",
+            "columnName": "audioSize",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "surahId",
+            "recitationId"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd41f12b8925846f90031bf89d30b9b60')"
+    ]
+  }
+}

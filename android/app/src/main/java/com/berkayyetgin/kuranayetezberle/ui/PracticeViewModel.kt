@@ -35,7 +35,9 @@ data class PracticeUiState(
     val loading: Boolean = true,
     val surahs: List<SurahEntity> = emptyList(),
     val selectedSurahId: Int = 1,
+    val selectedSurah: SurahEntity? = null,
     val ayahs: List<AyahWithDetails> = emptyList(),
+    val visibleAyahs: List<AyahWithDetails> = emptyList(),
     val startAyah: Int = 1,
     val endAyah: Int = 7,
     val selectedPage: Int = 1,
@@ -47,9 +49,9 @@ data class PracticeUiState(
     val downloadState: DownloadState = DownloadState.Idle,
     val error: String? = null,
 ) {
-    val selectedSurah: SurahEntity? get() = surahs.firstOrNull { it.id == selectedSurahId }
-    val visibleAyahs: List<AyahWithDetails>
-        get() = ayahs
+    val selectedSurahFromId: SurahEntity? get() = surahs.firstOrNull { it.id == selectedSurahId }
+    val visibleAyahsFromPage: List<AyahWithDetails>
+        get() = ayahs.filter { it.page == selectedPage }
     val activeAyah: Int?
         get() = when (val session = sessionState) {
             is PlaybackSessionState.Active -> session.activeAyah
@@ -73,16 +75,34 @@ class PracticeViewModel @Inject constructor(
     private val audioCacheRepository: AudioCacheRepository,
     private val sessionController: PracticeSessionController,
 ) : ViewModel() {
+    private var isInitialSettingsLoad = true
     private val mutableUiState = MutableStateFlow(PracticeUiState())
     val uiState: StateFlow<PracticeUiState> = mutableUiState.asStateFlow()
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
             settingsRepository.settings.collect { settings ->
-                val previousTranslationAuthor = mutableUiState.value.settings.translationAuthorId
-                mutableUiState.update { it.copy(settings = settings) }
-                if (previousTranslationAuthor != settings.translationAuthorId) {
-                    reloadSelectedSurah()
+                val current = mutableUiState.value
+                val previousTranslationAuthor = current.settings.translationAuthorId
+                
+                if (isInitialSettingsLoad) {
+                    isInitialSettingsLoad = false
+                    mutableUiState.update { 
+                        it.copy(
+                            settings = settings,
+                            selectedSurahId = settings.lastSurahId,
+                            startAyah = settings.lastStartAyah,
+                            endAyah = settings.lastEndAyah
+                        )
+                    }
+                    if (!current.loading) {
+                        reloadSelectedSurah()
+                    }
+                } else {
+                    mutableUiState.update { it.copy(settings = settings) }
+                    if (previousTranslationAuthor != settings.translationAuthorId) {
+                        reloadSelectedSurah()
+                    }
                 }
             }
         }
@@ -127,7 +147,18 @@ class PracticeViewModel @Inject constructor(
                 error = null,
             )
         }
+        saveLastSession()
         reloadSelectedSurah()
+    }
+
+    fun nextSurah() {
+        val current = mutableUiState.value.selectedSurahId
+        if (current < 114) selectSurah(current + 1)
+    }
+
+    fun previousSurah() {
+        val current = mutableUiState.value.selectedSurahId
+        if (current > 1) selectSurah(current - 1)
     }
 
     fun setStartAyah(value: Int) {
@@ -143,6 +174,7 @@ class PracticeViewModel @Inject constructor(
                 error = null,
             )
         }
+        saveLastSession()
     }
 
     fun setEndAyah(value: Int) {
@@ -155,22 +187,68 @@ class PracticeViewModel @Inject constructor(
                 error = null,
             )
         }
+        saveLastSession()
+    }
+
+    fun setStartAndEndAyah(ayahNumber: Int) {
+        stopIfSessionStarted()
+        val state = mutableUiState.value
+        val max = state.selectedSurah?.verseCount ?: ayahNumber
+        val target = ayahNumber.coerceIn(1, max)
+        mutableUiState.update {
+            it.copy(
+                startAyah = target,
+                endAyah = target,
+                selectedPage = it.pageForAyah(target),
+                error = null,
+            )
+        }
+        saveLastSession()
     }
 
     fun setPage(value: Int) {
         val state = mutableUiState.value
         val minPage = state.ayahs.minOfOrNull { it.page } ?: QuranPagePolicy.FIRST_PAGE
         val maxPage = state.ayahs.maxOfOrNull { it.page } ?: QuranPagePolicy.LAST_PAGE
+        val targetPage = value.coerceIn(minPage, maxPage)
         mutableUiState.update {
             it.copy(
-                selectedPage = value.coerceIn(minPage, maxPage),
+                selectedPage = targetPage,
+                visibleAyahs = it.ayahs.filter { a -> a.page == targetPage },
                 error = null,
             )
         }
     }
 
+    fun onPageSwipe(pageNumber: Int) {
+        setPage(pageNumber)
+        val state = mutableUiState.value
+        
+        val isIdle = state.sessionState is PlaybackSessionState.Idle ||
+                     state.sessionState is PlaybackSessionState.Stopped ||
+                     state.sessionState is PlaybackSessionState.Completed ||
+                     state.sessionState is PlaybackSessionState.Error
+                     
+        if (isIdle) {
+            val ayahsInPage = state.ayahs.filter { it.page == pageNumber }
+            if (ayahsInPage.isNotEmpty()) {
+                val first = ayahsInPage.first().number
+                val last = ayahsInPage.last().number
+                mutableUiState.update { 
+                    it.copy(startAyah = first, endAyah = last)
+                }
+                saveLastSession()
+            }
+        }
+    }
+
     fun clearError() {
         mutableUiState.update { it.copy(error = null) }
+    }
+
+    private fun saveLastSession() = viewModelScope.launch {
+        val state = mutableUiState.value
+        settingsRepository.saveLastSession(state.selectedSurahId, state.startAyah, state.endAyah)
     }
 
     /** Clears the Done download state after the UI has shown the result to the user. */
@@ -194,6 +272,14 @@ class PracticeViewModel @Inject constructor(
 
     fun setArabicTextSizeSp(value: Float) = viewModelScope.launch {
         settingsRepository.setArabicTextSizeSp(value.coerceIn(24f, 38f))
+    }
+
+    fun setShowDownloadPrompt(value: Boolean) = viewModelScope.launch {
+        settingsRepository.setShowDownloadPrompt(value)
+    }
+
+    fun setAutoDownload(value: Boolean) = viewModelScope.launch {
+        settingsRepository.setAutoDownload(value)
     }
 
     fun toggleTranscription() = viewModelScope.launch {
@@ -221,6 +307,7 @@ class PracticeViewModel @Inject constructor(
                 range = range,
                 repeatCount = state.settings.repeatCount,
                 speed = state.settings.playbackSpeed,
+                surahName = state.selectedSurah?.name ?: "Sure"
             )
         }.onFailure { setError(it) }
     }
@@ -325,7 +412,13 @@ class PracticeViewModel @Inject constructor(
             val page = ayahs.firstOrNull { it.number == state.startAyah }?.page
                 ?: ayahs.firstOrNull()?.page ?: 1
             mutableUiState.update {
-                it.copy(ayahs = ayahs, selectedPage = page, isSelectedSurahCached = isCached)
+                it.copy(
+                    ayahs = ayahs,
+                    visibleAyahs = ayahs.filter { a -> a.page == page },
+                    selectedPage = page,
+                    isSelectedSurahCached = isCached,
+                    selectedSurah = it.surahs.find { s -> s.id == it.selectedSurahId },
+                )
             }
         }.onFailure { setError(it) }
     }
@@ -355,6 +448,7 @@ class PracticeViewModel @Inject constructor(
                 error = null,
             )
         }
+        saveLastSession()
     }
 
     fun setStartToPageStart() {
@@ -388,6 +482,17 @@ class PracticeViewModel @Inject constructor(
                 error = null,
             )
         }
+        saveLastSession()
+    }
+
+    fun setStartToFirst() {
+        setStartAyah(1)
+    }
+
+    fun setEndToSurahEnd() {
+        val state = mutableUiState.value
+        val end = state.selectedSurah?.verseCount ?: return
+        setEndAyah(end)
     }
 
     private fun PracticeUiState.pageForAyah(ayahNumber: Int): Int =
