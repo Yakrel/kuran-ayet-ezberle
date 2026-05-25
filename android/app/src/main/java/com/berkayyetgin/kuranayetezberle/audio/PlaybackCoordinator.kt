@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
@@ -54,6 +55,7 @@ class PlaybackCoordinator @Inject constructor(
         range: AyahRange,
         repeatCount: Int,
         speed: Float,
+        surahName: String = "Kuran-ı Kerim",
     ) {
         requireBackgroundPlaybackSupported()
         this.ayahs = ayahs
@@ -63,14 +65,23 @@ class PlaybackCoordinator @Inject constructor(
         val start = ayahs.firstOrNull { it.number == range.startAyah }
             ?: error("Unsupported data: start ayah timing is missing.")
 
-        ContextCompat.startForegroundService(context, Intent(context, PracticePlaybackService::class.java))
+        context.startService(Intent(context, PracticePlaybackService::class.java))
 
         val exoPlayer = playerHolder.player
-        // Always re-register the listener to avoid stale state from a previous session.
         exoPlayer.removeListener(playbackStateListener)
         exoPlayer.addListener(playbackStateListener)
 
-        exoPlayer.setMediaItem(MediaItem.fromUri(cacheRepository.resolvePlaybackUri(audio)))
+        val metadata = MediaMetadata.Builder()
+            .setTitle(surahName)
+            .setArtist("Ayet ${range.startAyah} - ${range.endAyah}")
+            .build()
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(cacheRepository.resolvePlaybackUri(audio))
+            .setMediaMetadata(metadata)
+            .build()
+
+        exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
         exoPlayer.playbackParameters = PlaybackParameters(speed)
         exoPlayer.seekTo(start.fromMs)

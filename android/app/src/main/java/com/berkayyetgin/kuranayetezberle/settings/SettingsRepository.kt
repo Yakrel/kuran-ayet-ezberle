@@ -16,11 +16,16 @@ private val Context.dataStore by preferencesDataStore("settings")
 
 data class AppSettings(
     val translationAuthorId: String = "6",
-    val showTranscription: Boolean = true,
+    val showTranscription: Boolean = false,
     val darkTheme: Boolean? = null,
     val playbackSpeed: Float = 1f,
     val repeatCount: Int = 20,
     val arabicTextSizeSp: Float = 30f,
+    val showDownloadPrompt: Boolean = true,
+    val autoDownload: Boolean = false,
+    val lastSurahId: Int = 1,
+    val lastStartAyah: Int = 1,
+    val lastEndAyah: Int = 7,
 )
 
 class SettingsRepository @Inject constructor(
@@ -29,12 +34,23 @@ class SettingsRepository @Inject constructor(
     val settings: Flow<AppSettings> = context.dataStore.data.map { preferences ->
         AppSettings(
             translationAuthorId = preferences[Keys.translationAuthorId] ?: "6",
-            showTranscription = preferences[Keys.showTranscription] ?: true,
+            showTranscription = preferences[Keys.showTranscription] ?: false,
             darkTheme = preferences[Keys.darkTheme],
             playbackSpeed = preferences[Keys.playbackSpeed] ?: 1f,
             repeatCount = preferences[Keys.repeatCount] ?: 20,
             arabicTextSizeSp = preferences[Keys.arabicTextSizeSp] ?: 30f,
+            showDownloadPrompt = preferences[Keys.showDownloadPrompt] ?: true,
+            autoDownload = preferences[Keys.autoDownload] ?: false,
+            lastSurahId = preferences[Keys.lastSurahId] ?: 1,
+            lastStartAyah = preferences[Keys.lastStartAyah] ?: 1,
+            lastEndAyah = preferences[Keys.lastEndAyah] ?: 7,
         )
+    }
+
+    suspend fun saveLastSession(surahId: Int, startAyah: Int, endAyah: Int) = context.dataStore.edit {
+        it[Keys.lastSurahId] = surahId
+        it[Keys.lastStartAyah] = startAyah
+        it[Keys.lastEndAyah] = endAyah
     }
 
     suspend fun setRepeatCount(value: Int) = context.dataStore.edit { it[Keys.repeatCount] = value }
@@ -43,6 +59,8 @@ class SettingsRepository @Inject constructor(
     suspend fun setShowTranscription(value: Boolean) = context.dataStore.edit { it[Keys.showTranscription] = value }
     suspend fun setDarkTheme(value: Boolean) = context.dataStore.edit { it[Keys.darkTheme] = value }
     suspend fun setArabicTextSizeSp(value: Float) = context.dataStore.edit { it[Keys.arabicTextSizeSp] = value }
+    suspend fun setShowDownloadPrompt(value: Boolean) = context.dataStore.edit { it[Keys.showDownloadPrompt] = value }
+    suspend fun setAutoDownload(value: Boolean) = context.dataStore.edit { it[Keys.autoDownload] = value }
 
     private object Keys {
         val translationAuthorId = stringPreferencesKey("translation_author_id")
@@ -51,5 +69,10 @@ class SettingsRepository @Inject constructor(
         val playbackSpeed = floatPreferencesKey("playback_speed")
         val repeatCount = intPreferencesKey("repeat_count")
         val arabicTextSizeSp = floatPreferencesKey("arabic_text_size_sp")
+        val showDownloadPrompt = booleanPreferencesKey("show_download_prompt")
+        val autoDownload = booleanPreferencesKey("auto_download")
+        val lastSurahId = intPreferencesKey("last_surah_id")
+        val lastStartAyah = intPreferencesKey("last_start_ayah")
+        val lastEndAyah = intPreferencesKey("last_end_ayah")
     }
 }

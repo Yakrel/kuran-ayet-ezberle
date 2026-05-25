@@ -8,15 +8,17 @@ import org.junit.Test
 class PracticeUiStateTest {
     @Test
     fun visibleAyahsReturnsAllSurahAyahsContinuously() {
+        val ayahs = listOf(
+            ayah(number = 1, page = 1),
+            ayah(number = 2, page = 2),
+        )
         val state = PracticeUiState(
-            ayahs = listOf(
-                ayah(number = 1, page = 1),
-                ayah(number = 2, page = 2),
-            ),
+            ayahs = ayahs,
+            visibleAyahs = ayahs.filter { it.page == 2 },
             selectedPage = 2,
         )
 
-        assertEquals(listOf(1, 2), state.visibleAyahs.map { it.number })
+        assertEquals(listOf(2), state.visibleAyahs.map { it.number })
     }
 
     private fun ayah(number: Int, page: Int) = AyahWithDetails(
