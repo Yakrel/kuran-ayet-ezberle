@@ -1,5 +1,3 @@
-@file:Suppress("SpellCheckingInspection")
-
 package com.berkayyetgin.kuranayetezberle.ui
 
 import androidx.compose.foundation.BorderStroke
@@ -1381,7 +1379,6 @@ private fun AyahList(
         object : NestedScrollConnection {
             private var edgeDragPx = 0f
 
-            @Suppress("SameReturnValue")
             override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
                 if (source != NestedScrollSource.UserInput || pages.isEmpty()) return Offset.Zero
 
@@ -1393,7 +1390,13 @@ private fun AyahList(
                     available.x != 0f -> 0f
                     else -> edgeDragPx
                 }
-                return Offset.Zero
+                val crossedPreviousThreshold = edgeDragPx > edgeSwipeThresholdPx && canSwipeToPreviousSurah
+                val crossedNextThreshold = edgeDragPx < -edgeSwipeThresholdPx && canSwipeToNextSurah
+                return if (crossedPreviousThreshold || crossedNextThreshold) {
+                    Offset(available.x, 0f)
+                } else {
+                    Offset.Zero
+                }
             }
 
             override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
