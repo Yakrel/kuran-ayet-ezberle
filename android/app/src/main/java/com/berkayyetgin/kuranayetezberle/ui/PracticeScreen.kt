@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -784,12 +786,15 @@ private fun SettingsSheet(
 ) {
     var showTranscriptionInfo by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
+    val settingsScrollState = rememberScrollState()
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .fillMaxHeight(0.88f)
                 .navigationBarsPadding()
+                .verticalScroll(settingsScrollState)
                 .padding(horizontal = 20.dp)
                 .padding(bottom = 18.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
