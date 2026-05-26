@@ -15,9 +15,13 @@ object AudioCachePolicy {
     fun isValidCachedAudio(file: File, audio: SurahAudio): Boolean {
         if (!file.exists() || !file.isFile) return false
         val length = file.length()
+        return length >= MIN_VALID_SIZE_BYTES
+    }
+
+    fun isCompleteDownloadedAudio(file: File, expectedBytes: Long?): Boolean {
+        if (!file.exists() || !file.isFile) return false
+        val length = file.length()
         if (length < MIN_VALID_SIZE_BYTES) return false
-        // When the expected size is known, require an exact match.
-        // When audioSize is 0 (unknown), accept any file that exceeds the minimum threshold.
-        return audio.audioSize <= 0L || length == audio.audioSize
+        return expectedBytes == null || length == expectedBytes
     }
 }

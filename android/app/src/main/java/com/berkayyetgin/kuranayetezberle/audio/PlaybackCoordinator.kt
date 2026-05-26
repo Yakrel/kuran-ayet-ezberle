@@ -129,7 +129,7 @@ class PlaybackCoordinator @Inject constructor(
         }
 
         override fun onPlayerError(error: PlaybackException) {
-            failPlayback(error.message ?: "Audio playback failed; no fallback source is available.")
+            failPlayback(error.message ?: "Ses oynatılamadı. Bağlantını kontrol edip tekrar dene.")
         }
     }
 

@@ -17,12 +17,12 @@ class AudioCachePolicyTest {
     )
 
     @Test
-    fun validCacheRequiresExpectedSizeWhenMetadataIsKnown() {
+    fun validCacheAcceptsDownloadedAudioEvenWhenMetadataSizeDrifts() {
         withTempDir { dir ->
             val file = File(dir, "13-2.mp3")
             file.writeBytes(ByteArray(60 * 1024))
 
-            assertTrue(AudioCachePolicy.isValidCachedAudio(file, audio))
+            assertTrue(AudioCachePolicy.isValidCachedAudio(file, audio.copy(audioSize = 120 * 1024L)))
         }
     }
 
@@ -44,6 +44,17 @@ class AudioCachePolicyTest {
             file.writeBytes(ByteArray(60 * 1024))
 
             assertTrue(AudioCachePolicy.isValidCachedAudio(file, audio.copy(audioSize = 0L)))
+        }
+    }
+
+    @Test
+    fun completeDownloadUsesHttpContentLengthWhenKnown() {
+        withTempDir { dir ->
+            val complete = File(dir, "complete.mp3").also { it.writeBytes(ByteArray(60 * 1024)) }
+            val short = File(dir, "short.mp3").also { it.writeBytes(ByteArray(55 * 1024)) }
+
+            assertTrue(AudioCachePolicy.isCompleteDownloadedAudio(complete, expectedBytes = 60 * 1024L))
+            assertFalse(AudioCachePolicy.isCompleteDownloadedAudio(short, expectedBytes = 60 * 1024L))
         }
     }
 
