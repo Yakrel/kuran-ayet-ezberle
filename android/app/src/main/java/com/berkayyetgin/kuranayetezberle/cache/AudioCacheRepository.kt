@@ -5,6 +5,9 @@ import com.berkayyetgin.kuranayetezberle.data.SurahAudio
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.coroutines.resume
@@ -59,7 +62,10 @@ class AudioCacheRepository @Inject constructor(
     }
 
     /** Downloads a single surah and returns the local file. Skips the network if already cached. */
-    suspend fun download(audio: SurahAudio): File = withContext(Dispatchers.IO) {
+    suspend fun download(
+        audio: SurahAudio,
+        onProgress: ((downloadedBytes: Long, totalBytes: Long?) -> Unit)? = null,
+    ): File = withContext(Dispatchers.IO) {
         val target = cachedFile(audio)
         if (AudioCachePolicy.isValidCachedAudio(target, audio)) return@withContext target
         if (target.exists()) target.delete()
@@ -69,15 +75,20 @@ class AudioCacheRepository @Inject constructor(
         try {
             client.executeCancellable(request).use { response ->
                 if (!response.isSuccessful) {
-                    error("Audio download failed with HTTP ${response.code}; no fallback reciter is available.")
+                    error("Ses dosyası indirilemedi (HTTP ${response.code}).")
                 }
-                val body = response.body ?: error("Audio download returned an empty body.")
-                temp.outputStream().use { output -> body.byteStream().copyTo(output) }
+                val body = response.body ?: error("Ses dosyası boş döndü.")
+                val expectedBytes = body.contentLength().takeIf { it > 0L }
+                body.byteStream().use { input ->
+                    temp.outputStream().use { output ->
+                        input.copyToWithProgress(output, expectedBytes, onProgress)
+                    }
+                }
+                check(AudioCachePolicy.isCompleteDownloadedAudio(temp, expectedBytes)) {
+                    "Ses dosyası eksik indi. Bağlantını kontrol edip tekrar dene."
+                }
             }
-            check(AudioCachePolicy.isValidCachedAudio(temp, audio)) {
-                "Audio download was incomplete; no fallback reciter is available."
-            }
-            check(temp.renameTo(target)) { "Audio download could not be cached." }
+            check(temp.renameTo(target)) { "Ses dosyası kaydedilemedi." }
             target
         } catch (error: Throwable) {
             temp.delete()
@@ -92,11 +103,18 @@ class AudioCacheRepository @Inject constructor(
      * the remaining downloads. Returns a [DownloadAllResult] with the per-outcome counts so the
      * caller can surface partial-success information to the user.
      */
-    suspend fun downloadAll(items: List<SurahAudio>): DownloadAllResult = coroutineScope {
+    suspend fun downloadAll(
+        items: List<SurahAudio>,
+        onItemCompleted: ((completedCount: Int, totalCount: Int) -> Unit)? = null,
+    ): DownloadAllResult = coroutineScope {
         val limiter = Semaphore(permits = 4)
+        val completed = AtomicInteger(0)
         val results = items.map { audio ->
             async(Dispatchers.IO) {
-                limiter.withPermit { runCatching { download(audio) } }
+                limiter.withPermit {
+                    runCatching { download(audio) }
+                        .also { onItemCompleted?.invoke(completed.incrementAndGet(), items.size) }
+                }
             }
         }.awaitAll()
         DownloadAllResult(
@@ -127,6 +145,22 @@ class AudioCacheRepository @Inject constructor(
                 }
             })
         }
+
+    private fun InputStream.copyToWithProgress(
+        output: OutputStream,
+        expectedBytes: Long?,
+        onProgress: ((downloadedBytes: Long, totalBytes: Long?) -> Unit)?,
+    ) {
+        val buffer = ByteArray(8 * 1024)
+        var downloadedBytes = 0L
+        while (true) {
+            val read = read(buffer)
+            if (read < 0) break
+            output.write(buffer, 0, read)
+            downloadedBytes += read
+            onProgress?.invoke(downloadedBytes, expectedBytes)
+        }
+    }
 }
 
 /**

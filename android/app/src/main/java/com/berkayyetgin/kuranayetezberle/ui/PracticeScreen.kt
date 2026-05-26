@@ -1,3 +1,5 @@
+@file:Suppress("SpellCheckingInspection")
+
 package com.berkayyetgin.kuranayetezberle.ui
 
 import androidx.compose.foundation.BorderStroke
@@ -33,19 +35,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.RadioButton
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
@@ -55,7 +53,6 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
@@ -77,7 +74,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -86,18 +82,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -109,7 +108,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.berkayyetgin.kuranayetezberle.R
 import com.berkayyetgin.kuranayetezberle.data.AyahWithDetails
@@ -120,6 +119,7 @@ import java.util.Locale
 import kotlinx.coroutines.delay
 
 private val ArabicFontFamily = FontFamily(Font(R.font.uthmanic_hafs_v22))
+private val TurkishLocale: Locale = Locale.forLanguageTag("tr-TR")
 
 // Discrete speed steps shown as inline chips during an active session.
 private val SPEED_STEPS = listOf(0.75f, 1.0f, 1.25f, 1.5f, 2.0f)
@@ -134,7 +134,7 @@ private fun Float.toSpeedLabel(): String = when (this) {
 }
 
 private fun String.normalizeTurkish(): String {
-    return this.lowercase(Locale("tr", "TR"))
+    return this.lowercase(TurkishLocale)
         .replace('â', 'a').replace('î', 'i').replace('û', 'u')
         .replace('Â', 'a').replace('Î', 'i').replace('Û', 'u')
         .replace('ç', 'c').replace('ğ', 'g').replace('ı', 'i')
@@ -150,8 +150,7 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showSurahSelection by remember { mutableStateOf(false) }
-    var showVerseSelectionForStart by remember { mutableStateOf(false) }
-    var isSelectionMode by remember { mutableStateOf(false) }
+    var showAyahRangeSelection by rememberSaveable { mutableStateOf(false) }
     var showRepeatSelection by remember { mutableStateOf(false) }
     var showDownloadPrompt by remember { mutableStateOf(false) }
 
@@ -172,102 +171,93 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
     }
 
     AppTheme(darkTheme = resolvedDarkTheme) {
+        val onPlayClick: () -> Unit = {
+            val session = state.sessionState
+            val isIdle = session is PlaybackSessionState.Idle ||
+                session is PlaybackSessionState.Stopped ||
+                session is PlaybackSessionState.Completed
+
+            if (isIdle && !state.isSelectedSurahCached && state.settings.showDownloadPrompt) {
+                showDownloadPrompt = true
+            } else if (isIdle) {
+                viewModel.start()
+            } else {
+                viewModel.pauseOrResume()
+            }
+        }
+
         Scaffold(
             modifier = Modifier.fillMaxSize(),
-            containerColor = Color.Transparent, // Let the Box handle background
+            containerColor = MaterialTheme.colorScheme.background,
             contentWindowInsets = WindowInsets(0, 0, 0, 0),
+            topBar = {
+                PracticeTopBar(
+                    state = state,
+                    onSurahClick = { showSurahSelection = true },
+                    onNextSurah = viewModel::nextSurah,
+                    onPrevSurah = viewModel::previousSurah,
+                    onAyahRangeClick = { showAyahRangeSelection = true },
+                    onRepeatClick = { showRepeatSelection = true },
+                    onSettingsClick = { showSettings = true },
+                    onSpeedClick = {
+                        val currentIndex = SPEED_STEPS.indexOf(state.settings.playbackSpeed)
+                        val nextIndex = if (currentIndex >= 0) {
+                            (currentIndex + 1) % SPEED_STEPS.size
+                        } else {
+                            SPEED_STEPS.indexOf(1.0f)
+                        }
+                        viewModel.setSpeed(SPEED_STEPS[nextIndex])
+                    },
+                )
+            },
+            bottomBar = {
+                PlaybackBar(
+                    state = state,
+                    onPlayClick = onPlayClick,
+                    onStopClick = viewModel::stop,
+                    onDownloadClick = { viewModel.downloadSelectedSurah() },
+                )
+            },
         ) { innerPadding ->
-            Box(
+            Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background),
+                    .padding(top = innerPadding.calculateTopPadding())
+                    .padding(horizontal = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding())
-                        .padding(horizontal = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    PracticeHeader(
-                        state = state,
-                        onSurahClick = { showSurahSelection = true },
-                        onNextSurah = viewModel::nextSurah,
-                        onPrevSurah = viewModel::previousSurah,
-                        onAyahRangeClick = { isSelectionMode = !isSelectionMode },
-                        onRepeatClick = { showRepeatSelection = true },
-                        onPageClick = { /* Not fully implemented sheet for pages, fallback to quick select or a simple list, wait let's just trigger quick select if needed */ viewModel.selectPageRange() },
-                        onSettingsClick = { showSettings = true },
-                        onSpeedClick = {
-                            val currentIndex = SPEED_STEPS.indexOf(state.settings.playbackSpeed)
-                            val nextIndex = (currentIndex + 1) % SPEED_STEPS.size
-                            viewModel.setSpeed(SPEED_STEPS[nextIndex])
-                        }
-                    )
+                state.error?.let { ErrorStrip(it, viewModel::clearError) }
 
-                    state.error?.let { ErrorStrip(it, viewModel::clearError) }
-
-                    val currentActiveAyah = (state.sessionState as? PlaybackSessionState.Active)?.activeAyah 
-                                            ?: (state.sessionState as? PlaybackSessionState.PausedByUser)?.active?.activeAyah
-                    
-                    AyahList(
-                        ayahs = state.ayahs,
-                        selectedPage = state.selectedPage,
-                        activeAyah = currentActiveAyah,
-                        startAyah = state.startAyah,
-                        endAyah = state.endAyah,
-                        showTranscription = state.settings.showTranscription,
-                        arabicTextSizeSp = state.settings.arabicTextSizeSp,
-                        isSelectionMode = isSelectionMode,
-                        onSelectionModeToggle = { isSelectionMode = it },
-                        onPageSelected = viewModel::setPage,
-                        onPageSwiped = viewModel::onPageSwipe,
-                        onAyahClick = { /* Click to select in mode */ },
-                        onSetStart = viewModel::setStartAyah,
-                        onSetStartAndEnd = viewModel::setStartAndEndAyah,
-                        onSetEnd = viewModel::setEndAyah,
-                        modifier = Modifier.weight(1f)
-                    )
-                    
-                    // Add space at the bottom for the player to not cover the last items
-                    Spacer(modifier = Modifier.height(140.dp).navigationBarsPadding())
-                }
-
-                // Best Practice: Persistent Bottom Player Card
-                BottomPlayerCard(
-                    state = state,
-                    onPlayClick = {
-                        val session = state.sessionState
-                        val isIdle = session is PlaybackSessionState.Idle ||
-                                     session is PlaybackSessionState.Stopped ||
-                                     session is PlaybackSessionState.Completed
-
-                        if (isIdle && !state.isSelectedSurahCached && state.settings.showDownloadPrompt) {
-                            showDownloadPrompt = true
-                        } else if (isIdle) {
-                            viewModel.start()
-                        } else {
-                            viewModel.pauseOrResume()
-                        }
-                    },
-                    onStopClick = viewModel::stop,
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                AyahList(
+                    ayahs = state.ayahs,
+                    selectedPage = state.selectedPage,
+                    activeAyah = state.activeAyah,
+                    startAyah = state.startAyah,
+                    endAyah = state.endAyah,
+                    showTranscription = state.settings.showTranscription,
+                    arabicTextSizeSp = state.settings.arabicTextSizeSp,
+                    canSwipeToPreviousSurah = state.selectedSurahId > 1,
+                    canSwipeToNextSurah = state.selectedSurahId < 114,
+                    onPageSwiped = viewModel::onPageSwipe,
+                    onPreviousSurah = viewModel::previousSurah,
+                    onNextSurah = viewModel::nextSurah,
+                    onSetStartAndEnd = viewModel::setStartAndEndAyah,
+                    onSetEnd = viewModel::setEndAyah,
+                    modifier = Modifier.weight(1f)
                 )
             }
         }
 
         if (showDownloadPrompt) {
             DownloadPromptDialog(
-                onDownloadAndPlay = { dontShowAgain ->
-                    if (dontShowAgain) viewModel.setShowDownloadPrompt(false)
-                    viewModel.downloadSelectedSurah()
-                    viewModel.start()
+                surahName = state.selectedSurah?.name,
+                onDownloadAndPlay = { doNotShowAgain ->
+                    if (doNotShowAgain) viewModel.setShowDownloadPrompt(false)
+                    viewModel.downloadSelectedSurah(playAfterDownload = true)
                     showDownloadPrompt = false
                 },
-                onJustPlay = { dontShowAgain ->
-                    if (dontShowAgain) viewModel.setShowDownloadPrompt(false)
+                onJustPlay = { doNotShowAgain ->
+                    if (doNotShowAgain) viewModel.setShowDownloadPrompt(false)
                     viewModel.start()
                     showDownloadPrompt = false
                 },
@@ -287,7 +277,13 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
             )
         }
 
-        // Removed AyahRangeSheet, replaced by inline Selection Mode
+        if (showAyahRangeSelection) {
+            AyahRangeSheet(
+                state = state,
+                viewModel = viewModel,
+                onDismiss = { showAyahRangeSelection = false },
+            )
+        }
 
         if (showRepeatSelection) {
             RepeatSelectionSheet(
@@ -313,143 +309,185 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
 
 // ─── Header ─────────────────────────────────────────────────────────────────
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PracticeHeader(
+private fun PracticeTopBar(
     state: PracticeUiState,
     onSurahClick: () -> Unit,
     onNextSurah: () -> Unit,
     onPrevSurah: () -> Unit,
     onAyahRangeClick: () -> Unit,
     onRepeatClick: () -> Unit,
-    onPageClick: () -> Unit,
     onSettingsClick: () -> Unit,
     onSpeedClick: () -> Unit,
 ) {
     val haptic = LocalHapticFeedback.current
-    Column(
+    Surface(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(top = 8.dp, bottom = 4.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 2.dp,
     ) {
-        // Row 1
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = WindowInsets.safeDrawing.asPaddingValues().calculateTopPadding())
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            IconButton(
-                onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onPrevSurah() },
-                enabled = state.selectedSurahId > 1,
-                modifier = Modifier.size(32.dp)
-            ) { Icon(Icons.Filled.ChevronLeft, contentDescription = "Önceki Sure") }
-
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier
-                    .weight(1f)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                    .clickable { onSurahClick() }
-                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text(
-                    text = state.selectedSurah?.let { "${it.id}. ${it.name}" } ?: "Sure Seçin",
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onPrevSurah()
+                    },
+                    enabled = state.selectedSurahId > 1,
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(Icons.Filled.ChevronLeft, contentDescription = "Önceki sure")
+                }
+
+                Surface(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                        onSurahClick()
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
                     modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.List,
-                    contentDescription = "Hızlı Sure Seç",
-                    tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
-                    modifier = Modifier.size(16.dp)
-                )
-            }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp)
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.Center,
+                        ) {
+                            Text(
+                                text = state.selectedSurah?.let { "${it.id}. ${it.name}" } ?: "Sure seç",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = state.selectedSurah?.let { "${it.verseCount} ayet" } ?: "Listeyi aç",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.List,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
 
-            IconButton(
-                onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); onNextSurah() },
-                enabled = state.selectedSurahId < 114,
-                modifier = Modifier.size(32.dp)
-            ) { Icon(Icons.Filled.ChevronRight, contentDescription = "Sonraki Sure") }
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onNextSurah()
+                    },
+                    enabled = state.selectedSurahId < 114,
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(Icons.Filled.ChevronRight, contentDescription = "Sonraki sure")
+                }
 
-            Surface(
-                onClick = onSpeedClick,
-                shape = RoundedCornerShape(8.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                modifier = Modifier.height(32.dp)
-            ) {
-                Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(horizontal = 8.dp)) {
-                    Text(
-                        text = state.settings.playbackSpeed.toSpeedLabel(),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
+                IconButton(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                        onSettingsClick()
+                    },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(imageVector = Icons.Filled.Settings, contentDescription = "Ayarlar")
                 }
             }
 
-            IconButton(onClick = onSettingsClick, modifier = Modifier.size(32.dp)) {
-                Icon(imageVector = Icons.Filled.Settings, contentDescription = "Ayarlar", modifier = Modifier.size(20.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TopBarChip(
+                    label = "Ayet",
+                    value = "${state.startAyah}-${state.endAyah}",
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                        onAyahRangeClick()
+                    },
+                    modifier = Modifier.weight(1.2f),
+                )
+                TopBarChip(
+                    label = "Tekrar",
+                    value = state.settings.repeatCount.toString(),
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                        onRepeatClick()
+                    },
+                    modifier = Modifier.weight(1f),
+                )
+                TopBarChip(
+                    label = "Hız",
+                    value = state.settings.playbackSpeed.toSpeedLabel(),
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        onSpeedClick()
+                    },
+                    modifier = Modifier.weight(1f),
+                )
             }
-        }
-
-        // Row 2
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            HeaderChip(
-                label = "Ayet",
-                value = "${state.startAyah} \u2192 ${state.endAyah}",
-                onClick = onAyahRangeClick,
-                modifier = Modifier.weight(1.5f)
-            )
-            HeaderChip(
-                label = "Tekrar",
-                value = "${state.settings.repeatCount}",
-                onClick = onRepeatClick,
-                modifier = Modifier.weight(1f)
-            )
-            HeaderChip(
-                label = "Sayfa",
-                value = "${state.selectedPage}",
-                onClick = onPageClick,
-                modifier = Modifier.weight(1f)
-            )
         }
     }
 }
 
 @Composable
-private fun HeaderChip(
+private fun TopBarChip(
     label: String,
     value: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
         modifier = modifier
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 6.dp)
+            .height(38.dp),
     ) {
-        Text(
-            text = label.uppercase(),
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.8f)
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onSurface
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp, vertical = 3.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = label.uppercase(),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
+                maxLines = 1,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -460,72 +498,99 @@ private fun HeaderChip(
  */
 @Composable
 private fun CacheStatusButton(
+    surahName: String?,
     isCached: Boolean,
     downloadState: DownloadState,
     onDownload: () -> Unit,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(enabled = !isCached && downloadState !is DownloadState.InProgress) { onDownload() }
-            .padding(horizontal = 4.dp, vertical = 2.dp)
+    val inProgress = downloadState as? DownloadState.InProgress
+    val label = when {
+        inProgress != null -> inProgress.percentLabel ?: "İniyor"
+        isCached -> "Hazır"
+        else -> "${surahName ?: "Sure"} indir"
+    }
+
+    Surface(
+        onClick = onDownload,
+        enabled = !isCached && inProgress == null,
+        shape = RoundedCornerShape(8.dp),
+        color = if (isCached) {
+            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.7f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
+        },
     ) {
-        Box(
-            modifier = Modifier.size(32.dp),
-            contentAlignment = Alignment.Center,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)
         ) {
-            when {
-                downloadState is DownloadState.InProgress -> {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
-                        strokeWidth = 2.dp,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-                downloadState is DownloadState.Done || isCached -> {
-                    Icon(
-                        imageVector = Icons.Filled.CheckCircle,
-                        contentDescription = "Önbellekte mevcut",
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                else -> {
-                    Icon(
-                        imageVector = Icons.Filled.CloudDownload,
-                        contentDescription = "Sureyi indir",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
+            Box(
+                modifier = Modifier.size(22.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                when {
+                    inProgress != null -> {
+                        val fraction = inProgress.fraction
+                        if (fraction != null) {
+                            CircularProgressIndicator(
+                                progress = { fraction },
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        } else {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                    }
+                    downloadState is DownloadState.Done || isCached -> {
+                        Icon(
+                            imageVector = Icons.Filled.CheckCircle,
+                            contentDescription = "Sure cihazda hazır",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                    else -> {
+                        Icon(
+                            imageVector = Icons.Filled.CloudDownload,
+                            contentDescription = "${surahName ?: "Sure"} indir",
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
                 }
             }
+
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (isCached) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.width(68.dp),
+            )
         }
-        
-        Text(
-            text = when {
-                downloadState is DownloadState.InProgress -> "İndiriliyor..."
-                isCached -> "İndirildi"
-                else -> "İndir"
-            },
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.Bold,
-            color = if (isCached) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }
 
 // ─── Playback Controls ───────────────────────────────────────────────────────
 
-// ─── Playback Controls ───────────────────────────────────────────────────────
-
 @Composable
-private fun BottomPlayerCard(
+private fun PlaybackBar(
     state: PracticeUiState,
     onPlayClick: () -> Unit,
     onStopClick: () -> Unit,
-    modifier: Modifier = Modifier
+    onDownloadClick: () -> Unit,
 ) {
     val session = state.sessionState
     val isPlaying = session is PlaybackSessionState.Active
@@ -534,157 +599,133 @@ private fun BottomPlayerCard(
     val isActive = isPlaying || isPaused
     val haptic = LocalHapticFeedback.current
 
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .height(96.dp) // Fixed height for consistent glass effect
-    ) {
-        // Glass Background Layer
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(20.dp) // Blur only the background
-                .clip(RoundedCornerShape(24.dp))
-                .background(MaterialTheme.colorScheme.surfaceColorAtElevation(4.dp).copy(alpha = 0.6f))
-                .border(1.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(24.dp))
-        )
+    val activeRepeat = when (session) {
+        is PlaybackSessionState.Active -> session.currentRepeat to session.repeatTarget
+        is PlaybackSessionState.PausedByUser -> session.active.currentRepeat to session.active.repeatTarget
+        else -> 0 to 1
+    }
+    val activeAyah = when (session) {
+        is PlaybackSessionState.Active -> session.activeAyah
+        is PlaybackSessionState.PausedByUser -> session.active.activeAyah
+        else -> null
+    }
+    val title = when {
+        isActive -> "Ayet $activeAyah"
+        isCompleted -> "Çalışma tamamlandı"
+        session is PlaybackSessionState.Error -> "Hata oluştu"
+        else -> state.selectedSurah?.name ?: "Hazır"
+    }
+    val subtitle = when {
+        isActive -> "${activeRepeat.first} / ${activeRepeat.second} tekrar • ${state.settings.playbackSpeed.toSpeedLabel()}"
+        isCompleted -> "Tekrar başlatmaya hazır"
+        state.canStart -> "Ayet ${state.startAyah}-${state.endAyah} • ${state.settings.repeatCount} tekrar • ${state.settings.playbackSpeed.toSpeedLabel()}"
+        else -> "Ayet aralığı hazır değil"
+    }
 
-        // Sharp Content Layer
-        Surface(
-            modifier = Modifier.fillMaxSize(),
-            color = Color.Transparent, // Surface is transparent, background provides color/blur
-            shape = RoundedCornerShape(24.dp),
-            shadowElevation = 8.dp
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+        shadowElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(horizontal = 10.dp, vertical = 7.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                if (isActive) {
-                    val progress = when (session) {
-                        is PlaybackSessionState.Active -> session.currentRepeat.toFloat() / session.repeatTarget
-                        is PlaybackSessionState.PausedByUser -> session.active.currentRepeat.toFloat() / session.active.repeatTarget
-                        else -> 0f
-                    }
-                    androidx.compose.material3.LinearProgressIndicator(
-                        progress = { progress },
-                        modifier = Modifier.fillMaxWidth().height(2.dp),
-                        color = MaterialTheme.colorScheme.primary,
-                        trackColor = Color.Transparent,
+            if (isActive) {
+                val repeatTarget = activeRepeat.second.coerceAtLeast(1)
+                val progress = (activeRepeat.first.toFloat() / repeatTarget.toFloat()).coerceIn(0f, 1f)
+                androidx.compose.material3.LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth().height(2.dp),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                )
+            }
+
+            DownloadProgressStrip(state.downloadState)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(9.dp),
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-                
-                Row(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 20.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    // Info Column
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.Center
+
+                if (!isActive) {
+                    CacheStatusButton(
+                        surahName = state.selectedSurah?.name,
+                        isCached = state.isSelectedSurahCached,
+                        downloadState = state.downloadState,
+                        onDownload = onDownloadClick,
+                    )
+                }
+
+                if (isActive) {
+                    IconButton(
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                            onStopClick()
+                        },
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.35f), CircleShape),
                     ) {
-                        val title = if (isActive) {
-                            val activeAyah = (session as? PlaybackSessionState.Active)?.activeAyah 
-                                            ?: (session as? PlaybackSessionState.PausedByUser)?.active?.activeAyah
-                            "Ayet $activeAyah"
-                        } else if (isCompleted) {
-                            "Çalışma Tamamlandı"
-                        } else {
-                            state.selectedSurah?.name ?: "Hazır"
-                        }
-                        
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                        Icon(
+                            imageVector = Icons.Filled.Stop,
+                            contentDescription = "Durdur",
+                            tint = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.size(20.dp),
                         )
-                        
-                        if (isActive) {
-                            val repeatStr = when (session) {
-                                is PlaybackSessionState.Active -> "${session.currentRepeat} / ${session.repeatTarget} Tekrar"
-                                is PlaybackSessionState.PausedByUser -> "${session.active.currentRepeat} / ${session.active.repeatTarget} Tekrar"
-                                else -> ""
-                            }
-                            Text(
-                                text = repeatStr,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        } else if (state.canStart) {
-                            Text(
-                                text = "${state.startAyah}-${state.endAyah} arası",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
                     }
+                }
 
-                    // Action Buttons
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        if (isActive) {
-                            IconButton(
-                                onClick = { haptic.performHapticFeedback(HapticFeedbackType.Confirm); onStopClick() },
-                                modifier = Modifier
-                                    .size(44.dp)
-                                    .background(MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.3f), CircleShape)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Stop,
-                                    contentDescription = "Durdur",
-                                    tint = MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                        }
-
-                        if (isCompleted) {
-                            Surface(
-                                onClick = { haptic.performHapticFeedback(HapticFeedbackType.Confirm); onPlayClick() },
-                                shape = RoundedCornerShape(16.dp),
-                                color = MaterialTheme.colorScheme.primaryContainer,
-                                modifier = Modifier.height(48.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.PlayArrow,
-                                        contentDescription = "Tekrar Başlat",
-                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                        modifier = Modifier.size(24.dp)
-                                    )
-                                    Text(
-                                        text = "Tekrar",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                                    )
-                                }
-                            }
-                        } else {
-                            Surface(
-                                onClick = { haptic.performHapticFeedback(HapticFeedbackType.Confirm); onPlayClick() },
-                                enabled = isActive || state.canStart,
-                                shape = CircleShape,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(52.dp),
-                                shadowElevation = 4.dp
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
-                                        contentDescription = if (isPlaying) "Duraklat" else "Başlat",
-                                        tint = MaterialTheme.colorScheme.onPrimary,
-                                        modifier = Modifier.size(28.dp)
-                                    )
-                                }
-                            }
-                        }
+                Surface(
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                        onPlayClick()
+                    },
+                    enabled = isActive || state.canStart,
+                    shape = CircleShape,
+                    color = if (isActive || state.canStart) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    },
+                    modifier = Modifier.size(50.dp),
+                    shadowElevation = 2.dp,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,
+                            contentDescription = if (isPlaying) "Duraklat" else "Başlat",
+                            tint = if (isActive || state.canStart) {
+                                MaterialTheme.colorScheme.onPrimary
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                            modifier = Modifier.size(26.dp),
+                        )
                     }
                 }
             }
@@ -696,23 +737,24 @@ private fun BottomPlayerCard(
 
 @Composable
 private fun DownloadPromptDialog(
+    surahName: String?,
     onDownloadAndPlay: (Boolean) -> Unit,
     onJustPlay: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var dontShowAgain by remember { mutableStateOf(false) }
+    var doNotShowAgain by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Sureyi İndir") },
+        title = { Text("${surahName ?: "Sure"} indirilsin mi?") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Bu sure henüz indirilmemiş. Çevrimdışı dinlemek ve kota tasarrufu için indirmek ister misiniz?")
+                Text("Bu sure cihazda hazır değil. Çevrimdışı dinlemek ve kota tasarrufu için şimdi indirebilirsin.")
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { dontShowAgain = !dontShowAgain }
+                    modifier = Modifier.clickable { doNotShowAgain = !doNotShowAgain }
                 ) {
-                    Checkbox(checked = dontShowAgain, onCheckedChange = { dontShowAgain = it })
+                    Checkbox(checked = doNotShowAgain, onCheckedChange = { doNotShowAgain = it })
                     Text(
                         text = "Bir daha sorma",
                         style = MaterialTheme.typography.bodyMedium,
@@ -722,12 +764,12 @@ private fun DownloadPromptDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onDownloadAndPlay(dontShowAgain) }) {
+            TextButton(onClick = { onDownloadAndPlay(doNotShowAgain) }) {
                 Text("İndir ve Oynat")
             }
         },
         dismissButton = {
-            TextButton(onClick = { onJustPlay(dontShowAgain) }) {
+            TextButton(onClick = { onJustPlay(doNotShowAgain) }) {
                 Text("Sadece Oynat")
             }
         }
@@ -773,16 +815,12 @@ private fun SettingsSheet(
                 },
             )
             
-            SettingSlider(
-                label = "Arapça yazı boyutu",
-                valueLabel = "${state.settings.arabicTextSizeSp.toInt()}sp",
+            ArabicTextSizeSlider(
                 value = state.settings.arabicTextSizeSp,
                 onValueChange = {
                     haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     viewModel.setArabicTextSizeSp(it)
                 },
-                valueRange = 24f..38f,
-                steps = 6,
             )
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -872,42 +910,21 @@ private fun SettingsSheet(
                 },
             )
 
-            FlowRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                val isDownloading = state.downloadState is DownloadState.InProgress
-                TextButton(
-                    onClick = { haptic.performHapticFeedback(HapticFeedbackType.Confirm); viewModel.downloadSelectedSurah() },
-                    enabled = !isDownloading,
-                ) {
-                    if (isDownloading) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .size(16.dp)
-                                .padding(end = 6.dp),
-                            strokeWidth = 2.dp,
-                        )
-                    }
-                    Text("Seçili sureyi indir")
-                }
-                TextButton(
-                    onClick = { haptic.performHapticFeedback(HapticFeedbackType.Confirm); viewModel.downloadAllSurahs() },
-                    enabled = !isDownloading,
-                ) {
-                    Text("Tümünü indir")
-                }
-                TextButton(
-                    onClick = { haptic.performHapticFeedback(HapticFeedbackType.Confirm); viewModel.clearCache() },
-                    enabled = !isDownloading,
-                ) {
-                    Text(
-                        "Önbelleği temizle",
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
+            DownloadManagerCard(
+                state = state,
+                onDownloadSelected = {
+                    haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                    viewModel.downloadSelectedSurah()
+                },
+                onDownloadAll = {
+                    haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                    viewModel.downloadAllSurahs()
+                },
+                onClearCache = {
+                    haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                    viewModel.clearCache()
+                },
+            )
         }
     }
 }
@@ -915,13 +932,9 @@ private fun SettingsSheet(
 // ─── Reusable components ─────────────────────────────────────────────────────
 
 @Composable
-private fun SettingSlider(
-    label: String,
-    valueLabel: String,
+private fun ArabicTextSizeSlider(
     value: Float,
     onValueChange: (Float) -> Unit,
-    valueRange: ClosedFloatingPointRange<Float>,
-    steps: Int,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(
@@ -929,9 +942,9 @@ private fun SettingSlider(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = label, style = MaterialTheme.typography.bodyLarge)
+            Text(text = "Arapça yazı boyutu", style = MaterialTheme.typography.bodyLarge)
             Text(
-                text = valueLabel,
+                text = "${value.toInt()}sp",
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
             )
@@ -939,8 +952,8 @@ private fun SettingSlider(
         Slider(
             value = value,
             onValueChange = onValueChange,
-            valueRange = valueRange,
-            steps = steps,
+            valueRange = 24f..38f,
+            steps = 6,
         )
     }
 }
@@ -957,7 +970,7 @@ private fun SwitchRow(label: String, checked: Boolean, onCheckedChange: (Boolean
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 private fun AyahRangeSheet(
     state: PracticeUiState,
@@ -965,6 +978,9 @@ private fun AyahRangeSheet(
     onDismiss: () -> Unit
 ) {
     val haptic = LocalHapticFeedback.current
+    var selectingStart by rememberSaveable(state.selectedSurahId) { mutableStateOf(true) }
+    val verseCount = state.selectedSurah?.verseCount ?: 0
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         dragHandle = { BottomSheetDefaults.DragHandle() },
@@ -972,35 +988,111 @@ private fun AyahRangeSheet(
         Column(
             modifier = Modifier
                 .fillMaxHeight(0.85f)
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Text(
-                "Ayet Aralığı",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column {
+                    Text(
+                        "Ayet Aralığı",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        "${state.selectedSurah?.name ?: "Sure"} • ${state.startAyah}-${state.endAyah}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("Kapat")
+                }
+            }
 
-            // Shortcuts
-            Text("Kısayollar", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = selectingStart,
+                    onClick = { selectingStart = true },
+                    label = { Text("Başlangıç ${state.startAyah}") },
+                    modifier = Modifier.weight(1f),
+                )
+                FilterChip(
+                    selected = !selectingStart,
+                    onClick = { selectingStart = false },
+                    label = { Text("Bitiş ${state.endAyah}") },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.38f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Info,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = "Aralığı belirlemek için önce Başlangıç ya da Bitiş'i seçip ardından ayet numarasına dokunabilirsiniz.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                        maxLines = 2,
+                    )
+                }
+            }
+
             FlowRow(
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                QuickSelectPill("1. Ayet") { haptic.performHapticFeedback(HapticFeedbackType.Confirm); viewModel.setStartToFirst() }
-                QuickSelectPill("Son Ayet") { haptic.performHapticFeedback(HapticFeedbackType.Confirm); viewModel.setEndToSurahEnd() }
-                QuickSelectPill("Sayfa Başı") { haptic.performHapticFeedback(HapticFeedbackType.Confirm); viewModel.setStartToPageStart() }
-                QuickSelectPill("Sayfa Sonu") { haptic.performHapticFeedback(HapticFeedbackType.Confirm); viewModel.setEndToPageEnd() }
-                QuickSelectPill("Tüm Sure") { haptic.performHapticFeedback(HapticFeedbackType.Confirm); viewModel.selectSurahRange() }
+                QuickSelectPill("Bu Sayfa") {
+                    haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                    viewModel.selectPageRange()
+                }
+                QuickSelectPill("1. Ayet") {
+                    haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                    viewModel.setStartToFirst()
+                    selectingStart = false
+                }
+                QuickSelectPill("Son Ayet") {
+                    haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                    viewModel.setEndToSurahEnd()
+                    selectingStart = true
+                }
+                QuickSelectPill("Sayfa Başı") {
+                    haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                    viewModel.setStartToPageStart()
+                    selectingStart = false
+                }
+                QuickSelectPill("Sayfa Sonu") {
+                    haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                    viewModel.setEndToPageEnd()
+                    selectingStart = true
+                }
+                QuickSelectPill("Tüm Sure") {
+                    haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                    viewModel.selectSurahRange()
+                }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            val verseCount = state.selectedSurah?.verseCount ?: 0
-
-            // Start Ayah Grid
-            Text("Başlangıç: ${state.startAyah}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             LazyVerticalGrid(
                 columns = GridCells.Fixed(5),
                 modifier = Modifier.weight(1f),
@@ -1010,63 +1102,72 @@ private fun AyahRangeSheet(
             ) {
                 items(verseCount) { index ->
                     val verseNum = index + 1
-                    val isSelected = verseNum == state.startAyah
+                    val isStart = verseNum == state.startAyah
+                    val isEnd = verseNum == state.endAyah
                     val inRange = verseNum in state.startAyah..state.endAyah
+                    val selectedForMode = if (selectingStart) isStart else isEnd
                     Surface(
-                        onClick = { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); viewModel.setStartAyah(verseNum) },
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            if (selectingStart) {
+                                viewModel.setStartAyah(verseNum)
+                                selectingStart = false
+                            } else if (verseNum < state.startAyah) {
+                                viewModel.setStartAyah(verseNum)
+                            } else {
+                                viewModel.setEndAyah(verseNum)
+                            }
+                        },
                         shape = RoundedCornerShape(8.dp),
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else if (inRange) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant,
-                        border = if (isSelected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
+                        color = when {
+                            selectedForMode -> MaterialTheme.colorScheme.primary
+                            isStart || isEnd -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.75f)
+                            inRange -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+                            else -> MaterialTheme.colorScheme.surfaceVariant
+                        },
+                        border = when {
+                            selectedForMode -> BorderStroke(2.dp, MaterialTheme.colorScheme.primary)
+                            isStart || isEnd -> BorderStroke(1.dp, MaterialTheme.colorScheme.secondary)
+                            inRange -> BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
+                            else -> null
+                        },
                         modifier = Modifier.aspectRatio(1f)
                     ) {
-                        Box(contentAlignment = Alignment.Center) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center,
+                            modifier = Modifier.fillMaxSize(),
+                        ) {
                             Text(
                                 verseNum.toString(),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = if (isSelected) MaterialTheme.colorScheme.onPrimary else if (inRange) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (selectedForMode) {
+                                    MaterialTheme.colorScheme.onPrimary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurface
+                                },
                             )
+                            if (isStart || isEnd) {
+                                Text(
+                                    text = when {
+                                        isStart && isEnd -> "Tek"
+                                        isStart -> "Baş"
+                                        else -> "Bit"
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (selectedForMode) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSecondaryContainer
+                                    },
+                                    maxLines = 1,
+                                )
+                            }
                         }
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // End Ayah Grid
-            Text("Bitiş: ${state.endAyah}", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(5),
-                modifier = Modifier.weight(1f),
-                contentPadding = PaddingValues(vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(verseCount) { index ->
-                    val verseNum = index + 1
-                    val isSelected = verseNum == state.endAyah
-                    val inRange = verseNum in state.startAyah..state.endAyah
-                    val disabled = verseNum < state.startAyah
-                    Surface(
-                        onClick = { if (!disabled) { haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove); viewModel.setEndAyah(verseNum) } },
-                        shape = RoundedCornerShape(8.dp),
-                        color = if (disabled) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f) else if (isSelected) MaterialTheme.colorScheme.primary else if (inRange) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant,
-                        border = if (isSelected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
-                        modifier = Modifier.aspectRatio(1f)
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                verseNum.toString(),
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (disabled) MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f) else if (isSelected) MaterialTheme.colorScheme.onPrimary else if (inRange) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
 
             androidx.compose.material3.Button(
                 onClick = onDismiss,
@@ -1216,18 +1317,18 @@ private fun AyahList(
     endAyah: Int,
     showTranscription: Boolean,
     arabicTextSizeSp: Float,
-    isSelectionMode: Boolean,
-    onSelectionModeToggle: (Boolean) -> Unit,
-    onPageSelected: (Int) -> Unit,
+    canSwipeToPreviousSurah: Boolean,
+    canSwipeToNextSurah: Boolean,
     onPageSwiped: (Int) -> Unit,
-    onAyahClick: (AyahWithDetails) -> Unit,
-    onSetStart: (Int) -> Unit,
+    onPreviousSurah: () -> Unit,
+    onNextSurah: () -> Unit,
     onSetStartAndEnd: (Int) -> Unit,
     onSetEnd: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val grouped = remember(ayahs) { ayahs.groupBy { it.page } }
     val pages = remember(grouped) { grouped.keys.sorted().toList() }
+    val edgeSwipeThresholdPx = with(LocalDensity.current) { 72.dp.toPx() }
     
     if (pages.isEmpty()) return
 
@@ -1244,13 +1345,16 @@ private fun AyahList(
         }
     }
 
-    LaunchedEffect(pagerState.currentPage) {
-        if (pages.isNotEmpty() && !pagerState.isScrollInProgress) {
-            val currentPageNum = pages[pagerState.currentPage]
-            if (currentPageNum != selectedPage) {
-                onPageSwiped(currentPageNum)
+    LaunchedEffect(pagerState, pages, selectedPage) {
+        snapshotFlow { pagerState.currentPage to pagerState.isScrollInProgress }
+            .collect { (currentPage, isScrollInProgress) ->
+                if (pages.isNotEmpty() && !isScrollInProgress) {
+                    val currentPageNum = pages.getOrNull(currentPage) ?: return@collect
+                    if (currentPageNum != selectedPage) {
+                        onPageSwiped(currentPageNum)
+                    }
+                }
             }
-        }
     }
 
     LaunchedEffect(activeAyah) {
@@ -1265,28 +1369,49 @@ private fun AyahList(
         }
     }
 
-    Column(modifier = modifier.fillMaxWidth()) {
-        if (isSelectionMode) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 8.dp)
-                    .background(MaterialTheme.colorScheme.primaryContainer, RoundedCornerShape(8.dp))
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Aralık Seçiliyor",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                )
-                TextButton(onClick = { onSelectionModeToggle(false) }) {
-                    Text("Tamamla")
+    val edgeSwipeConnection = remember(
+        pagerState,
+        pages,
+        edgeSwipeThresholdPx,
+        canSwipeToPreviousSurah,
+        canSwipeToNextSurah,
+        onPreviousSurah,
+        onNextSurah,
+    ) {
+        object : NestedScrollConnection {
+            private var edgeDragPx = 0f
+
+            @Suppress("SameReturnValue")
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (source != NestedScrollSource.UserInput || pages.isEmpty()) return Offset.Zero
+
+                val atFirstPage = pagerState.currentPage == 0
+                val atLastPage = pagerState.currentPage == pages.lastIndex
+                edgeDragPx = when {
+                    atFirstPage && canSwipeToPreviousSurah && available.x > 0f -> edgeDragPx + available.x
+                    atLastPage && canSwipeToNextSurah && available.x < 0f -> edgeDragPx + available.x
+                    available.x != 0f -> 0f
+                    else -> edgeDragPx
                 }
+                return Offset.Zero
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                when {
+                    edgeDragPx > edgeSwipeThresholdPx && canSwipeToPreviousSurah -> onPreviousSurah()
+                    edgeDragPx < -edgeSwipeThresholdPx && canSwipeToNextSurah -> onNextSurah()
+                }
+                edgeDragPx = 0f
+                return Velocity.Zero
             }
         }
+    }
 
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .nestedScroll(edgeSwipeConnection)
+    ) {
         HorizontalPager(
             state = pagerState,
             modifier = Modifier.fillMaxSize(),
@@ -1294,11 +1419,20 @@ private fun AyahList(
         ) { pageIndex ->
             val pageNumber = pages[pageIndex]
             val pageAyahs = grouped[pageNumber] ?: emptyList()
-            
+            val listState = rememberLazyListState()
+
+            LaunchedEffect(activeAyah, pageNumber, pageAyahs) {
+                val targetIndex = pageAyahs.indexOfFirst { it.number == activeAyah }
+                if (targetIndex >= 0) {
+                    listState.animateScrollToItem(targetIndex + 1)
+                }
+            }
+
             LazyColumn(
+                state = listState,
                 modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(top = 8.dp, bottom = 24.dp)
+                contentPadding = PaddingValues(top = 8.dp, bottom = 116.dp)
             ) {
                 item(key = "page_header_$pageNumber") {
                     PageHeaderDivider(pageNumber = pageNumber)
@@ -1308,24 +1442,10 @@ private fun AyahList(
                         ayah = ayah,
                         active = ayah.number == activeAyah,
                         inRange = ayah.number in startAyah..endAyah,
-                        isSelectionMode = isSelectionMode,
-                        startAyah = startAyah,
-                        endAyah = endAyah,
+                        isRangeStart = ayah.number == startAyah,
+                        isRangeEnd = ayah.number == endAyah,
                         showTranscription = showTranscription,
                         arabicTextSizeSp = arabicTextSizeSp,
-                        onClick = {
-                            if (isSelectionMode) {
-                                val distToStart = kotlin.math.abs(ayah.number - startAyah)
-                                val distToEnd = kotlin.math.abs(ayah.number - endAyah)
-                                if (ayah.number < startAyah) onSetStart(ayah.number)
-                                else if (ayah.number > endAyah) onSetEnd(ayah.number)
-                                else if (distToStart < distToEnd) onSetStart(ayah.number)
-                                else onSetEnd(ayah.number)
-                            } else {
-                                onAyahClick(ayah)
-                            }
-                        },
-                        onSetStart = { onSetStart(ayah.number) },
                         onSetStartAndEnd = { onSetStartAndEnd(ayah.number) },
                         onSetEnd = { onSetEnd(ayah.number) }
                     )
@@ -1341,125 +1461,134 @@ private fun AyahCard(
     ayah: AyahWithDetails,
     active: Boolean,
     inRange: Boolean,
-    isSelectionMode: Boolean,
-    startAyah: Int,
-    endAyah: Int,
+    isRangeStart: Boolean,
+    isRangeEnd: Boolean,
     showTranscription: Boolean,
     arabicTextSizeSp: Float,
-    onClick: () -> Unit,
-    onSetStart: () -> Unit,
     onSetStartAndEnd: () -> Unit,
     onSetEnd: () -> Unit,
 ) {
     var showMenu by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
-    
-    val borderColor = if (active) MaterialTheme.colorScheme.primary else Color.Transparent
-    val backgroundColor = if (active) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)
-    else if (inRange) MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
-    else MaterialTheme.colorScheme.surface
+    val isRangeBoundary = isRangeStart || isRangeEnd
+    val rangeMarker = when {
+        isRangeStart && isRangeEnd -> "Seçili"
+        isRangeStart -> "Başlangıç"
+        isRangeEnd -> "Bitiş"
+        else -> null
+    }
+
+    val borderColor = when {
+        active -> MaterialTheme.colorScheme.primary
+        isRangeBoundary -> MaterialTheme.colorScheme.secondary
+        inRange -> MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+        else -> Color.Transparent
+    }
+    val backgroundColor = when {
+        active -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+        isRangeBoundary -> MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.42f)
+        inRange -> MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.18f)
+        else -> MaterialTheme.colorScheme.surface
+    }
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
             .background(backgroundColor)
-            .border(2.dp, borderColor, RoundedCornerShape(12.dp))
+            .border(if (active || isRangeBoundary) 2.dp else 1.dp, borderColor, RoundedCornerShape(12.dp))
             .combinedClickable(
-                onClick = onClick,
+                onClick = {},
                 onLongClick = {
-                    if (!isSelectionMode) {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        showMenu = true
-                    }
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    showMenu = true
                 }
             )
             .padding(16.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (isSelectionMode) {
-            val isSelected = ayah.number == startAyah || ayah.number == endAyah
-            RadioButton(
-                selected = isSelected,
-                onClick = null // handled by row click
-            )
-        }
-
         Column(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "${ayah.surahId}:${ayah.number}",
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
-            )
-            if (active) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "${ayah.surahId}:${ayah.number}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+                rangeMarker?.let { marker ->
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.75f),
+                    ) {
+                        Text(
+                            text = marker,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                Text(
+                    text = ayah.arabic,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = TextAlign.Right,
+                    fontFamily = ArabicFontFamily,
+                    fontSize = arabicTextSizeSp.sp,
+                    lineHeight = (arabicTextSizeSp * 1.6f).sp,
+                    fontWeight = FontWeight.Medium,
+                    softWrap = true,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
-        }
 
-        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
-            Text(
-                text = ayah.arabic,
-                modifier = Modifier.fillMaxWidth(),
-                textAlign = TextAlign.Right,
-                fontFamily = ArabicFontFamily,
-                fontSize = arabicTextSizeSp.sp,
-                lineHeight = (arabicTextSizeSp * 1.6f).sp,
-                fontWeight = FontWeight.Medium,
-                softWrap = true,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
-        
-        if (showTranscription && ayah.transcription.isNotBlank()) {
-            Text(
-                text = ayah.transcription,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                fontStyle = FontStyle.Italic
-            )
-        }
-        
-        Text(
-            text = ayah.translation,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            lineHeight = 24.sp
-        )
+            if (showTranscription && ayah.transcription.isNotBlank()) {
+                Text(
+                    text = ayah.transcription,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                    fontStyle = FontStyle.Italic
+                )
+            }
 
-        DropdownMenu(
-            expanded = showMenu,
-            onDismissRequest = { showMenu = false }
-        ) {
-            DropdownMenuItem(
-                text = { Text("Başlangıç Yap") },
-                onClick = {
-                    onSetStartAndEnd() // Best practice: start yapınca bitişi de eşitle
-                    showMenu = false
-                }
+            Text(
+                text = ayah.translation,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+                lineHeight = 24.sp
             )
-            DropdownMenuItem(
-                text = { Text("Bitiş Yap") },
-                onClick = {
-                    onSetEnd()
-                    showMenu = false
-                }
-            )
-        }
+
+            DropdownMenu(
+                expanded = showMenu,
+                onDismissRequest = { showMenu = false }
+            ) {
+                DropdownMenuItem(
+                    text = { Text("Başlangıç Yap") },
+                    onClick = {
+                        onSetStartAndEnd()
+                        showMenu = false
+                    }
+                )
+                DropdownMenuItem(
+                    text = { Text("Bitiş Yap") },
+                    onClick = {
+                        onSetEnd()
+                        showMenu = false
+                    }
+                )
+            }
         }
     }
 }
