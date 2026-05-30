@@ -131,6 +131,11 @@ class PracticeViewModel @Inject constructor(
                     ) {
                         stopIfSessionStarted()
                         reloadSelectedSurah()
+                        if (previousReciter != settings.reciterId) {
+                            val surahs = mutableUiState.value.surahs
+                            val newCachedCount = cachedSurahCount(surahs)
+                            mutableUiState.update { it.copy(cachedSurahCount = newCachedCount) }
+                        }
                     }
                 }
             }

@@ -23,7 +23,7 @@ class AudioCachePolicyTest {
             val file = File(dir, "13-2.mp3")
             file.writeBytes(ByteArray(60 * 1024))
 
-            assertTrue(AudioCachePolicy.isValidCachedAudio(file, audio.copy(audioSize = 120 * 1024L)))
+            assertTrue(AudioCachePolicy.isValidCachedAudio(file, audio.copy(audioSize = 60 * 1024L + 100)))
         }
     }
 

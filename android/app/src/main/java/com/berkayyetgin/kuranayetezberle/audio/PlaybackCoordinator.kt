@@ -163,8 +163,13 @@ class PlaybackCoordinator @Inject constructor(
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
-            if (playbackAudio !is AyahFilesPlaybackAudio || playbackState != Player.STATE_ENDED) return
-            handleAyahFilesRangeEnd()
+            if (playbackState == Player.STATE_ENDED) {
+                when (playbackAudio) {
+                    is AyahFilesPlaybackAudio -> handleAyahFilesRangeEnd()
+                    is FullSurahPlaybackAudio -> handleFullSurahRangeEnd()
+                    null -> Unit
+                }
+            }
         }
 
         override fun onPlayerError(error: PlaybackException) {
@@ -181,6 +186,28 @@ class PlaybackCoordinator @Inject constructor(
                 RepeatBoundaryResult.Continue -> {
                     playerHolder.player.seekTo(0, 0L)
                     playerHolder.player.play()
+                }
+            }
+        } finally {
+            handlingBoundary = false
+        }
+    }
+
+    private fun handleFullSurahRangeEnd() {
+        if (handlingBoundary) return
+        handlingBoundary = true
+        try {
+            val currentRange = range ?: return
+            when (sessionController.finishRangeRepeat()) {
+                RepeatBoundaryResult.Completed, RepeatBoundaryResult.Inactive -> stopFinishedPlayback()
+                RepeatBoundaryResult.Continue -> {
+                    val start = ayahs.firstOrNull { it.number == currentRange.startAyah }
+                    if (start != null) {
+                        playerHolder.player.seekTo(start.fromMs)
+                        playerHolder.player.play()
+                    } else {
+                        stopFinishedPlayback()
+                    }
                 }
             }
         } finally {
