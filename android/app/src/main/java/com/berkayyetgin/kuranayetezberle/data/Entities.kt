@@ -99,3 +99,28 @@ data class SurahAudio(
     val durationSeconds: Long,
     val audioSize: Long,
 )
+
+sealed interface PlaybackAudio {
+    val reciterId: Int
+    val surahId: Int
+}
+
+data class FullSurahPlaybackAudio(
+    val audio: SurahAudio,
+) : PlaybackAudio {
+    override val reciterId: Int get() = audio.recitationId
+    override val surahId: Int get() = audio.surahId
+}
+
+data class AyahAudioSource(
+    val reciterId: Int,
+    val surahId: Int,
+    val ayahNumber: Int,
+    val url: String,
+)
+
+data class AyahFilesPlaybackAudio(
+    override val reciterId: Int,
+    override val surahId: Int,
+    val ayahs: List<AyahAudioSource>,
+) : PlaybackAudio

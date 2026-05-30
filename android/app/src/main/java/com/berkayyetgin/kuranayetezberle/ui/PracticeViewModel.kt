@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.berkayyetgin.kuranayetezberle.audio.PlaybackCoordinator
 import com.berkayyetgin.kuranayetezberle.cache.AudioCacheRepository
 import com.berkayyetgin.kuranayetezberle.data.AyahWithDetails
+import com.berkayyetgin.kuranayetezberle.data.ReciterOption
 import com.berkayyetgin.kuranayetezberle.data.QuranPagePolicy
 import com.berkayyetgin.kuranayetezberle.data.QuranRepository
 import com.berkayyetgin.kuranayetezberle.data.SurahEntity
@@ -53,6 +54,7 @@ sealed interface DownloadState {
 data class PracticeUiState(
     val loading: Boolean = true,
     val surahs: List<SurahEntity> = emptyList(),
+    val reciters: List<ReciterOption> = emptyList(),
     val selectedSurahId: Int = 1,
     val selectedSurah: SurahEntity? = null,
     val ayahs: List<AyahWithDetails> = emptyList(),
@@ -68,16 +70,18 @@ data class PracticeUiState(
     val cachedSurahCount: Int = 0,
     /** Reflects the state of any active download triggered by the user. */
     val downloadState: DownloadState = DownloadState.Idle,
+    val restoredActiveAyah: Int? = null,
     val error: String? = null,
 ) {
     val selectedSurahFromId: SurahEntity? get() = surahs.firstOrNull { it.id == selectedSurahId }
+    val selectedReciter: ReciterOption? get() = reciters.firstOrNull { it.id == settings.reciterId }
     val visibleAyahsFromPage: List<AyahWithDetails>
         get() = ayahs.filter { it.page == selectedPage }
     val activeAyah: Int?
         get() = when (val session = sessionState) {
             is PlaybackSessionState.Active -> session.activeAyah
             is PlaybackSessionState.PausedByUser -> session.active.activeAyah
-            else -> null
+            else -> restoredActiveAyah
         }
     val canStart: Boolean
         get() {
@@ -105,6 +109,7 @@ class PracticeViewModel @Inject constructor(
             settingsRepository.settings.collect { settings ->
                 val current = mutableUiState.value
                 val previousTranslationAuthor = current.settings.translationAuthorId
+                val previousReciter = current.settings.reciterId
                 
                 if (isInitialSettingsLoad) {
                     isInitialSettingsLoad = false
@@ -113,7 +118,8 @@ class PracticeViewModel @Inject constructor(
                             settings = settings,
                             selectedSurahId = settings.lastSurahId,
                             startAyah = settings.lastStartAyah,
-                            endAyah = settings.lastEndAyah
+                            endAyah = settings.lastEndAyah,
+                            restoredActiveAyah = settings.lastActiveAyah,
                         )
                     }
                     if (!current.loading) {
@@ -121,7 +127,11 @@ class PracticeViewModel @Inject constructor(
                     }
                 } else {
                     mutableUiState.update { it.copy(settings = settings) }
-                    if (previousTranslationAuthor != settings.translationAuthorId) {
+                    if (
+                        previousTranslationAuthor != settings.translationAuthorId ||
+                        previousReciter != settings.reciterId
+                    ) {
+                        stopIfSessionStarted()
                         reloadSelectedSurah()
                     }
                 }
@@ -143,7 +153,11 @@ class PracticeViewModel @Inject constructor(
                         sessionState = session,
                         selectedPage = activePage ?: it.selectedPage,
                         error = (session as? PlaybackSessionState.Error)?.message ?: it.error,
+                        restoredActiveAyah = if (session !is PlaybackSessionState.Idle) null else it.restoredActiveAyah
                     )
+                }
+                if (activeAyah != null) {
+                    saveLastSession()
                 }
             }
         }
@@ -151,10 +165,12 @@ class PracticeViewModel @Inject constructor(
             runCatching {
                 quranRepository.initialize()
                 val surahs = quranRepository.surahs()
+                val reciters = quranRepository.reciters()
                 val cachedSurahCount = cachedSurahCount(surahs)
                 mutableUiState.update {
                     it.copy(
                         surahs = surahs,
+                        reciters = reciters,
                         cachedSurahCount = cachedSurahCount,
                         loading = false,
                     )
@@ -172,6 +188,7 @@ class PracticeViewModel @Inject constructor(
                 selectedSurahId = id,
                 startAyah = 1,
                 endAyah = surah.verseCount.coerceAtMost(7),
+                restoredActiveAyah = null,
                 error = null,
             )
         }
@@ -199,6 +216,7 @@ class PracticeViewModel @Inject constructor(
                 startAyah = start,
                 endAyah = it.endAyah.coerceIn(start, max),
                 selectedPage = it.pageForAyah(start),
+                restoredActiveAyah = null,
                 error = null,
             )
         }
@@ -212,6 +230,7 @@ class PracticeViewModel @Inject constructor(
         mutableUiState.update {
             it.copy(
                 endAyah = value.coerceIn(it.startAyah, max),
+                restoredActiveAyah = null,
                 error = null,
             )
         }
@@ -228,6 +247,7 @@ class PracticeViewModel @Inject constructor(
                 startAyah = target,
                 endAyah = target,
                 selectedPage = it.pageForAyah(target),
+                restoredActiveAyah = null,
                 error = null,
             )
         }
@@ -258,7 +278,12 @@ class PracticeViewModel @Inject constructor(
 
     private fun saveLastSession() = viewModelScope.launch {
         val state = mutableUiState.value
-        settingsRepository.saveLastSession(state.selectedSurahId, state.startAyah, state.endAyah)
+        settingsRepository.saveLastSession(
+            state.selectedSurahId,
+            state.startAyah,
+            state.endAyah,
+            state.activeAyah
+        )
     }
 
     /** Clears the Done download state after the UI has shown the result to the user. */
@@ -304,12 +329,23 @@ class PracticeViewModel @Inject constructor(
         settingsRepository.setTranslationAuthor(authorId)
     }
 
+    fun setReciter(reciterId: Int) = viewModelScope.launch {
+        settingsRepository.setReciter(reciterId)
+    }
+
     fun start() = viewModelScope.launch {
         runCatching {
             val state = mutableUiState.value
             check(state.canStart) { "Unsupported state: selected ayah range is not ready." }
             val range = AyahRange(state.selectedSurahId, state.startAyah, state.endAyah)
-            val audio = withContext(Dispatchers.IO) { quranRepository.audioForSurah(state.selectedSurahId) }
+            val audio = withContext(Dispatchers.IO) {
+                quranRepository.playbackAudioForRange(
+                    surahId = state.selectedSurahId,
+                    startAyah = state.startAyah,
+                    endAyah = state.endAyah,
+                    reciterId = state.settings.reciterId,
+                )
+            }
             mutableUiState.update { it.copy(error = null) }
             playbackCoordinator.start(
                 audio = audio,
@@ -339,7 +375,7 @@ class PracticeViewModel @Inject constructor(
         val label = "${initialState.selectedSurah?.name ?: "Seçili sure"} indiriliyor"
         mutableUiState.update { it.copy(downloadState = DownloadState.InProgress(label = label)) }
         val audio = runCatching {
-            withContext(Dispatchers.IO) { quranRepository.audioForSurah(mutableUiState.value.selectedSurahId) }
+            selectedSurahPlaybackAudio()
         }.getOrElse { e ->
             mutableUiState.update {
                 it.copy(
@@ -351,22 +387,36 @@ class PracticeViewModel @Inject constructor(
         }
         var lastProgressUiUpdateAtMs = 0L
         val downloadResult = runCatching {
-            audioCacheRepository.download(audio) { downloadedBytes, totalBytes ->
-                val now = System.currentTimeMillis()
-                val isComplete = totalBytes?.let { downloadedBytes >= it } == true
-                if (isComplete || now - lastProgressUiUpdateAtMs >= 160L) {
-                    lastProgressUiUpdateAtMs = now
+            audioCacheRepository.download(
+                audio = audio,
+                onProgress = { downloadedBytes, totalBytes ->
+                    val now = System.currentTimeMillis()
+                    val isComplete = totalBytes?.let { downloadedBytes >= it } == true
+                    if (isComplete || now - lastProgressUiUpdateAtMs >= 160L) {
+                        lastProgressUiUpdateAtMs = now
+                        mutableUiState.update {
+                            it.copy(
+                                downloadState = DownloadState.InProgress(
+                                    label = label,
+                                    downloadedBytes = downloadedBytes,
+                                    totalBytes = totalBytes,
+                                )
+                            )
+                        }
+                    }
+                },
+                onItemCompleted = { completedCount, totalCount ->
                     mutableUiState.update {
                         it.copy(
                             downloadState = DownloadState.InProgress(
                                 label = label,
-                                downloadedBytes = downloadedBytes,
-                                totalBytes = totalBytes,
+                                completedItems = completedCount,
+                                totalItems = totalCount,
                             )
                         )
                     }
-                }
-            }
+                },
+            )
         }
 
         downloadResult.exceptionOrNull()?.let { e ->
@@ -402,7 +452,15 @@ class PracticeViewModel @Inject constructor(
         }
         val audios = runCatching {
             withContext(Dispatchers.IO) {
-                quranRepository.surahs().map { quranRepository.audioForSurah(it.id) }
+                val reciterId = mutableUiState.value.settings.reciterId
+                quranRepository.surahs().map { surah ->
+                    quranRepository.playbackAudioForRange(
+                        surahId = surah.id,
+                        startAyah = 1,
+                        endAyah = surah.verseCount,
+                        reciterId = reciterId,
+                    )
+                }
             }
         }.getOrElse { e ->
             mutableUiState.update {
@@ -413,7 +471,7 @@ class PracticeViewModel @Inject constructor(
             }
             return@launch
         }
-        val result = audioCacheRepository.downloadAll(audios) { completedCount, totalCount ->
+        val result = audioCacheRepository.downloadAllPlayback(audios) { completedCount, totalCount ->
             mutableUiState.update {
                 it.copy(
                     downloadState = DownloadState.InProgress(
@@ -424,9 +482,7 @@ class PracticeViewModel @Inject constructor(
                 )
             }
         }
-        val currentAudio = runCatching {
-            withContext(Dispatchers.IO) { quranRepository.audioForSurah(mutableUiState.value.selectedSurahId) }
-        }.getOrNull()
+        val currentAudio = runCatching { selectedSurahPlaybackAudio() }.getOrNull()
         val isSelectedSurahCached = currentAudio?.let { audio ->
             withContext(Dispatchers.IO) { audioCacheRepository.isCached(audio) }
         } ?: false
@@ -462,10 +518,11 @@ class PracticeViewModel @Inject constructor(
                 quranRepository.ayahsForSurah(
                     surahId = state.selectedSurahId,
                     translationAuthorId = state.settings.translationAuthorId,
+                    reciterId = state.settings.reciterId,
                 )
             }
             val audio = runCatching {
-                withContext(Dispatchers.IO) { quranRepository.audioForSurah(state.selectedSurahId) }
+                selectedSurahPlaybackAudio()
             }.getOrNull()
             val isCached = audio?.let { audioCacheRepository.isCached(it) } ?: false
             val page = ayahs.firstOrNull { it.number == state.startAyah }?.page
@@ -488,11 +545,30 @@ class PracticeViewModel @Inject constructor(
     private suspend fun cachedSurahCount(
         surahs: List<SurahEntity> = mutableUiState.value.surahs,
     ): Int = withContext(Dispatchers.IO) {
+        val reciterId = mutableUiState.value.settings.reciterId
         surahs.count { surah ->
             runCatching {
-                audioCacheRepository.isCached(quranRepository.audioForSurah(surah.id))
+                val audio = quranRepository.playbackAudioForRange(
+                    surahId = surah.id,
+                    startAyah = 1,
+                    endAyah = surah.verseCount,
+                    reciterId = reciterId,
+                )
+                audioCacheRepository.isCached(audio)
             }.getOrDefault(false)
         }
+    }
+
+    private suspend fun selectedSurahPlaybackAudio() = withContext(Dispatchers.IO) {
+        val state = mutableUiState.value
+        val selectedSurah = state.selectedSurah ?: state.selectedSurahFromId
+        val endAyah = selectedSurah?.verseCount ?: state.ayahs.maxOfOrNull { it.number } ?: state.endAyah
+        quranRepository.playbackAudioForRange(
+            surahId = state.selectedSurahId,
+            startAyah = 1,
+            endAyah = endAyah,
+            reciterId = state.settings.reciterId,
+        )
     }
 
     private fun setError(error: Throwable) {
@@ -517,6 +593,7 @@ class PracticeViewModel @Inject constructor(
             it.copy(
                 startAyah = start,
                 endAyah = end,
+                restoredActiveAyah = null,
                 error = null,
             )
         }
@@ -551,6 +628,7 @@ class PracticeViewModel @Inject constructor(
             it.copy(
                 startAyah = start,
                 endAyah = end,
+                restoredActiveAyah = null,
                 error = null,
             )
         }

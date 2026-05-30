@@ -25,13 +25,22 @@ class QuranRepository @Inject constructor(
         return dao.surahs()
     }
 
+    fun reciters(): List<ReciterOption> = ReciterCatalog.options
+
+    fun reciterById(id: Int): ReciterOption = ReciterCatalog.byId(id)
+
     suspend fun ayahsForSurah(
         surahId: Int,
         translationAuthorId: String,
-        recitationId: Int = 13,
+        reciterId: Int = ReciterCatalog.DEFAULT_RECITER_ID,
     ): List<AyahWithDetails> {
         initialize()
-        val rawAyahs = dao.ayahsForSurah(surahId, translationAuthorId, recitationId)
+        val reciter = ReciterCatalog.byId(reciterId)
+        val timingRecitationId = when (reciter.playbackType) {
+            ReciterPlaybackType.FullSurah -> reciter.id
+            ReciterPlaybackType.AyahFiles -> ReciterCatalog.DEFAULT_RECITER_ID
+        }
+        val rawAyahs = dao.ayahsForSurah(surahId, translationAuthorId, timingRecitationId)
         val missing = rawAyahs.firstOrNull {
             it.translation.isNullOrBlank() || it.fromMs == null || it.toMs == null || it.toMs <= it.fromMs
         }
@@ -63,5 +72,35 @@ class QuranRepository @Inject constructor(
             durationSeconds = audio.durationSeconds,
             audioSize = audio.audioSize,
         )
+    }
+
+    suspend fun playbackAudioForRange(
+        surahId: Int,
+        startAyah: Int,
+        endAyah: Int,
+        reciterId: Int,
+    ): PlaybackAudio {
+        initialize()
+        val reciter = ReciterCatalog.byId(reciterId)
+        return when (reciter.playbackType) {
+            ReciterPlaybackType.FullSurah -> FullSurahPlaybackAudio(audioForSurah(surahId, reciter.id))
+            ReciterPlaybackType.AyahFiles -> {
+                val template = reciter.ayahUrlTemplate
+                    ?: error("Unsupported data: missing ayah audio template for ${reciter.label}.")
+                AyahFilesPlaybackAudio(
+                    reciterId = reciter.id,
+                    surahId = surahId,
+                    ayahs = (startAyah..endAyah).map { ayahNumber ->
+                        val key = ayahAudioFileKey(surahId, ayahNumber)
+                        AyahAudioSource(
+                            reciterId = reciter.id,
+                            surahId = surahId,
+                            ayahNumber = ayahNumber,
+                            url = template.replace("%s", key),
+                        )
+                    },
+                )
+            }
+        }
     }
 }

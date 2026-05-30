@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.berkayyetgin.kuranayetezberle.data.ReciterCatalog
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.flow.Flow
@@ -16,6 +17,7 @@ private val Context.dataStore by preferencesDataStore("settings")
 
 data class AppSettings(
     val translationAuthorId: String = "6",
+    val reciterId: Int = ReciterCatalog.DEFAULT_RECITER_ID,
     val showTranscription: Boolean = false,
     val darkTheme: Boolean? = null,
     val playbackSpeed: Float = 1f,
@@ -26,6 +28,7 @@ data class AppSettings(
     val lastSurahId: Int = 1,
     val lastStartAyah: Int = 1,
     val lastEndAyah: Int = 7,
+    val lastActiveAyah: Int? = null,
 )
 
 class SettingsRepository @Inject constructor(
@@ -34,6 +37,7 @@ class SettingsRepository @Inject constructor(
     val settings: Flow<AppSettings> = context.dataStore.data.map { preferences ->
         AppSettings(
             translationAuthorId = preferences[Keys.translationAuthorId] ?: "6",
+            reciterId = preferences[Keys.reciterId] ?: ReciterCatalog.DEFAULT_RECITER_ID,
             showTranscription = preferences[Keys.showTranscription] ?: false,
             darkTheme = preferences[Keys.darkTheme],
             playbackSpeed = preferences[Keys.playbackSpeed] ?: 1f,
@@ -44,18 +48,25 @@ class SettingsRepository @Inject constructor(
             lastSurahId = preferences[Keys.lastSurahId] ?: 1,
             lastStartAyah = preferences[Keys.lastStartAyah] ?: 1,
             lastEndAyah = preferences[Keys.lastEndAyah] ?: 7,
+            lastActiveAyah = preferences[Keys.lastActiveAyah],
         )
     }
 
-    suspend fun saveLastSession(surahId: Int, startAyah: Int, endAyah: Int) = context.dataStore.edit {
+    suspend fun saveLastSession(surahId: Int, startAyah: Int, endAyah: Int, activeAyah: Int?) = context.dataStore.edit {
         it[Keys.lastSurahId] = surahId
         it[Keys.lastStartAyah] = startAyah
         it[Keys.lastEndAyah] = endAyah
+        if (activeAyah != null) {
+            it[Keys.lastActiveAyah] = activeAyah
+        } else {
+            it.remove(Keys.lastActiveAyah)
+        }
     }
 
     suspend fun setRepeatCount(value: Int) = context.dataStore.edit { it[Keys.repeatCount] = value }
     suspend fun setPlaybackSpeed(value: Float) = context.dataStore.edit { it[Keys.playbackSpeed] = value }
     suspend fun setTranslationAuthor(value: String) = context.dataStore.edit { it[Keys.translationAuthorId] = value }
+    suspend fun setReciter(value: Int) = context.dataStore.edit { it[Keys.reciterId] = value }
     suspend fun setShowTranscription(value: Boolean) = context.dataStore.edit { it[Keys.showTranscription] = value }
     suspend fun setDarkTheme(value: Boolean) = context.dataStore.edit { it[Keys.darkTheme] = value }
     suspend fun setArabicTextSizeSp(value: Float) = context.dataStore.edit { it[Keys.arabicTextSizeSp] = value }
@@ -64,6 +75,7 @@ class SettingsRepository @Inject constructor(
 
     private object Keys {
         val translationAuthorId = stringPreferencesKey("translation_author_id")
+        val reciterId = intPreferencesKey("reciter_id")
         val showTranscription = booleanPreferencesKey("show_transcription")
         val darkTheme = booleanPreferencesKey("dark_theme")
         val playbackSpeed = floatPreferencesKey("playback_speed")
@@ -74,5 +86,6 @@ class SettingsRepository @Inject constructor(
         val lastSurahId = intPreferencesKey("last_surah_id")
         val lastStartAyah = intPreferencesKey("last_start_ayah")
         val lastEndAyah = intPreferencesKey("last_end_ayah")
+        val lastActiveAyah = intPreferencesKey("last_active_ayah")
     }
 }

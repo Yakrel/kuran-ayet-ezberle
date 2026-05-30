@@ -13,7 +13,9 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import com.berkayyetgin.kuranayetezberle.cache.AudioCacheRepository
 import com.berkayyetgin.kuranayetezberle.data.AyahWithDetails
-import com.berkayyetgin.kuranayetezberle.data.SurahAudio
+import com.berkayyetgin.kuranayetezberle.data.AyahFilesPlaybackAudio
+import com.berkayyetgin.kuranayetezberle.data.FullSurahPlaybackAudio
+import com.berkayyetgin.kuranayetezberle.data.PlaybackAudio
 import com.berkayyetgin.kuranayetezberle.domain.AyahRange
 import com.berkayyetgin.kuranayetezberle.domain.PracticeSessionController
 import com.berkayyetgin.kuranayetezberle.domain.RepeatBoundaryResult
@@ -38,6 +40,7 @@ class PlaybackCoordinator @Inject constructor(
     private var ayahs: List<AyahWithDetails> = emptyList()
     private var rangeAyahs: List<AyahWithDetails> = emptyList()
     private var range: AyahRange? = null
+    private var playbackAudio: PlaybackAudio? = null
 
     /**
      * Guards against re-entrant calls to [updatePosition] from the ticker.
@@ -50,7 +53,7 @@ class PlaybackCoordinator @Inject constructor(
     private var positionTicker: Job? = null
 
     fun start(
-        audio: SurahAudio,
+        audio: PlaybackAudio,
         ayahs: List<AyahWithDetails>,
         range: AyahRange,
         repeatCount: Int,
@@ -61,9 +64,8 @@ class PlaybackCoordinator @Inject constructor(
         this.ayahs = ayahs
         this.range = range
         this.rangeAyahs = ayahs.filter { it.number in range.startAyah..range.endAyah }
+        this.playbackAudio = audio
         check(rangeAyahs.isNotEmpty()) { "Unsupported data: selected ayah range is missing." }
-        val start = ayahs.firstOrNull { it.number == range.startAyah }
-            ?: error("Unsupported data: start ayah timing is missing.")
 
         context.startService(Intent(context, PracticePlaybackService::class.java))
 
@@ -71,23 +73,44 @@ class PlaybackCoordinator @Inject constructor(
         exoPlayer.removeListener(playbackStateListener)
         exoPlayer.addListener(playbackStateListener)
 
-        val metadata = MediaMetadata.Builder()
-            .setTitle(surahName)
-            .setArtist("Ayet ${range.startAyah} - ${range.endAyah}")
-            .build()
-
-        val mediaItem = MediaItem.Builder()
-            .setUri(cacheRepository.resolvePlaybackUri(audio))
-            .setMediaMetadata(metadata)
-            .build()
-
-        exoPlayer.setMediaItem(mediaItem)
-        exoPlayer.prepare()
-        exoPlayer.playbackParameters = PlaybackParameters(speed)
-        exoPlayer.seekTo(start.fromMs)
+        when (audio) {
+            is FullSurahPlaybackAudio -> {
+                val start = ayahs.firstOrNull { it.number == range.startAyah }
+                    ?: error("Unsupported data: start ayah timing is missing.")
+                val metadata = MediaMetadata.Builder()
+                    .setTitle(surahName)
+                    .setArtist("Ayet ${range.startAyah} - ${range.endAyah}")
+                    .build()
+                val mediaItem = MediaItem.Builder()
+                    .setUri(cacheRepository.resolvePlaybackUri(audio.audio))
+                    .setMediaMetadata(metadata)
+                    .build()
+                exoPlayer.setMediaItem(mediaItem)
+                exoPlayer.prepare()
+                exoPlayer.playbackParameters = PlaybackParameters(speed)
+                exoPlayer.seekTo(start.fromMs)
+            }
+            is AyahFilesPlaybackAudio -> {
+                val mediaItems = audio.ayahs.map { ayahAudio ->
+                    val metadata = MediaMetadata.Builder()
+                        .setTitle(surahName)
+                        .setArtist("Ayet ${ayahAudio.ayahNumber}")
+                        .build()
+                    MediaItem.Builder()
+                        .setMediaId(ayahAudio.ayahNumber.toString())
+                        .setUri(cacheRepository.resolvePlaybackUri(ayahAudio))
+                        .setMediaMetadata(metadata)
+                        .build()
+                }
+                check(mediaItems.isNotEmpty()) { "Unsupported data: selected ayah audio range is missing." }
+                exoPlayer.setMediaItems(mediaItems)
+                exoPlayer.prepare()
+                exoPlayer.playbackParameters = PlaybackParameters(speed)
+            }
+        }
         sessionController.start(range, repeatCount, speed)
         exoPlayer.play()
-        startPositionTicker()
+        if (audio is FullSurahPlaybackAudio) startPositionTicker()
     }
 
     fun pause() {
@@ -99,7 +122,9 @@ class PlaybackCoordinator @Inject constructor(
     fun resumeFromUser() {
         if (sessionController.resumeFromUserOrRemote()) {
             playerHolder.player.play()
-            startPositionTicker()
+            if (playbackAudio is FullSurahPlaybackAudio) {
+                startPositionTicker()
+            }
         }
     }
 
@@ -107,6 +132,7 @@ class PlaybackCoordinator @Inject constructor(
         stopPositionTicker()
         playerHolder.player.pause()
         playerHolder.player.stop()
+        playbackAudio = null
         sessionController.stop()
         stopPlaybackService()
     }
@@ -125,11 +151,40 @@ class PlaybackCoordinator @Inject constructor(
      */
     private val playbackStateListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
-            if (isPlaying) startPositionTicker() else stopPositionTicker()
+            if (playbackAudio is FullSurahPlaybackAudio) {
+                if (isPlaying) startPositionTicker() else stopPositionTicker()
+            }
+        }
+
+        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            if (playbackAudio !is AyahFilesPlaybackAudio) return
+            val activeAyah = mediaItem?.mediaId?.toIntOrNull() ?: return
+            sessionController.markPosition(activeAyah)
+        }
+
+        override fun onPlaybackStateChanged(playbackState: Int) {
+            if (playbackAudio !is AyahFilesPlaybackAudio || playbackState != Player.STATE_ENDED) return
+            handleAyahFilesRangeEnd()
         }
 
         override fun onPlayerError(error: PlaybackException) {
             failPlayback(error.message ?: "Ses oynatılamadı. Bağlantını kontrol edip tekrar dene.")
+        }
+    }
+
+    private fun handleAyahFilesRangeEnd() {
+        if (handlingBoundary) return
+        handlingBoundary = true
+        try {
+            when (sessionController.finishRangeRepeat()) {
+                RepeatBoundaryResult.Completed, RepeatBoundaryResult.Inactive -> stopFinishedPlayback()
+                RepeatBoundaryResult.Continue -> {
+                    playerHolder.player.seekTo(0, 0L)
+                    playerHolder.player.play()
+                }
+            }
+        } finally {
+            handlingBoundary = false
         }
     }
 
@@ -196,6 +251,7 @@ class PlaybackCoordinator @Inject constructor(
         stopPositionTicker()
         playerHolder.player.pause()
         playerHolder.player.stop()
+        playbackAudio = null
         stopPlaybackService()
     }
 
@@ -203,6 +259,7 @@ class PlaybackCoordinator @Inject constructor(
         stopPositionTicker()
         playerHolder.player.pause()
         playerHolder.player.stop()
+        playbackAudio = null
         sessionController.fail(message)
         stopPlaybackService()
     }

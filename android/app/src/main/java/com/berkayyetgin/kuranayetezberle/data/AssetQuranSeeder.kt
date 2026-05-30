@@ -25,7 +25,7 @@ class AssetQuranSeeder @Inject constructor(
         seedMutex.withLock {
             if (seeded) return
             withContext(Dispatchers.IO) {
-                if (dao.surahCount() == 0) {
+                if (needsSeed(dao)) {
                     dao.seed(loadSeed())
                 }
                 seeded = true
@@ -33,14 +33,28 @@ class AssetQuranSeeder @Inject constructor(
         }
     }
 
+    private suspend fun needsSeed(dao: QuranDao): Boolean {
+        if (dao.surahCount() == 0) return true
+        val fullSurahReciters = ReciterCatalog.options.filter { it.playbackType == ReciterPlaybackType.FullSurah }
+        return fullSurahReciters.any { reciter ->
+            dao.audioCountForRecitation(reciter.id) < 114 ||
+                dao.timingCountForRecitation(reciter.id) == 0
+        }
+    }
+
     @OptIn(ExperimentalSerializationApi::class)
     private fun loadSeed(): QuranSeed {
-        val quran = context.assets.open("data/quran.json").use { input ->
-            json.decodeFromStream(QuranJson.serializer(), input)
+        val quran = context.assets.open("data/quran.json").bufferedReader().use { it.readText() }.let {
+            json.decodeFromString(QuranJson.serializer(), it)
         }
-        val recitation = context.assets.open("data/recitations/saad-al-ghamdi-recitation-13.json")
-            .use { input -> json.decodeFromStream(RecitationJson.serializer(), input) }
-        val pagesByVerseKey = recitation.surahs
+        val recitations = ReciterCatalog.options
+            .filter { it.playbackType == ReciterPlaybackType.FullSurah }
+            .map { reciter ->
+                val path = reciter.recitationAssetPath
+                    ?: error("Unsupported data: missing recitation asset for ${reciter.label}.")
+                loadRecitation(path)
+            }
+        val pagesByVerseKey = recitations.first().surahs
             .flatMap { it.verses }
             .associate { verse ->
                 verse.verseKey to QuranPagePolicy.requireValidPage(verse.pageNumber, verse.verseKey)
@@ -67,29 +81,39 @@ class AssetQuranSeeder @Inject constructor(
                 }
             }
         }
-        val audio = recitation.surahs.map { surah ->
-            ReciterAudioEntity(
-                surahId = surah.id,
-                recitationId = recitation.recitationId,
-                url = surah.audio.url,
-                durationSeconds = surah.audio.duration,
-                audioSize = surah.audio.audioSize,
-            )
-        }
-        val timings = recitation.surahs.flatMap { surah ->
-            surah.verses.map { verse ->
-                val ayahNumber = verse.verseKey.substringAfter(":").toInt()
-                AyahTimingEntity(
+        val audio = recitations.flatMap { recitation ->
+            recitation.surahs.map { surah ->
+                ReciterAudioEntity(
                     surahId = surah.id,
-                    ayahNumber = ayahNumber,
                     recitationId = recitation.recitationId,
-                    fromMs = verse.timing.timeFrom,
-                    toMs = verse.timing.timeTo,
+                    url = surah.audio.url,
+                    durationSeconds = surah.audio.duration,
+                    audioSize = surah.audio.audioSize,
                 )
+            }
+        }
+        val timings = recitations.flatMap { recitation ->
+            recitation.surahs.flatMap { surah ->
+                surah.verses.map { verse ->
+                    val ayahNumber = verse.verseKey.substringAfter(":").toInt()
+                    AyahTimingEntity(
+                        surahId = surah.id,
+                        ayahNumber = ayahNumber,
+                        recitationId = recitation.recitationId,
+                        fromMs = verse.timing.timeFrom,
+                        toMs = verse.timing.timeTo,
+                    )
+                }
             }
         }
         return QuranSeed(surahs, ayahs, translations, audio, timings)
     }
+
+    @OptIn(ExperimentalSerializationApi::class)
+    private fun loadRecitation(path: String): RecitationJson =
+        context.assets.open(path).bufferedReader().use { it.readText() }.let {
+            json.decodeFromString(RecitationJson.serializer(), it)
+        }
 }
 
 @Serializable

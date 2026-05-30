@@ -1,6 +1,10 @@
 package com.berkayyetgin.kuranayetezberle.cache
 
 import android.content.Context
+import com.berkayyetgin.kuranayetezberle.data.AyahAudioSource
+import com.berkayyetgin.kuranayetezberle.data.AyahFilesPlaybackAudio
+import com.berkayyetgin.kuranayetezberle.data.FullSurahPlaybackAudio
+import com.berkayyetgin.kuranayetezberle.data.PlaybackAudio
 import com.berkayyetgin.kuranayetezberle.data.SurahAudio
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
@@ -35,11 +39,22 @@ class AudioCacheRepository @Inject constructor(
         get() = File(context.filesDir, "surah-audio").also { it.mkdirs() }
 
     fun cachedFile(audio: SurahAudio): File =
-        File(cacheDir, "${audio.recitationId}-${audio.surahId}.mp3")
+        File(cacheDir, AudioCachePolicy.cacheFileName(audio))
+
+    fun cachedFile(audio: AyahAudioSource): File =
+        File(cacheDir, AudioCachePolicy.cacheFileName(audio))
 
     /** Returns true when the surah audio is fully downloaded and passes validation. */
     fun isCached(audio: SurahAudio): Boolean =
         AudioCachePolicy.isValidCachedAudio(cachedFile(audio), audio)
+
+    fun isCached(audio: AyahAudioSource): Boolean =
+        AudioCachePolicy.isValidCachedAyahAudio(cachedFile(audio))
+
+    fun isCached(audio: PlaybackAudio): Boolean = when (audio) {
+        is FullSurahPlaybackAudio -> isCached(audio.audio)
+        is AyahFilesPlaybackAudio -> audio.ayahs.all { isCached(it) }
+    }
 
     /**
      * Returns the local file URI when the surah is fully cached, or the remote URL for network
@@ -56,6 +71,16 @@ class AudioCacheRepository @Inject constructor(
             cached.toURI().toString()
         } else {
             // Delete any corrupt / partial file so that a fresh download can succeed later.
+            if (cached.exists()) cached.delete()
+            audio.url
+        }
+    }
+
+    fun resolvePlaybackUri(audio: AyahAudioSource): String {
+        val cached = cachedFile(audio)
+        return if (AudioCachePolicy.isValidCachedAyahAudio(cached)) {
+            cached.toURI().toString()
+        } else {
             if (cached.exists()) cached.delete()
             audio.url
         }
@@ -96,6 +121,56 @@ class AudioCacheRepository @Inject constructor(
         }
     }
 
+    suspend fun download(
+        audio: AyahAudioSource,
+        onProgress: ((downloadedBytes: Long, totalBytes: Long?) -> Unit)? = null,
+    ): File = withContext(Dispatchers.IO) {
+        val target = cachedFile(audio)
+        if (AudioCachePolicy.isValidCachedAyahAudio(target)) return@withContext target
+        if (target.exists()) target.delete()
+        val temp = AudioCachePolicy.tempFileFor(target)
+        if (temp.exists()) temp.delete()
+        val request = Request.Builder().url(audio.url).build()
+        try {
+            client.executeCancellable(request).use { response ->
+                if (!response.isSuccessful) {
+                    error("Ayet ses dosyası indirilemedi (HTTP ${response.code}).")
+                }
+                val body = response.body ?: error("Ayet ses dosyası boş döndü.")
+                val expectedBytes = body.contentLength().takeIf { it > 0L }
+                body.byteStream().use { input ->
+                    temp.outputStream().use { output ->
+                        input.copyToWithProgress(output, expectedBytes, onProgress)
+                    }
+                }
+                check(AudioCachePolicy.isCompleteDownloadedAyahAudio(temp, expectedBytes)) {
+                    "Ayet ses dosyası eksik indi. Bağlantını kontrol edip tekrar dene."
+                }
+            }
+            check(temp.renameTo(target)) { "Ayet ses dosyası kaydedilemedi." }
+            target
+        } catch (error: Throwable) {
+            temp.delete()
+            throw error
+        }
+    }
+
+    suspend fun download(
+        audio: PlaybackAudio,
+        onProgress: ((downloadedBytes: Long, totalBytes: Long?) -> Unit)? = null,
+        onItemCompleted: ((completedCount: Int, totalCount: Int) -> Unit)? = null,
+    ) {
+        when (audio) {
+            is FullSurahPlaybackAudio -> download(audio.audio, onProgress)
+            is AyahFilesPlaybackAudio -> {
+                audio.ayahs.forEachIndexed { index, ayahAudio ->
+                    download(ayahAudio)
+                    onItemCompleted?.invoke(index + 1, audio.ayahs.size)
+                }
+            }
+        }
+    }
+
     /**
      * Downloads all [items] with at most 4 parallel connections.
      *
@@ -105,6 +180,26 @@ class AudioCacheRepository @Inject constructor(
      */
     suspend fun downloadAll(
         items: List<SurahAudio>,
+        onItemCompleted: ((completedCount: Int, totalCount: Int) -> Unit)? = null,
+    ): DownloadAllResult = coroutineScope {
+        val limiter = Semaphore(permits = 4)
+        val completed = AtomicInteger(0)
+        val results = items.map { audio ->
+            async(Dispatchers.IO) {
+                limiter.withPermit {
+                    runCatching { download(audio) }
+                        .also { onItemCompleted?.invoke(completed.incrementAndGet(), items.size) }
+                }
+            }
+        }.awaitAll()
+        DownloadAllResult(
+            successCount = results.count { it.isSuccess },
+            failureCount = results.count { it.isFailure },
+        )
+    }
+
+    suspend fun downloadAllPlayback(
+        items: List<PlaybackAudio>,
         onItemCompleted: ((completedCount: Int, totalCount: Int) -> Unit)? = null,
     ): DownloadAllResult = coroutineScope {
         val limiter = Semaphore(permits = 4)

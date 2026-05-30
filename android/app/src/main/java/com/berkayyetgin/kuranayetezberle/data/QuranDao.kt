@@ -11,6 +11,12 @@ interface QuranDao {
     @Query("SELECT COUNT(*) FROM surah")
     suspend fun surahCount(): Int
 
+    @Query("SELECT COUNT(*) FROM reciter_audio WHERE recitationId = :recitationId")
+    suspend fun audioCountForRecitation(recitationId: Int): Int
+
+    @Query("SELECT COUNT(*) FROM ayah_timing WHERE recitationId = :recitationId")
+    suspend fun timingCountForRecitation(recitationId: Int): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertSurahs(items: List<SurahEntity>)
 
