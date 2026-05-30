@@ -13,8 +13,6 @@ object PlaybackPositionPolicy {
             }
         }
         if (index >= 0) return rangeAyahs[index]
-        val insertionPoint = -index - 1
-        return rangeAyahs.getOrNull((insertionPoint - 1).coerceAtLeast(0))
-            ?.takeIf { positionMs >= it.fromMs && positionMs < it.toMs }
+        return null
     }
 }

@@ -16,7 +16,7 @@ class ReciterCatalogTest {
 
     @Test
     fun everyAyahOptionsExposeSourceLabelAndUrlTemplate() {
-        val everyAyah = ReciterCatalog.options.filter { it.sourceLabel == "EveryAyah" }
+        val everyAyah = ReciterCatalog.options.filter { it.sourceLabel.startsWith("EveryAyah") }
 
         assertTrue(everyAyah.isNotEmpty())
         assertTrue(everyAyah.all { it.playbackType == ReciterPlaybackType.AyahFiles })
@@ -25,7 +25,7 @@ class ReciterCatalogTest {
 
     @Test
     fun mp3QuranOptionsExposeFullSurahAssets() {
-        val mp3Quran = ReciterCatalog.options.filter { it.sourceLabel == "MP3Quran" }
+        val mp3Quran = ReciterCatalog.options.filter { it.sourceLabel.startsWith("MP3Quran") }
 
         assertTrue(mp3Quran.isNotEmpty())
         assertTrue(mp3Quran.all { it.playbackType == ReciterPlaybackType.FullSurah })
