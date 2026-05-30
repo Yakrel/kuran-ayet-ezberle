@@ -58,7 +58,6 @@ data class PracticeUiState(
     val selectedSurahId: Int = 1,
     val selectedSurah: SurahEntity? = null,
     val ayahs: List<AyahWithDetails> = emptyList(),
-    val visibleAyahs: List<AyahWithDetails> = emptyList(),
     val startAyah: Int = 1,
     val endAyah: Int = 7,
     val selectedPage: Int = 1,
@@ -75,8 +74,6 @@ data class PracticeUiState(
 ) {
     val selectedSurahFromId: SurahEntity? get() = surahs.firstOrNull { it.id == selectedSurahId }
     val selectedReciter: ReciterOption? get() = reciters.firstOrNull { it.id == settings.reciterId }
-    val visibleAyahsFromPage: List<AyahWithDetails>
-        get() = ayahs.filter { it.page == selectedPage }
     val activeAyah: Int?
         get() = when (val session = sessionState) {
             is PlaybackSessionState.Active -> session.activeAyah
@@ -91,6 +88,7 @@ data class PracticeUiState(
             return (startAyah..endAyah).all { it in availableAyahs }
         }
 }
+
 
 @HiltViewModel
 class PracticeViewModel @Inject constructor(
@@ -262,7 +260,6 @@ class PracticeViewModel @Inject constructor(
         mutableUiState.update {
             it.copy(
                 selectedPage = targetPage,
-                visibleAyahs = it.ayahs.filter { a -> a.page == targetPage },
                 error = null,
             )
         }
@@ -337,6 +334,11 @@ class PracticeViewModel @Inject constructor(
         runCatching {
             val state = mutableUiState.value
             check(state.canStart) { "Unsupported state: selected ayah range is not ready." }
+            // If autoDownload is enabled and the surah is not cached, trigger download-then-play.
+            if (state.settings.autoDownload && !state.isSelectedSurahCached) {
+                downloadSelectedSurah(playAfterDownload = true)
+                return@launch
+            }
             val range = AyahRange(state.selectedSurahId, state.startAyah, state.endAyah)
             val audio = withContext(Dispatchers.IO) {
                 quranRepository.playbackAudioForRange(
@@ -530,7 +532,6 @@ class PracticeViewModel @Inject constructor(
             mutableUiState.update {
                 it.copy(
                     ayahs = ayahs,
-                    visibleAyahs = ayahs.filter { a -> a.page == page },
                     selectedPage = page,
                     isSelectedSurahCached = isCached,
                     selectedSurah = it.surahs.find { s -> s.id == it.selectedSurahId },

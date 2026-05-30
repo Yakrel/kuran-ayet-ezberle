@@ -23,7 +23,9 @@ object AudioCachePolicy {
     fun isValidCachedAudio(file: File, audio: SurahAudio): Boolean {
         if (!file.exists() || !file.isFile) return false
         val length = file.length()
-        return length >= MIN_VALID_SIZE_BYTES
+        if (length < MIN_VALID_SIZE_BYTES) return false
+        // If the remote audio size is known, require the cached file to be at least 99% of it.
+        return audio.audioSize <= 0L || length >= (audio.audioSize * 0.99).toLong()
     }
 
     fun isValidCachedAyahAudio(file: File): Boolean {
