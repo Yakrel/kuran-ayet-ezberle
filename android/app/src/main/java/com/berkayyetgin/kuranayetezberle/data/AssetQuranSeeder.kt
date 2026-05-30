@@ -44,8 +44,8 @@ class AssetQuranSeeder @Inject constructor(
 
     @OptIn(ExperimentalSerializationApi::class)
     private fun loadSeed(): QuranSeed {
-        val quran = context.assets.open("data/quran.json").bufferedReader().use { it.readText() }.let {
-            json.decodeFromString(QuranJson.serializer(), it)
+        val quran = context.assets.open("data/quran.json").use { stream ->
+            json.decodeFromStream(QuranJson.serializer(), stream)
         }
         val recitations = ReciterCatalog.options
             .filter { it.playbackType == ReciterPlaybackType.FullSurah }
@@ -111,8 +111,8 @@ class AssetQuranSeeder @Inject constructor(
 
     @OptIn(ExperimentalSerializationApi::class)
     private fun loadRecitation(path: String): RecitationJson =
-        context.assets.open(path).bufferedReader().use { it.readText() }.let {
-            json.decodeFromString(RecitationJson.serializer(), it)
+        context.assets.open(path).use { stream ->
+            json.decodeFromStream(RecitationJson.serializer(), stream)
         }
 }
 

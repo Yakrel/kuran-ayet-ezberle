@@ -137,7 +137,6 @@ private fun Float.toSpeedLabel(): String = when (this) {
 private fun String.normalizeTurkish(): String {
     return this.lowercase(TurkishLocale)
         .replace('â', 'a').replace('î', 'i').replace('û', 'u')
-        .replace('Â', 'a').replace('Î', 'i').replace('Û', 'u')
         .replace('ç', 'c').replace('ğ', 'g').replace('ı', 'i')
         .replace('ö', 'o').replace('ş', 's').replace('ü', 'u')
 }
@@ -829,7 +828,7 @@ private fun SettingsSheet(
             )
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Okuma ve Icerik", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text("Okuma ve İçerik", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             HorizontalDivider()
 
             Row(
@@ -839,7 +838,7 @@ private fun SettingsSheet(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Kari",
+                        text = "Kârî",
                         style = MaterialTheme.typography.bodyLarge,
                     )
                     Text(
@@ -1000,7 +999,7 @@ private fun ReciterSelectionSheet(
                 .padding(horizontal = 16.dp),
         ) {
             Text(
-                text = "Kari sec",
+                text = "Kârî Seç",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.padding(bottom = 12.dp),
@@ -1366,6 +1365,7 @@ private fun RepeatSelectionSheet(
                 value = customText,
                 onValueChange = { customText = it.take(3) },
                 label = { Text("Özel (Örn: 12)") },
+                supportingText = { Text("1 – 999 arası bir sayı girin") },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { 
                     customText.toIntOrNull()?.let { 
@@ -1619,107 +1619,109 @@ private fun AyahCard(
         else -> MaterialTheme.colorScheme.surface
     }
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(backgroundColor)
-            .border(if (active || isRangeBoundary) 2.dp else 1.dp, borderColor, RoundedCornerShape(12.dp))
-            .combinedClickable(
-                onClick = {},
-                onLongClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                    showMenu = true
-                }
-            )
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(12.dp))
+                .background(backgroundColor)
+                .border(if (active || isRangeBoundary) 2.dp else 1.dp, borderColor, RoundedCornerShape(12.dp))
+                .combinedClickable(
+                    onClick = {},
+                    onLongClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                        showMenu = true
+                    }
+                )
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Text(
-                    text = "${ayah.surahId}:${ayah.number}",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold
-                )
-                rangeMarker?.let { marker ->
-                    Surface(
-                        shape = RoundedCornerShape(6.dp),
-                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.75f),
-                    ) {
-                        Text(
-                            text = marker,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSecondaryContainer,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                            maxLines = 1,
-                        )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "${ayah.surahId}:${ayah.number}",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    rangeMarker?.let { marker ->
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.75f),
+                        ) {
+                            Text(
+                                text = marker,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                maxLines = 1,
+                            )
+                        }
                     }
                 }
-            }
 
-            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
+                    Text(
+                        text = ayah.arabic,
+                        modifier = Modifier.fillMaxWidth(),
+                        textAlign = TextAlign.Right,
+                        fontFamily = ArabicFontFamily,
+                        fontSize = arabicTextSizeSp.sp,
+                        lineHeight = (arabicTextSizeSp * 1.6f).sp,
+                        fontWeight = FontWeight.Medium,
+                        softWrap = true,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                if (showTranscription && ayah.transcription.isNotBlank()) {
+                    Text(
+                        text = ayah.transcription,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                        fontStyle = FontStyle.Italic
+                    )
+                }
+
                 Text(
-                    text = ayah.arabic,
-                    modifier = Modifier.fillMaxWidth(),
-                    textAlign = TextAlign.Right,
-                    fontFamily = ArabicFontFamily,
-                    fontSize = arabicTextSizeSp.sp,
-                    lineHeight = (arabicTextSizeSp * 1.6f).sp,
-                    fontWeight = FontWeight.Medium,
-                    softWrap = true,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            if (showTranscription && ayah.transcription.isNotBlank()) {
-                Text(
-                    text = ayah.transcription,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
-                    fontStyle = FontStyle.Italic
-                )
-            }
-
-            Text(
-                text = ayah.translation,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface,
-                lineHeight = 24.sp
-            )
-
-            DropdownMenu(
-                expanded = showMenu,
-                onDismissRequest = { showMenu = false }
-            ) {
-                DropdownMenuItem(
-                    text = { Text("Başlangıç Yap") },
-                    onClick = {
-                        onSetStartAndEnd()
-                        showMenu = false
-                    }
-                )
-                DropdownMenuItem(
-                    text = { Text("Bitiş Yap") },
-                    onClick = {
-                        onSetEnd()
-                        showMenu = false
-                    }
+                    text = ayah.translation,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = 24.sp
                 )
             }
         }
+        DropdownMenu(
+            expanded = showMenu,
+            onDismissRequest = { showMenu = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("Başlangıç Yap") },
+                onClick = {
+                    onSetStartAndEnd()
+                    showMenu = false
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Bitiş Yap") },
+                onClick = {
+                    onSetEnd()
+                    showMenu = false
+                }
+            )
+        }
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

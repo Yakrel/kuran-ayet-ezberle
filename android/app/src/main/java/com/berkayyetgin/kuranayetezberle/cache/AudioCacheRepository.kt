@@ -162,14 +162,20 @@ class AudioCacheRepository @Inject constructor(
     ) {
         when (audio) {
             is FullSurahPlaybackAudio -> download(audio.audio, onProgress)
-            is AyahFilesPlaybackAudio -> {
-                audio.ayahs.forEachIndexed { index, ayahAudio ->
-                    download(ayahAudio)
-                    onItemCompleted?.invoke(index + 1, audio.ayahs.size)
-                }
+            is AyahFilesPlaybackAudio -> coroutineScope {
+                val total = audio.ayahs.size
+                val completed = AtomicInteger(0)
+                val limiter = Semaphore(permits = 4)
+                audio.ayahs.map { ayahAudio ->
+                    async(Dispatchers.IO) {
+                        limiter.withPermit { download(ayahAudio) }
+                        onItemCompleted?.invoke(completed.incrementAndGet(), total)
+                    }
+                }.awaitAll()
             }
         }
     }
+
 
     /**
      * Downloads all [items] with at most 4 parallel connections.

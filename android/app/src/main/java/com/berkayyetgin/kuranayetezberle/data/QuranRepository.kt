@@ -61,7 +61,7 @@ class QuranRepository @Inject constructor(
         }
     }
 
-    suspend fun audioForSurah(surahId: Int, recitationId: Int = 13): SurahAudio {
+    suspend fun audioForSurah(surahId: Int, recitationId: Int = ReciterCatalog.DEFAULT_RECITER_ID): SurahAudio {
         initialize()
         val audio = dao.audioForSurah(surahId, recitationId)
         checkNotNull(audio) { "Unsupported data: missing audio for surah $surahId" }
