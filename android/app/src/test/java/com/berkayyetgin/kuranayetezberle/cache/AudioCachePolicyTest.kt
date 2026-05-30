@@ -1,5 +1,6 @@
 package com.berkayyetgin.kuranayetezberle.cache
 
+import com.berkayyetgin.kuranayetezberle.data.AyahAudioSource
 import com.berkayyetgin.kuranayetezberle.data.SurahAudio
 import java.io.File
 import kotlin.io.path.createTempDirectory
@@ -55,6 +56,41 @@ class AudioCachePolicyTest {
 
             assertTrue(AudioCachePolicy.isCompleteDownloadedAudio(complete, expectedBytes = 60 * 1024L))
             assertFalse(AudioCachePolicy.isCompleteDownloadedAudio(short, expectedBytes = 60 * 1024L))
+        }
+    }
+
+    @Test
+    fun cacheFileNamesSeparateFullSurahAndAyahSources() {
+        val ayahAudio = AyahAudioSource(
+            reciterId = 1003,
+            surahId = 2,
+            ayahNumber = 5,
+            url = "https://example.test/002005.mp3",
+        )
+
+        assertTrue(AudioCachePolicy.cacheFileName(audio).contains("13-2.mp3"))
+        assertTrue(AudioCachePolicy.cacheFileName(ayahAudio).contains("1003-2-5.mp3"))
+        assertFalse(AudioCachePolicy.cacheFileName(audio) == AudioCachePolicy.cacheFileName(ayahAudio))
+    }
+
+    @Test
+    fun ayahAudioUsesLowerValidityThresholdThanFullSurahAudio() {
+        withTempDir { dir ->
+            val ayah = File(dir, "1003-1-1.mp3").also { it.writeBytes(ByteArray(12 * 1024)) }
+
+            assertTrue(AudioCachePolicy.isValidCachedAyahAudio(ayah))
+            assertFalse(AudioCachePolicy.isValidCachedAudio(ayah, audio))
+        }
+    }
+
+    @Test
+    fun completeAyahDownloadUsesHttpContentLengthWhenKnown() {
+        withTempDir { dir ->
+            val complete = File(dir, "ayah-complete.mp3").also { it.writeBytes(ByteArray(12 * 1024)) }
+            val short = File(dir, "ayah-short.mp3").also { it.writeBytes(ByteArray(9 * 1024)) }
+
+            assertTrue(AudioCachePolicy.isCompleteDownloadedAyahAudio(complete, expectedBytes = 12 * 1024L))
+            assertFalse(AudioCachePolicy.isCompleteDownloadedAyahAudio(short, expectedBytes = 12 * 1024L))
         }
     }
 

@@ -45,6 +45,19 @@ class PracticeSessionControllerTest {
     }
 
     @Test
+    fun repeatContinuationAdvancesCountAndResetsActiveAyahToRangeStart() {
+        val controller = PracticeSessionController()
+        controller.start(AyahRange(2, 4, 8), repeatTarget = 3, speed = 1f)
+        controller.markPosition(7)
+
+        assertEquals(RepeatBoundaryResult.Continue, controller.finishRangeRepeat())
+
+        val active = controller.state.value as PlaybackSessionState.Active
+        assertEquals(2, active.currentRepeat)
+        assertEquals(4, active.activeAyah)
+    }
+
+    @Test
     fun repeatBoundaryIsInactiveWhenSessionIsNotActive() {
         val controller = PracticeSessionController()
 

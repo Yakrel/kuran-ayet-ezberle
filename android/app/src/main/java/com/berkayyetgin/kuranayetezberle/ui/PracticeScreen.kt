@@ -112,6 +112,7 @@ import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.berkayyetgin.kuranayetezberle.R
 import com.berkayyetgin.kuranayetezberle.data.AyahWithDetails
+import com.berkayyetgin.kuranayetezberle.data.ReciterOption
 import com.berkayyetgin.kuranayetezberle.data.SurahEntity
 import com.berkayyetgin.kuranayetezberle.domain.PlaybackSessionState
 import com.berkayyetgin.kuranayetezberle.ui.theme.AppTheme
@@ -785,6 +786,7 @@ private fun SettingsSheet(
     onDismiss: () -> Unit,
 ) {
     var showTranscriptionInfo by remember { mutableStateOf(false) }
+    var showReciterSelection by remember { mutableStateOf(false) }
     val haptic = LocalHapticFeedback.current
     val settingsScrollState = rememberScrollState()
 
@@ -827,8 +829,41 @@ private fun SettingsSheet(
             )
 
             Spacer(modifier = Modifier.height(8.dp))
-            Text("Okuma & İçerik", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+            Text("Okuma ve Icerik", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
             HorizontalDivider()
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Kari",
+                        style = MaterialTheme.typography.bodyLarge,
+                    )
+                    Text(
+                        text = state.selectedReciter?.sourceLabel ?: "Kaynak",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                    )
+                }
+                FilterChip(
+                    selected = true,
+                    onClick = {
+                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                        showReciterSelection = true
+                    },
+                    label = {
+                        Text(
+                            text = state.selectedReciter?.displayName ?: "Kari sec",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                )
+            }
 
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(
@@ -930,9 +965,94 @@ private fun SettingsSheet(
             )
         }
     }
+
+    if (showReciterSelection) {
+        ReciterSelectionSheet(
+            reciters = state.reciters,
+            selectedReciterId = state.settings.reciterId,
+            onReciterSelected = {
+                haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                viewModel.setReciter(it)
+                showReciterSelection = false
+            },
+            onDismiss = { showReciterSelection = false },
+        )
+    }
 }
 
 // ─── Reusable components ─────────────────────────────────────────────────────
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReciterSelectionSheet(
+    reciters: List<ReciterOption>,
+    selectedReciterId: Int,
+    onReciterSelected: (Int) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight(0.75f)
+                .padding(horizontal = 16.dp),
+        ) {
+            Text(
+                text = "Kari sec",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(bottom = 12.dp),
+            )
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                contentPadding = PaddingValues(bottom = 16.dp),
+            ) {
+                items(reciters, key = { it.id }) { reciter ->
+                    val isSelected = reciter.id == selectedReciterId
+                    Surface(
+                        onClick = { onReciterSelected(reciter.id) },
+                        shape = RoundedCornerShape(10.dp),
+                        color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = reciter.displayName,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = reciter.sourceLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                            }
+                            if (isSelected) {
+                                Icon(
+                                    imageVector = Icons.Filled.CheckCircle,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 @Composable
 private fun ArabicTextSizeSlider(
