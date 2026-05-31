@@ -335,7 +335,7 @@ class PracticeViewModel @Inject constructor(
         settingsRepository.setReciter(reciterId)
     }
 
-    fun start() = viewModelScope.launch {
+    fun start(): kotlinx.coroutines.Job = viewModelScope.launch {
         runCatching {
             val state = mutableUiState.value
             check(state.canStart) { "Unsupported state: selected ayah range is not ready." }
@@ -376,7 +376,7 @@ class PracticeViewModel @Inject constructor(
     fun stop() = playbackCoordinator.stop()
 
     /** Downloads the currently selected surah. No-ops if a download is already in progress. */
-    fun downloadSelectedSurah(playAfterDownload: Boolean = false) = viewModelScope.launch {
+    fun downloadSelectedSurah(playAfterDownload: Boolean = false): kotlinx.coroutines.Job = viewModelScope.launch {
         if (mutableUiState.value.downloadState is DownloadState.InProgress) return@launch
         val initialState = mutableUiState.value
         val label = "${initialState.selectedSurah?.name ?: "Seçili sure"} indiriliyor"
