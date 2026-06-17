@@ -4,6 +4,8 @@ import android.content.Context
 import android.os.Looper
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.annotation.OptIn
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -16,5 +18,8 @@ class PlayerHolder @Inject constructor(
 ) {
     val player: ExoPlayer = ExoPlayer.Builder(context)
         .setLooper(Looper.getMainLooper())
+        .setWakeMode(C.WAKE_MODE_LOCAL)
+        .setHandleAudioBecomingNoisy(true)
+        .setAudioAttributes(AudioAttributes.DEFAULT, true)
         .build()
 }
