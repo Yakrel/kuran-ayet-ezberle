@@ -532,7 +532,14 @@ class PracticeViewModel @Inject constructor(
                 selectedSurahPlaybackAudio()
             }.getOrNull()
             val isCached = audio?.let { audioCacheRepository.isCached(it) } ?: false
-            val page = ayahs.firstOrNull { it.number == state.startAyah }?.page
+            val currentState = mutableUiState.value
+            val activeAyah = when (val session = currentState.sessionState) {
+                is PlaybackSessionState.Active -> session.activeAyah
+                is PlaybackSessionState.PausedByUser -> session.active.activeAyah
+                else -> null
+            }
+            val targetAyah = activeAyah ?: currentState.startAyah
+            val page = ayahs.firstOrNull { it.number == targetAyah }?.page
                 ?: ayahs.firstOrNull()?.page ?: 1
             mutableUiState.update {
                 it.copy(

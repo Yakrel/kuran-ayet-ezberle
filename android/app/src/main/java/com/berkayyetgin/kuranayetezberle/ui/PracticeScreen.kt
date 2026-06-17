@@ -83,6 +83,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1468,28 +1469,19 @@ private fun AyahList(
         }
     }
 
-    LaunchedEffect(pagerState, pages, selectedPage) {
+    val currentSelectedPage by rememberUpdatedState(selectedPage)
+    val currentOnPageSwiped by rememberUpdatedState(onPageSwiped)
+
+    LaunchedEffect(pagerState, pages) {
         snapshotFlow { pagerState.currentPage to pagerState.isScrollInProgress }
             .collect { (currentPage, isScrollInProgress) ->
                 if (pages.isNotEmpty() && !isScrollInProgress) {
                     val currentPageNum = pages.getOrNull(currentPage) ?: return@collect
-                    if (currentPageNum != selectedPage) {
-                        onPageSwiped(currentPageNum)
+                    if (currentPageNum != currentSelectedPage) {
+                        currentOnPageSwiped(currentPageNum)
                     }
                 }
             }
-    }
-
-    LaunchedEffect(activeAyah) {
-        if (activeAyah != null) {
-            val ayah = ayahs.firstOrNull { it.number == activeAyah }
-            if (ayah != null) {
-                val targetIndex = pages.indexOf(ayah.page)
-                if (targetIndex >= 0 && targetIndex != pagerState.currentPage) {
-                    pagerState.animateScrollToPage(targetIndex)
-                }
-            }
-        }
     }
 
     val edgeSwipeConnection = remember(
