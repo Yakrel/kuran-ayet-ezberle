@@ -1,0 +1,138 @@
+name: Release Android App
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Semantic version without the v prefix
+        required: true
+        default: 0.0.1
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-android-app
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      ANDROID_SIGNING_STORE_FILE: /tmp/kuran-ayet-ezberle-release.keystore
+      ANDROID_SIGNING_STORE_PASSWORD: ${{ secrets.ANDROID_SIGNING_STORE_PASSWORD }}
+      ANDROID_SIGNING_KEY_ALIAS: ${{ secrets.ANDROID_SIGNING_KEY_ALIAS }}
+      ANDROID_SIGNING_KEY_PASSWORD: ${{ secrets.ANDROID_SIGNING_KEY_PASSWORD }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Validate and calculate version
+        id: version
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Version must use the x.y.z format" >&2
+            exit 1
+          fi
+          IFS=. read -r major minor patch <<< "$VERSION"
+          version_code=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
+          if (( version_code < 1 || version_code > 2100000000 )); then
+            echo "Calculated Android versionCode is outside the valid range" >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
+            echo "Tag v$VERSION already exists" >&2
+            exit 1
+          fi
+          echo "name=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "code=$version_code" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 17
+          cache: gradle
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4.0.1
+
+      - name: Restore release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_SIGNING_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$KEYSTORE_BASE64" || { echo "Missing signing keystore" >&2; exit 1; }
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$ANDROID_SIGNING_STORE_FILE"
+
+      - name: Run unit tests and lint
+        working-directory: android
+        run: |
+          ./gradlew testDebugUnitTest lintDebug \
+            -PappVersion=${{ steps.version.outputs.name }} \
+            -PappVersionCode=${{ steps.version.outputs.code }} \
+            --stacktrace --warning-mode all
+
+      - name: Build signed release APK
+        working-directory: android
+        run: |
+          ./gradlew :app:assembleRelease \
+            -PappVersion=${{ steps.version.outputs.name }} \
+            -PappVersionCode=${{ steps.version.outputs.code }} \
+            --stacktrace --warning-mode all
+
+      - name: Prepare and verify release
+        env:
+          VERSION: ${{ steps.version.outputs.name }}
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk kuran-ayet-ezberle.apk
+          apksigner=$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -1)
+          "$apksigner" verify --verbose --print-certs kuran-ayet-ezberle.apk
+          sha256sum kuran-ayet-ezberle.apk > kuran-ayet-ezberle.apk.sha256
+          sha256=$(awk '{print $1}' kuran-ayet-ezberle.apk.sha256)
+          cat > update.json <<EOF
+          {
+            "version": "$VERSION",
+            "apkUrl": "https://github.com/${{ github.repository }}/releases/download/v$VERSION/kuran-ayet-ezberle.apk",
+            "sha256": "$sha256"
+          }
+          EOF
+
+      - name: Create version release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.name }}
+        run: |
+          gh release create "v$VERSION" \
+            kuran-ayet-ezberle.apk \
+            kuran-ayet-ezberle.apk.sha256 \
+            --target "$GITHUB_SHA" \
+            --title "Kur'an Ayet Ezberle v$VERSION" \
+            --notes "İmzalı Android uygulaması v$VERSION. Uygulama içi güncelleme SHA-256 ile doğrulanır."
+
+      - name: Publish update manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view app-update >/dev/null 2>&1; then
+            gh release create app-update \
+              --target "$GITHUB_SHA" \
+              --title "Android Update Channel" \
+              --notes "Uygulama içi güncelleme kanalının makine tarafından yönetilen manifesti." \
+              --prerelease \
+              --latest=false
+          fi
+          gh release upload app-update update.json --clobber
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: kuran-ayet-ezberle-${{ steps.version.outputs.name }}
+          path: |
+            kuran-ayet-ezberle.apk
+            kuran-ayet-ezberle.apk.sha256
+            update.json
+          if-no-files-found: error
+          retention-days: 30

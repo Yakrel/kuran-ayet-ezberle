@@ -74,11 +74,16 @@ class AudioCachePolicyTest {
     }
 
     @Test
-    fun ayahAudioUsesLowerValidityThresholdThanFullSurahAudio() {
+    fun ayahAudioRequiresMatchingPersistedSizeMetadata() {
         withTempDir { dir ->
             val ayah = File(dir, "1003-1-1.mp3").also { it.writeBytes(ByteArray(12 * 1024)) }
+            val metadata = AudioCachePolicy.sizeMetadataFileFor(ayah)
 
+            assertFalse(AudioCachePolicy.isValidCachedAyahAudio(ayah))
+            metadata.writeText((12 * 1024L).toString())
             assertTrue(AudioCachePolicy.isValidCachedAyahAudio(ayah))
+            metadata.writeText((11 * 1024L).toString())
+            assertFalse(AudioCachePolicy.isValidCachedAyahAudio(ayah))
             assertFalse(AudioCachePolicy.isValidCachedAudio(ayah, audio))
         }
     }

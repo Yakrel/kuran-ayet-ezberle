@@ -5,12 +5,16 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Looper
+import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.PlayerMessage
 import com.berkayyetgin.kuranayetezberle.cache.AudioCacheRepository
 import com.berkayyetgin.kuranayetezberle.data.AyahWithDetails
 import com.berkayyetgin.kuranayetezberle.data.AyahFilesPlaybackAudio
@@ -30,6 +34,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+@OptIn(UnstableApi::class)
 @Singleton
 class PlaybackCoordinator @Inject constructor(
     @ApplicationContext private val context: Context,
@@ -42,15 +47,12 @@ class PlaybackCoordinator @Inject constructor(
     private var range: AyahRange? = null
     private var playbackAudio: PlaybackAudio? = null
 
-    /**
-     * Guards against re-entrant calls to [updatePosition] from the ticker.
-     * Since the ticker runs on Main.immediate (single-threaded), this is a plain boolean —
-     * no need for atomics or volatiles.
-     */
+    /** Guards against duplicate ExoPlayer boundary callbacks on the main looper. */
     private var handlingBoundary = false
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var positionTicker: Job? = null
+    private var rangeEndMessage: PlayerMessage? = null
 
     fun start(
         audio: PlaybackAudio,
@@ -61,13 +63,12 @@ class PlaybackCoordinator @Inject constructor(
         surahName: String = "Kuran-ı Kerim",
     ) {
         requireBackgroundPlaybackSupported()
+        cancelRangeEndMessage()
         this.ayahs = ayahs
         this.range = range
         this.rangeAyahs = ayahs.filter { it.number in range.startAyah..range.endAyah }
         this.playbackAudio = audio
         check(rangeAyahs.isNotEmpty()) { "Unsupported data: selected ayah range is missing." }
-
-        context.startService(Intent(context, PracticePlaybackService::class.java))
 
         val exoPlayer = playerHolder.player
         exoPlayer.removeListener(playbackStateListener)
@@ -89,6 +90,7 @@ class PlaybackCoordinator @Inject constructor(
                 exoPlayer.prepare()
                 exoPlayer.playbackParameters = PlaybackParameters(speed)
                 exoPlayer.seekTo(start.fromMs)
+                scheduleRangeEndMessage()
             }
             is AyahFilesPlaybackAudio -> {
                 val mediaItems = audio.ayahs.map { ayahAudio ->
@@ -108,6 +110,10 @@ class PlaybackCoordinator @Inject constructor(
                 exoPlayer.playbackParameters = PlaybackParameters(speed)
             }
         }
+        ContextCompat.startForegroundService(
+            context,
+            Intent(context, PracticePlaybackService::class.java),
+        )
         sessionController.start(range, repeatCount, speed)
         exoPlayer.play()
         if (audio is FullSurahPlaybackAudio) startPositionTicker()
@@ -129,12 +135,13 @@ class PlaybackCoordinator @Inject constructor(
     }
 
     fun stop() {
-        stopPositionTicker()
-        playerHolder.player.pause()
-        playerHolder.player.stop()
-        playbackAudio = null
-        sessionController.stop()
+        clearPlayback(PlaybackTermination.Stopped)
         stopPlaybackService()
+    }
+
+    /** Cleans singleton playback state when Android destroys the media service unexpectedly. */
+    fun onPlaybackServiceDestroyed() {
+        if (playbackAudio != null) clearPlayback(PlaybackTermination.Stopped)
     }
 
     fun setSpeed(speed: Float) {
@@ -142,13 +149,7 @@ class PlaybackCoordinator @Inject constructor(
         sessionController.updateSpeed(speed)
     }
 
-    /**
-     * Handles only playback state transitions (playing/paused) and playback errors.
-     *
-     * Position tracking is done **exclusively** by [positionTicker]. Removing the
-     * [Player.Listener.onEvents] override eliminates the double-firing of [updatePosition]
-     * that previously caused [finishRangeRepeat] to be called twice per boundary crossing.
-     */
+    /** Handles player transitions, native playlist completion, and playback errors. */
     private val playbackStateListener = object : Player.Listener {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             if (playbackAudio is FullSurahPlaybackAudio) {
@@ -197,6 +198,7 @@ class PlaybackCoordinator @Inject constructor(
         if (handlingBoundary) return
         handlingBoundary = true
         try {
+            rangeEndMessage = null
             val currentRange = range ?: return
             when (sessionController.finishRangeRepeat()) {
                 RepeatBoundaryResult.Completed, RepeatBoundaryResult.Inactive -> stopFinishedPlayback()
@@ -204,6 +206,7 @@ class PlaybackCoordinator @Inject constructor(
                     val start = ayahs.firstOrNull { it.number == currentRange.startAyah }
                     if (start != null) {
                         playerHolder.player.seekTo(start.fromMs)
+                        scheduleRangeEndMessage()
                         playerHolder.player.play()
                     } else {
                         stopFinishedPlayback()
@@ -215,33 +218,30 @@ class PlaybackCoordinator @Inject constructor(
         }
     }
 
+    /**
+     * Position polling is used only for UI progress. Repeat boundaries are delivered by ExoPlayer's
+     * playback timeline so screen-off throttling cannot make the selected range overrun or skip.
+     */
     private fun updatePosition(positionMs: Long) {
-        // Prevent re-entrant boundary handling: if seekTo() triggers onIsPlayingChanged which
-        // restarts the ticker mid-boundary handling, we must not re-enter this logic.
-        if (handlingBoundary) return
-
-        val currentRange = range ?: return
-        val end = ayahs.firstOrNull { it.number == currentRange.endAyah } ?: return
-
-        if (positionMs >= end.toMs) {
-            handlingBoundary = true
-            try {
-                when (sessionController.finishRangeRepeat()) {
-                    RepeatBoundaryResult.Completed, RepeatBoundaryResult.Inactive -> stopFinishedPlayback()
-                    RepeatBoundaryResult.Continue -> {
-                        val start = ayahs.first { it.number == currentRange.startAyah }
-                        playerHolder.player.seekTo(start.fromMs)
-                        playerHolder.player.play()
-                    }
-                }
-            } finally {
-                handlingBoundary = false
-            }
-            return
-        }
-
         val currentAyah = ayahAt(positionMs) ?: return
         sessionController.markPosition(currentAyah.number)
+    }
+
+    private fun scheduleRangeEndMessage() {
+        val currentRange = range ?: return
+        val end = ayahs.firstOrNull { it.number == currentRange.endAyah } ?: return
+        cancelRangeEndMessage()
+        rangeEndMessage = playerHolder.player
+            .createMessage { _, _ -> handleFullSurahRangeEnd() }
+            .setLooper(Looper.getMainLooper())
+            .setPosition(end.toMs)
+            .setDeleteAfterDelivery(true)
+            .send()
+    }
+
+    private fun cancelRangeEndMessage() {
+        rangeEndMessage?.cancel()
+        rangeEndMessage = null
     }
 
     private fun ayahAt(positionMs: Long): AyahWithDetails? =
@@ -275,24 +275,40 @@ class PlaybackCoordinator @Inject constructor(
     }
 
     private fun stopFinishedPlayback() {
-        stopPositionTicker()
-        playerHolder.player.pause()
-        playerHolder.player.stop()
-        playbackAudio = null
+        clearPlayback(PlaybackTermination.Completed)
         stopPlaybackService()
     }
 
     private fun failPlayback(message: String) {
+        clearPlayback(PlaybackTermination.Failed(message))
+        stopPlaybackService()
+    }
+
+    private fun clearPlayback(termination: PlaybackTermination) {
         stopPositionTicker()
+        cancelRangeEndMessage()
+        playerHolder.player.removeListener(playbackStateListener)
         playerHolder.player.pause()
         playerHolder.player.stop()
+        ayahs = emptyList()
+        rangeAyahs = emptyList()
+        range = null
         playbackAudio = null
-        sessionController.fail(message)
-        stopPlaybackService()
+        when (termination) {
+            PlaybackTermination.Completed -> sessionController.complete()
+            PlaybackTermination.Stopped -> sessionController.stop()
+            is PlaybackTermination.Failed -> sessionController.fail(termination.message)
+        }
     }
 
     private fun stopPlaybackService() {
         context.stopService(Intent(context, PracticePlaybackService::class.java))
+    }
+
+    private sealed interface PlaybackTermination {
+        data object Completed : PlaybackTermination
+        data object Stopped : PlaybackTermination
+        data class Failed(val message: String) : PlaybackTermination
     }
 
     private companion object {

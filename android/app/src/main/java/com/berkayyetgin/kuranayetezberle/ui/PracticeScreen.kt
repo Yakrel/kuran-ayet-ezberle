@@ -1,5 +1,6 @@
 package com.berkayyetgin.kuranayetezberle.ui
 
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -111,6 +112,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.berkayyetgin.kuranayetezberle.MainActivity
 import com.berkayyetgin.kuranayetezberle.R
 import com.berkayyetgin.kuranayetezberle.data.AyahWithDetails
 import com.berkayyetgin.kuranayetezberle.data.ReciterOption
@@ -156,7 +158,11 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
     var showDownloadPrompt by remember { mutableStateOf(false) }
 
     val resolvedDarkTheme = state.settings.darkTheme ?: isSystemInDarkTheme()
-    
+    val activity = LocalActivity.current as? MainActivity
+    val runPlaybackAction: (() -> Unit) -> Unit = { action ->
+        activity?.runWithPlaybackPermission(action) ?: action()
+    }
+
     val view = LocalView.current
     val isSessionActive = state.sessionState is PlaybackSessionState.Active || state.sessionState is PlaybackSessionState.PausedByUser
     LaunchedEffect(isSessionActive) {
@@ -181,7 +187,7 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
             if (isIdle && !state.isSelectedSurahCached && state.settings.showDownloadPrompt) {
                 showDownloadPrompt = true
             } else if (isIdle) {
-                viewModel.start()
+                runPlaybackAction { viewModel.start() }
             } else {
                 viewModel.pauseOrResume()
             }
@@ -254,12 +260,12 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
                 surahName = state.selectedSurah?.name,
                 onDownloadAndPlay = { doNotShowAgain ->
                     if (doNotShowAgain) viewModel.setShowDownloadPrompt(false)
-                    viewModel.downloadSelectedSurah(playAfterDownload = true)
+                    runPlaybackAction { viewModel.downloadSelectedSurah(playAfterDownload = true) }
                     showDownloadPrompt = false
                 },
                 onJustPlay = { doNotShowAgain ->
                     if (doNotShowAgain) viewModel.setShowDownloadPrompt(false)
-                    viewModel.start()
+                    runPlaybackAction { viewModel.start() }
                     showDownloadPrompt = false
                 },
                 onDismiss = { showDownloadPrompt = false }

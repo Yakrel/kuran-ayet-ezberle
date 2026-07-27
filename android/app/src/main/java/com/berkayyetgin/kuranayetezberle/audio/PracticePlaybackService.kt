@@ -1,12 +1,15 @@
 package com.berkayyetgin.kuranayetezberle.audio
 
 import android.content.Intent
+import androidx.annotation.OptIn
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
 import com.berkayyetgin.kuranayetezberle.domain.PracticeSessionController
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
+@OptIn(UnstableApi::class)
 @AndroidEntryPoint
 class PracticePlaybackService : MediaSessionService() {
     @Inject lateinit var sessionController: PracticeSessionController
@@ -21,7 +24,7 @@ class PracticePlaybackService : MediaSessionService() {
         remoteCommandPlayer = RemoteCommandPlayer(
             player = playerHolder.player,
             sessionController = sessionController,
-            onRemoteStop = ::stopPlaybackService,
+            onRemoteStop = playbackCoordinator::stop,
         )
         mediaSession = MediaSession.Builder(this, remoteCommandPlayer!!).build()
     }
@@ -34,7 +37,7 @@ class PracticePlaybackService : MediaSessionService() {
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
-        return mediaSession
+        return mediaSession?.takeIf { controllerInfo.isTrusted }
     }
 
     fun stopPlaybackService() {
@@ -42,8 +45,7 @@ class PracticePlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
-        playerHolder.player.pause()
-        playerHolder.player.stop()
+        playbackCoordinator.onPlaybackServiceDestroyed()
         mediaSession?.run {
             release()
             mediaSession = null

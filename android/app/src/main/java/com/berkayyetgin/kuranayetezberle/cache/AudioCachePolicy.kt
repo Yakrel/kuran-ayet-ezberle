@@ -14,6 +14,8 @@ object AudioCachePolicy {
 
     fun tempFileFor(target: File): File = File(target.parentFile, "${target.name}.tmp")
 
+    fun sizeMetadataFileFor(target: File): File = File(target.parentFile, "${target.name}.size")
+
     fun cacheFileName(audio: SurahAudio): String =
         "${audio.recitationId}-${audio.surahId}.mp3"
 
@@ -29,8 +31,13 @@ object AudioCachePolicy {
     }
 
     fun isValidCachedAyahAudio(file: File): Boolean {
-        if (!file.exists() || !file.isFile) return false
-        return file.length() >= MIN_VALID_AYAH_SIZE_BYTES
+        if (!file.exists() || !file.isFile || file.length() < MIN_VALID_AYAH_SIZE_BYTES) return false
+        val expectedSize = sizeMetadataFileFor(file).takeIf { it.isFile }
+            ?.readText()
+            ?.trim()
+            ?.toLongOrNull()
+            ?: return false
+        return expectedSize >= MIN_VALID_AYAH_SIZE_BYTES && file.length() == expectedSize
     }
 
     fun isCompleteDownloadedAudio(file: File, expectedBytes: Long?): Boolean {

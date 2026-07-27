@@ -2,6 +2,8 @@ package com.berkayyetgin.kuranayetezberle.ui
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.work.WorkInfo
+import androidx.work.WorkManager
 import com.berkayyetgin.kuranayetezberle.audio.PlaybackCoordinator
 import com.berkayyetgin.kuranayetezberle.cache.AudioCacheRepository
 import com.berkayyetgin.kuranayetezberle.data.AyahWithDetails
@@ -12,9 +14,12 @@ import com.berkayyetgin.kuranayetezberle.data.SurahEntity
 import com.berkayyetgin.kuranayetezberle.domain.AyahRange
 import com.berkayyetgin.kuranayetezberle.domain.PlaybackSessionState
 import com.berkayyetgin.kuranayetezberle.domain.PracticeSessionController
+import com.berkayyetgin.kuranayetezberle.download.DownloadAllSurahsWorker
 import com.berkayyetgin.kuranayetezberle.settings.AppSettings
 import com.berkayyetgin.kuranayetezberle.settings.SettingsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
 import javax.inject.Inject
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -97,8 +102,11 @@ class PracticeViewModel @Inject constructor(
     private val playbackCoordinator: PlaybackCoordinator,
     private val audioCacheRepository: AudioCacheRepository,
     private val sessionController: PracticeSessionController,
+    private val workManager: WorkManager,
 ) : ViewModel() {
     private var isInitialSettingsLoad = true
+    private var observedAllDownloadId: UUID? = null
+    private val reloadGeneration = AtomicInteger(0)
     private val mutableUiState = MutableStateFlow(PracticeUiState())
     val uiState: StateFlow<PracticeUiState> = mutableUiState.asStateFlow()
 
@@ -163,6 +171,10 @@ class PracticeViewModel @Inject constructor(
                     saveLastSession()
                 }
             }
+        }
+        viewModelScope.launch {
+            workManager.getWorkInfosForUniqueWorkFlow(DownloadAllSurahsWorker.UNIQUE_WORK_NAME)
+                .collect(::observeAllDownloadWork)
         }
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
@@ -379,6 +391,8 @@ class PracticeViewModel @Inject constructor(
     fun downloadSelectedSurah(playAfterDownload: Boolean = false): kotlinx.coroutines.Job = viewModelScope.launch {
         if (mutableUiState.value.downloadState is DownloadState.InProgress) return@launch
         val initialState = mutableUiState.value
+        val requestedSurahId = initialState.selectedSurahId
+        val requestedReciterId = initialState.settings.reciterId
         val label = "${initialState.selectedSurah?.name ?: "Seçili sure"} indiriliyor"
         mutableUiState.update { it.copy(downloadState = DownloadState.InProgress(label = label)) }
         val audio = runCatching {
@@ -445,61 +459,90 @@ class PracticeViewModel @Inject constructor(
                 cachedSurahCount = cachedSurahCount,
             )
         }
-        if (playAfterDownload) start()
+        val currentState = mutableUiState.value
+        if (
+            playAfterDownload &&
+            currentState.selectedSurahId == requestedSurahId &&
+            currentState.settings.reciterId == requestedReciterId
+        ) {
+            start()
+        }
     }
 
-    /**
-     * Downloads all 114 surahs with per-surah error isolation (app-lifetime coroutine).
-     * No-ops if a download is already in progress.
-     */
-    fun downloadAllSurahs() = viewModelScope.launch {
-        if (mutableUiState.value.downloadState is DownloadState.InProgress) return@launch
+    /** Enqueues a process-resilient, foreground WorkManager download for all 114 surahs. */
+    fun downloadAllSurahs() {
+        if (mutableUiState.value.downloadState is DownloadState.InProgress) return
+        observedAllDownloadId = DownloadAllSurahsWorker.enqueue(
+            workManager = workManager,
+            reciterId = mutableUiState.value.settings.reciterId,
+        )
         mutableUiState.update {
             it.copy(downloadState = DownloadState.InProgress(label = "Tüm sureler indiriliyor"))
         }
-        val audios = runCatching {
-            withContext(Dispatchers.IO) {
-                val reciterId = mutableUiState.value.settings.reciterId
-                quranRepository.surahs().map { surah ->
-                    quranRepository.playbackAudioForRange(
-                        surahId = surah.id,
-                        startAyah = 1,
-                        endAyah = surah.verseCount,
-                        reciterId = reciterId,
-                    )
-                }
-            }
-        }.getOrElse { e ->
-            mutableUiState.update {
-                it.copy(
-                    downloadState = DownloadState.Idle,
-                    error = downloadErrorMessage(e),
-                )
-            }
-            return@launch
+    }
+
+    private suspend fun observeAllDownloadWork(workInfos: List<WorkInfo>) {
+        val active = workInfos.firstOrNull {
+            it.state == WorkInfo.State.ENQUEUED ||
+                it.state == WorkInfo.State.BLOCKED ||
+                it.state == WorkInfo.State.RUNNING
         }
-        val result = audioCacheRepository.downloadAllPlayback(audios) { completedCount, totalCount ->
+        if (active != null) {
+            observedAllDownloadId = active.id
+            val completed = active.progress.getInt(DownloadAllSurahsWorker.KEY_COMPLETED, 0)
+            val total = active.progress.getInt(DownloadAllSurahsWorker.KEY_TOTAL, 114)
             mutableUiState.update {
                 it.copy(
                     downloadState = DownloadState.InProgress(
-                        label = "Tüm sureler indiriliyor",
-                        completedItems = completedCount,
-                        totalItems = totalCount,
-                    )
+                        label = if (active.state == WorkInfo.State.RUNNING) {
+                            "Tüm sureler indiriliyor"
+                        } else {
+                            "İndirme için bağlantı bekleniyor"
+                        },
+                        completedItems = completed,
+                        totalItems = total,
+                    ),
                 )
             }
+            return
         }
-        val currentAudio = runCatching { selectedSurahPlaybackAudio() }.getOrNull()
-        val isSelectedSurahCached = currentAudio?.let { audio ->
-            withContext(Dispatchers.IO) { audioCacheRepository.isCached(audio) }
-        } ?: false
-        val cachedSurahCount = cachedSurahCount()
-        mutableUiState.update {
-            it.copy(
-                downloadState = DownloadState.Done(result.successCount, result.failureCount),
-                isSelectedSurahCached = isSelectedSurahCached,
-                cachedSurahCount = cachedSurahCount,
-            )
+
+        val observedId = observedAllDownloadId ?: return
+        val finished = workInfos.firstOrNull { it.id == observedId && it.state.isFinished } ?: return
+        observedAllDownloadId = null
+        when (finished.state) {
+            WorkInfo.State.SUCCEEDED -> {
+                val currentAudio = runCatching { selectedSurahPlaybackAudio() }.getOrNull()
+                val selectedCached = currentAudio?.let { audioCacheRepository.isCached(it) } ?: false
+                val cachedCount = cachedSurahCount()
+                mutableUiState.update {
+                    it.copy(
+                        downloadState = DownloadState.Done(
+                            successCount = finished.outputData.getInt(
+                                DownloadAllSurahsWorker.KEY_SUCCESS_COUNT,
+                                cachedCount,
+                            ),
+                            failureCount = finished.outputData.getInt(
+                                DownloadAllSurahsWorker.KEY_FAILURE_COUNT,
+                                0,
+                            ),
+                        ),
+                        isSelectedSurahCached = selectedCached,
+                        cachedSurahCount = cachedCount,
+                    )
+                }
+            }
+            WorkInfo.State.FAILED -> mutableUiState.update {
+                it.copy(
+                    downloadState = DownloadState.Idle,
+                    error = finished.outputData.getString(DownloadAllSurahsWorker.KEY_ERROR)
+                        ?: "İndirme tamamlanamadı.",
+                )
+            }
+            WorkInfo.State.CANCELLED -> mutableUiState.update {
+                it.copy(downloadState = DownloadState.Idle)
+            }
+            else -> Unit
         }
     }
 
@@ -518,38 +561,59 @@ class PracticeViewModel @Inject constructor(
     }
 
     private suspend fun reloadSelectedSurah() {
-        val state = mutableUiState.value
-        if (state.surahs.isEmpty()) return
+        val generation = reloadGeneration.incrementAndGet()
+        val requestedState = mutableUiState.value
+        if (requestedState.surahs.isEmpty()) return
         runCatching {
+            val selectedSurah = requestedState.surahs.firstOrNull { it.id == requestedState.selectedSurahId }
+                ?: return@runCatching
             val ayahs = withContext(Dispatchers.IO) {
                 quranRepository.ayahsForSurah(
-                    surahId = state.selectedSurahId,
-                    translationAuthorId = state.settings.translationAuthorId,
-                    reciterId = state.settings.reciterId,
+                    surahId = requestedState.selectedSurahId,
+                    translationAuthorId = requestedState.settings.translationAuthorId,
+                    reciterId = requestedState.settings.reciterId,
                 )
             }
             val audio = runCatching {
-                selectedSurahPlaybackAudio()
+                quranRepository.playbackAudioForRange(
+                    surahId = requestedState.selectedSurahId,
+                    startAyah = 1,
+                    endAyah = selectedSurah.verseCount,
+                    reciterId = requestedState.settings.reciterId,
+                )
             }.getOrNull()
             val isCached = audio?.let { audioCacheRepository.isCached(it) } ?: false
             val currentState = mutableUiState.value
+            val requestIsCurrent = generation == reloadGeneration.get() &&
+                currentState.selectedSurahId == requestedState.selectedSurahId &&
+                currentState.settings.translationAuthorId == requestedState.settings.translationAuthorId &&
+                currentState.settings.reciterId == requestedState.settings.reciterId
+            if (!requestIsCurrent) return@runCatching
+
             val activeAyah = when (val session = currentState.sessionState) {
                 is PlaybackSessionState.Active -> session.activeAyah
                 is PlaybackSessionState.PausedByUser -> session.active.activeAyah
                 else -> null
             }
-            val targetAyah = activeAyah ?: currentState.startAyah
+            val validStartAyah = currentState.startAyah.coerceIn(1, selectedSurah.verseCount)
+            val validEndAyah = currentState.endAyah.coerceIn(validStartAyah, selectedSurah.verseCount)
+            val targetAyah = activeAyah ?: validStartAyah
             val page = ayahs.firstOrNull { it.number == targetAyah }?.page
                 ?: ayahs.firstOrNull()?.page ?: 1
             mutableUiState.update {
                 it.copy(
                     ayahs = ayahs,
+                    startAyah = validStartAyah,
+                    endAyah = validEndAyah,
                     selectedPage = page,
                     isSelectedSurahCached = isCached,
-                    selectedSurah = it.surahs.find { s -> s.id == it.selectedSurahId },
+                    selectedSurah = selectedSurah,
+                    restoredActiveAyah = it.restoredActiveAyah?.takeIf { ayah -> ayah in 1..selectedSurah.verseCount },
                 )
             }
-        }.onFailure { setError(it) }
+        }.onFailure {
+            if (generation == reloadGeneration.get()) setError(it)
+        }
     }
 
     private fun downloadErrorMessage(error: Throwable): String =
