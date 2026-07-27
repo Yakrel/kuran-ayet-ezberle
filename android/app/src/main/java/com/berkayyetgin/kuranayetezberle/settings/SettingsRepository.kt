@@ -35,20 +35,24 @@ class SettingsRepository @Inject constructor(
     @ApplicationContext private val context: Context,
 ) {
     val settings: Flow<AppSettings> = context.dataStore.data.map { preferences ->
+        val startAyah = (preferences[Keys.lastStartAyah] ?: 1).coerceAtLeast(1)
         AppSettings(
-            translationAuthorId = preferences[Keys.translationAuthorId] ?: "6",
-            reciterId = preferences[Keys.reciterId] ?: ReciterCatalog.DEFAULT_RECITER_ID,
+            translationAuthorId = (preferences[Keys.translationAuthorId] ?: "6")
+                .takeIf { it in SUPPORTED_TRANSLATION_IDS } ?: "6",
+            reciterId = ReciterCatalog.byId(
+                preferences[Keys.reciterId] ?: ReciterCatalog.DEFAULT_RECITER_ID,
+            ).id,
             showTranscription = preferences[Keys.showTranscription] ?: false,
             darkTheme = preferences[Keys.darkTheme],
-            playbackSpeed = preferences[Keys.playbackSpeed] ?: 1f,
-            repeatCount = preferences[Keys.repeatCount] ?: 20,
-            arabicTextSizeSp = preferences[Keys.arabicTextSizeSp] ?: 30f,
+            playbackSpeed = (preferences[Keys.playbackSpeed] ?: 1f).coerceIn(0.5f, 2f),
+            repeatCount = (preferences[Keys.repeatCount] ?: 20).coerceIn(1, 999),
+            arabicTextSizeSp = (preferences[Keys.arabicTextSizeSp] ?: 30f).coerceIn(24f, 38f),
             showDownloadPrompt = preferences[Keys.showDownloadPrompt] ?: true,
             autoDownload = preferences[Keys.autoDownload] ?: false,
-            lastSurahId = preferences[Keys.lastSurahId] ?: 1,
-            lastStartAyah = preferences[Keys.lastStartAyah] ?: 1,
-            lastEndAyah = preferences[Keys.lastEndAyah] ?: 7,
-            lastActiveAyah = preferences[Keys.lastActiveAyah],
+            lastSurahId = (preferences[Keys.lastSurahId] ?: 1).coerceIn(1, 114),
+            lastStartAyah = startAyah,
+            lastEndAyah = (preferences[Keys.lastEndAyah] ?: 7).coerceAtLeast(startAyah),
+            lastActiveAyah = preferences[Keys.lastActiveAyah]?.takeIf { it >= 1 },
         )
     }
 
@@ -72,6 +76,10 @@ class SettingsRepository @Inject constructor(
     suspend fun setArabicTextSizeSp(value: Float) = context.dataStore.edit { it[Keys.arabicTextSizeSp] = value }
     suspend fun setShowDownloadPrompt(value: Boolean) = context.dataStore.edit { it[Keys.showDownloadPrompt] = value }
     suspend fun setAutoDownload(value: Boolean) = context.dataStore.edit { it[Keys.autoDownload] = value }
+
+    private companion object {
+        val SUPPORTED_TRANSLATION_IDS = setOf("6", "32")
+    }
 
     private object Keys {
         val translationAuthorId = stringPreferencesKey("translation_author_id")

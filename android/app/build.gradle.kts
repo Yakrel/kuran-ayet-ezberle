@@ -7,6 +7,9 @@ plugins {
     alias(libs.plugins.hilt)
 }
 
+val appVersion = providers.gradleProperty("appVersion").orElse("0.0.1")
+val appVersionCode = providers.gradleProperty("appVersionCode").orElse("1")
+
 android {
     namespace = "com.berkayyetgin.kuranayetezberle"
     compileSdk = 36
@@ -15,8 +18,8 @@ android {
         applicationId = "com.berkayyetgin.kuranayetezberle"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = appVersionCode.get().toInt()
+        versionName = appVersion.get()
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -47,6 +50,10 @@ android {
             if (!releaseKeyAlias.isNullOrBlank()) keyAlias = releaseKeyAlias
             if (!releaseKeyPassword.isNullOrBlank()) keyPassword = releaseKeyPassword
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {
@@ -114,6 +121,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp)
+    implementation(libs.androidx.work.runtime.ktx)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)

@@ -25,9 +25,6 @@ class RemoteCommandPlayer(
     }
 
     override fun stop() {
-        sessionController.stop()
-        super.pause()
-        super.stop()
         onRemoteStop()
     }
 

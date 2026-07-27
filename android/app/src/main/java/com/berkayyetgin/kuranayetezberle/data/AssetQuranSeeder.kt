@@ -18,6 +18,7 @@ class AssetQuranSeeder @Inject constructor(
     private val json: Json,
 ) {
     private val seedMutex = Mutex()
+    private val seedPreferences = context.getSharedPreferences("quran_seed", Context.MODE_PRIVATE)
     @Volatile private var seeded = false
 
     suspend fun seedIfNeeded(dao: QuranDao) {
@@ -25,8 +26,10 @@ class AssetQuranSeeder @Inject constructor(
         seedMutex.withLock {
             if (seeded) return
             withContext(Dispatchers.IO) {
-                if (needsSeed(dao)) {
+                val storedVersion = seedPreferences.getInt(KEY_DATASET_VERSION, 0)
+                if (storedVersion != DATASET_VERSION || needsSeed(dao)) {
                     dao.seed(loadSeed())
+                    seedPreferences.edit().putInt(KEY_DATASET_VERSION, DATASET_VERSION).commit()
                 }
                 seeded = true
             }
@@ -114,6 +117,11 @@ class AssetQuranSeeder @Inject constructor(
         context.assets.open(path).use { stream ->
             json.decodeFromStream(RecitationJson.serializer(), stream)
         }
+
+    private companion object {
+        const val DATASET_VERSION = 2
+        const val KEY_DATASET_VERSION = "dataset_version"
+    }
 }
 
 @Serializable

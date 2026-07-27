@@ -2,6 +2,7 @@ package com.berkayyetgin.kuranayetezberle.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.work.WorkManager
 import com.berkayyetgin.kuranayetezberle.data.QuranDao
 import com.berkayyetgin.kuranayetezberle.data.QuranDatabase
 import dagger.Module
@@ -37,4 +38,9 @@ object AppModule {
     @Provides
     @Singleton
     fun provideOkHttpClient(): OkHttpClient = OkHttpClient.Builder().build()
+
+    @Provides
+    @Singleton
+    fun provideWorkManager(@ApplicationContext context: Context): WorkManager =
+        WorkManager.getInstance(context)
 }
