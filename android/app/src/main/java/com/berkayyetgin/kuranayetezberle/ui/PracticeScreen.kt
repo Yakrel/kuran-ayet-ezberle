@@ -159,8 +159,8 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
 
     val resolvedDarkTheme = state.settings.darkTheme ?: isSystemInDarkTheme()
     val activity = LocalActivity.current as? MainActivity
-    val runPlaybackAction: (() -> Unit) -> Unit = { action ->
-        activity?.runWithPlaybackPermission(action) ?: action()
+    val runNotificationAction: (() -> Unit) -> Unit = { action ->
+        activity?.runWithNotificationPermission(action) ?: action()
     }
 
     val view = LocalView.current
@@ -184,10 +184,15 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
                 session is PlaybackSessionState.Stopped ||
                 session is PlaybackSessionState.Completed
 
-            if (isIdle && !state.isSelectedSurahCached && state.settings.showDownloadPrompt) {
+            if (
+                isIdle &&
+                !state.isSelectedSurahCached &&
+                state.settings.showDownloadPrompt &&
+                !state.settings.autoDownload
+            ) {
                 showDownloadPrompt = true
             } else if (isIdle) {
-                runPlaybackAction { viewModel.start() }
+                viewModel.start()
             } else {
                 viewModel.pauseOrResume()
             }
@@ -260,12 +265,12 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
                 surahName = state.selectedSurah?.name,
                 onDownloadAndPlay = { doNotShowAgain ->
                     if (doNotShowAgain) viewModel.setShowDownloadPrompt(false)
-                    runPlaybackAction { viewModel.downloadSelectedSurah(playAfterDownload = true) }
+                    viewModel.downloadSelectedSurah(playAfterDownload = true)
                     showDownloadPrompt = false
                 },
                 onJustPlay = { doNotShowAgain ->
                     if (doNotShowAgain) viewModel.setShowDownloadPrompt(false)
-                    runPlaybackAction { viewModel.start() }
+                    viewModel.start()
                     showDownloadPrompt = false
                 },
                 onDismiss = { showDownloadPrompt = false }
@@ -308,6 +313,9 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
                 state = state,
                 viewModel = viewModel,
                 resolvedDarkTheme = resolvedDarkTheme,
+                onDownloadAll = {
+                    runNotificationAction { viewModel.downloadAllSurahs() }
+                },
                 onDismiss = { showSettings = false },
             )
         }
@@ -789,6 +797,7 @@ private fun SettingsSheet(
     state: PracticeUiState,
     viewModel: PracticeViewModel,
     resolvedDarkTheme: Boolean,
+    onDownloadAll: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     var showTranscriptionInfo by remember { mutableStateOf(false) }
@@ -954,6 +963,15 @@ private fun SettingsSheet(
                 },
             )
 
+            SwitchRow(
+                label = "Oynatmadan önce otomatik indir",
+                checked = state.settings.autoDownload,
+                onCheckedChange = {
+                    haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                    viewModel.setAutoDownload(it)
+                },
+            )
+
             DownloadManagerCard(
                 state = state,
                 onDownloadSelected = {
@@ -962,7 +980,7 @@ private fun SettingsSheet(
                 },
                 onDownloadAll = {
                     haptic.performHapticFeedback(HapticFeedbackType.Confirm)
-                    viewModel.downloadAllSurahs()
+                    onDownloadAll()
                 },
                 onClearCache = {
                     haptic.performHapticFeedback(HapticFeedbackType.Confirm)
