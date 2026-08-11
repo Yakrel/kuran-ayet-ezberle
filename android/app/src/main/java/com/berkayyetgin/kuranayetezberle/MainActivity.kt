@@ -15,15 +15,15 @@ import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
-    private var pendingPlaybackAction: (() -> Unit)? = null
+    private var pendingNotificationAction: (() -> Unit)? = null
     private lateinit var updateManager: UpdateManager
 
     private val notificationPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        val action = pendingPlaybackAction
-        pendingPlaybackAction = null
-        if (granted) action?.invoke()
+    ) {
+        val action = pendingNotificationAction
+        pendingNotificationAction = null
+        action?.invoke()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -35,7 +35,7 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    fun runWithPlaybackPermission(action: () -> Unit) {
+    fun runWithNotificationPermission(action: () -> Unit) {
         val permissionRequired = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
             PackageManager.PERMISSION_GRANTED
@@ -43,7 +43,7 @@ class MainActivity : ComponentActivity() {
             action()
             return
         }
-        pendingPlaybackAction = action
+        pendingNotificationAction = action
         notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
     }
 
@@ -53,7 +53,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        pendingPlaybackAction = null
+        pendingNotificationAction = null
         if (::updateManager.isInitialized) updateManager.destroy()
         super.onDestroy()
     }

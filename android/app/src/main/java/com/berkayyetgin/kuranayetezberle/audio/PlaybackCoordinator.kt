@@ -1,10 +1,7 @@
 package com.berkayyetgin.kuranayetezberle.audio
 
-import android.Manifest
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.os.Build
 import android.os.Looper
 import androidx.annotation.OptIn
 import androidx.core.content.ContextCompat
@@ -62,7 +59,6 @@ class PlaybackCoordinator @Inject constructor(
         speed: Float,
         surahName: String = "Kuran-ı Kerim",
     ) {
-        requireBackgroundPlaybackSupported()
         cancelRangeEndMessage()
         this.ayahs = ayahs
         this.range = range
@@ -246,18 +242,6 @@ class PlaybackCoordinator @Inject constructor(
 
     private fun ayahAt(positionMs: Long): AyahWithDetails? =
         PlaybackPositionPolicy.ayahAt(rangeAyahs, positionMs)
-
-    private fun requireBackgroundPlaybackSupported() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val granted = ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS,
-            ) == PackageManager.PERMISSION_GRANTED
-            check(granted) {
-                "Background playback requires notification permission on this Android version."
-            }
-        }
-    }
 
     private fun startPositionTicker() {
         if (positionTicker?.isActive == true) return
