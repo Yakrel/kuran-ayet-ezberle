@@ -38,6 +38,10 @@ jobs:
             exit 1
           fi
           IFS=. read -r major minor patch <<< "$VERSION"
+          if (( 10#$minor > 999 || 10#$patch > 999 )); then
+            echo "Minor and patch versions must be between 0 and 999" >&2
+            exit 1
+          fi
           version_code=$((10#$major * 1000000 + 10#$minor * 1000 + 10#$patch))
           if (( version_code < 1 || version_code > 2100000000 )); then
             echo "Calculated Android versionCode is outside the valid range" >&2
