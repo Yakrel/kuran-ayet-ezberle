@@ -33,8 +33,8 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Version must use the x.y.z format" >&2
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "Version must use canonical x.y.z format without leading zeros" >&2
             exit 1
           fi
           IFS=. read -r major minor patch <<< "$VERSION"
