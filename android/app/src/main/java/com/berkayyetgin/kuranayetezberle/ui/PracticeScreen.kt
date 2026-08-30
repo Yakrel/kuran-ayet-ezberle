@@ -77,6 +77,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -165,8 +166,9 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
 
     val view = LocalView.current
     val isSessionActive = state.sessionState is PlaybackSessionState.Active || state.sessionState is PlaybackSessionState.PausedByUser
-    LaunchedEffect(isSessionActive) {
+    DisposableEffect(view, isSessionActive) {
         view.keepScreenOn = isSessionActive
+        onDispose { view.keepScreenOn = false }
     }
 
     // Auto-clear download Done state after 2 seconds so the UI returns to idle.
@@ -192,7 +194,7 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
             ) {
                 showDownloadPrompt = true
             } else if (isIdle) {
-                viewModel.start()
+                runNotificationAction { viewModel.start() }
             } else {
                 viewModel.pauseOrResume()
             }
@@ -265,12 +267,12 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
                 surahName = state.selectedSurah?.name,
                 onDownloadAndPlay = { doNotShowAgain ->
                     if (doNotShowAgain) viewModel.setShowDownloadPrompt(false)
-                    viewModel.downloadSelectedSurah(playAfterDownload = true)
+                    runNotificationAction { viewModel.downloadSelectedSurah(playAfterDownload = true) }
                     showDownloadPrompt = false
                 },
                 onJustPlay = { doNotShowAgain ->
                     if (doNotShowAgain) viewModel.setShowDownloadPrompt(false)
-                    viewModel.start()
+                    runNotificationAction { viewModel.start() }
                     showDownloadPrompt = false
                 },
                 onDismiss = { showDownloadPrompt = false }

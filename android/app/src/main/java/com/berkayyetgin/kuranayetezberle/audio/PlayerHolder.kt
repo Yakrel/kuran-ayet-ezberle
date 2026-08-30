@@ -20,6 +20,12 @@ class PlayerHolder @Inject constructor(
         .setLooper(Looper.getMainLooper())
         .setWakeMode(C.WAKE_MODE_LOCAL)
         .setHandleAudioBecomingNoisy(true)
-        .setAudioAttributes(AudioAttributes.DEFAULT, true)
+        .setAudioAttributes(
+            AudioAttributes.Builder()
+                .setContentType(C.AUDIO_CONTENT_TYPE_SPEECH)
+                .setUsage(C.USAGE_MEDIA)
+                .build(),
+            true,
+        )
         .build()
 }

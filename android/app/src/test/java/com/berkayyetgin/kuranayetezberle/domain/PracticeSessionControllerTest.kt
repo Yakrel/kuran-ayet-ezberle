@@ -93,4 +93,19 @@ class PracticeSessionControllerTest {
         val pausedState = controller.state.value as PlaybackSessionState.PausedByUser
         assertEquals(45, pausedState.active.repeatTarget)
     }
+
+    @Test
+    fun updateSpeedModifiesActiveAndPausedSessions() {
+        val controller = PracticeSessionController()
+        controller.start(AyahRange(2, 100, 105), repeatTarget = 20, speed = 1f)
+
+        controller.updateSpeed(1.25f)
+        val activeState = controller.state.value as PlaybackSessionState.Active
+        assertEquals(1.25f, activeState.speed, 0f)
+
+        controller.pauseByUser()
+        controller.updateSpeed(1.5f)
+        val pausedState = controller.state.value as PlaybackSessionState.PausedByUser
+        assertEquals(1.5f, pausedState.active.speed, 0f)
+    }
 }

@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.os.Looper
 import androidx.annotation.OptIn
-import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackParameters
@@ -106,10 +105,7 @@ class PlaybackCoordinator @Inject constructor(
                 exoPlayer.playbackParameters = PlaybackParameters(speed)
             }
         }
-        ContextCompat.startForegroundService(
-            context,
-            Intent(context, PracticePlaybackService::class.java),
-        )
+        context.startService(Intent(context, PracticePlaybackService::class.java))
         sessionController.start(range, repeatCount, speed)
         exoPlayer.play()
         if (audio is FullSurahPlaybackAudio) startPositionTicker()

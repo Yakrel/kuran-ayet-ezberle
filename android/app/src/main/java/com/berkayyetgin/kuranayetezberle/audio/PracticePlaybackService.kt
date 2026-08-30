@@ -21,27 +21,25 @@ class PracticePlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        remoteCommandPlayer = RemoteCommandPlayer(
+        val commandPlayer = RemoteCommandPlayer(
             player = playerHolder.player,
             sessionController = sessionController,
             onRemoteStop = playbackCoordinator::stop,
         )
-        mediaSession = MediaSession.Builder(this, remoteCommandPlayer!!).build()
+        remoteCommandPlayer = commandPlayer
+        val session = MediaSession.Builder(this, commandPlayer).build()
+        mediaSession = session
+        addSession(session)
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         // PlaybackCoordinator.stop() temizler: positionTicker, player ve sessionController
         playbackCoordinator.stop()
-        stopPlaybackService()
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? {
-        return mediaSession?.takeIf { controllerInfo.isTrusted }
-    }
-
-    fun stopPlaybackService() {
-        stopSelf()
+        return mediaSession
     }
 
     override fun onDestroy() {

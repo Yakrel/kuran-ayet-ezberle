@@ -65,8 +65,15 @@ class PracticeSessionController @Inject constructor() {
     }
 
     fun updateSpeed(speed: Float) {
-        val active = mutableState.value as? PlaybackSessionState.Active ?: return
-        mutableState.value = active.copy(speed = speed)
+        when (val current = mutableState.value) {
+            is PlaybackSessionState.Active -> {
+                mutableState.value = current.copy(speed = speed)
+            }
+            is PlaybackSessionState.PausedByUser -> {
+                mutableState.value = PlaybackSessionState.PausedByUser(current.active.copy(speed = speed))
+            }
+            else -> Unit
+        }
     }
 
     fun updateRepeatTarget(repeatTarget: Int) {
