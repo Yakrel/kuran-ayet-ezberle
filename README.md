@@ -4,6 +4,8 @@ Native Android ayah repeat trainer for Quran memorization. The first official ap
 
 The app is intentionally centered on the core practice flow: choose a surah, set a start ayah and end ayah, set repeat count, then start an active repetition session. Verse text stays visible on the main screen.
 
+A second mode, **Sure tekrarı**, repeats whole surahs instead of an ayah range: pick any number of surahs in the surah sheet, drag them into play order, and the full sequence is played back to back and repeated by the repeat count. The ayah text follows the playing surah across surah boundaries.
+
 ## Stack
 
 - Kotlin

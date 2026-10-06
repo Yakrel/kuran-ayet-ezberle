@@ -18,6 +18,7 @@ import com.berkayyetgin.kuranayetezberle.data.FullSurahPlaybackAudio
 import com.berkayyetgin.kuranayetezberle.data.PlaybackAudio
 import com.berkayyetgin.kuranayetezberle.domain.AyahRange
 import com.berkayyetgin.kuranayetezberle.domain.PracticeSessionController
+import com.berkayyetgin.kuranayetezberle.domain.PracticeTarget
 import com.berkayyetgin.kuranayetezberle.domain.RepeatBoundaryResult
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -42,6 +43,7 @@ class PlaybackCoordinator @Inject constructor(
     private var rangeAyahs: List<AyahWithDetails> = emptyList()
     private var range: AyahRange? = null
     private var playbackAudio: PlaybackAudio? = null
+    private var surahLoop: SurahLoop? = null
 
     /** Guards against duplicate ExoPlayer boundary callbacks on the main looper. */
     private var handlingBoundary = false
@@ -58,6 +60,7 @@ class PlaybackCoordinator @Inject constructor(
         speed: Float,
         surahName: String = "Kuran-ı Kerim",
     ) {
+        surahLoop = null
         cancelRangeEndMessage()
         this.ayahs = ayahs
         this.range = range
@@ -111,6 +114,67 @@ class PlaybackCoordinator @Inject constructor(
         if (audio is FullSurahPlaybackAudio) startPositionTicker()
     }
 
+    /**
+     * Plays whole surahs back to back as one playlist; one pass over the playlist is one repeat.
+     * [ayahsBySurah] drives the active-ayah highlight for full-surah audio (ayah timings).
+     */
+    fun startSurahs(
+        audios: List<PlaybackAudio>,
+        ayahsBySurah: Map<Int, List<AyahWithDetails>>,
+        surahNames: Map<Int, String>,
+        repeatCount: Int,
+        speed: Float,
+    ) {
+        check(audios.isNotEmpty()) { "Unsupported data: no surah selected." }
+        cancelRangeEndMessage()
+        ayahs = emptyList()
+        rangeAyahs = emptyList()
+        range = null
+        surahLoop = SurahLoop(audios, ayahsBySurah)
+        playbackAudio = audios.first()
+
+        val exoPlayer = playerHolder.player
+        exoPlayer.removeListener(playbackStateListener)
+        exoPlayer.addListener(playbackStateListener)
+
+        val mediaItems = audios.flatMapIndexed { index, audio ->
+            val title = surahNames[audio.surahId] ?: "Sure ${audio.surahId}"
+            val position = "Sure ${index + 1}/${audios.size}"
+            when (audio) {
+                is FullSurahPlaybackAudio -> listOf(
+                    MediaItem.Builder()
+                        .setMediaId(audio.surahId.toString())
+                        .setUri(cacheRepository.resolvePlaybackUri(audio.audio))
+                        .setMediaMetadata(
+                            MediaMetadata.Builder().setTitle(title).setArtist(position).build(),
+                        )
+                        .build(),
+                )
+                is AyahFilesPlaybackAudio -> audio.ayahs.map { ayahAudio ->
+                    MediaItem.Builder()
+                        .setMediaId("${ayahAudio.surahId}:${ayahAudio.ayahNumber}")
+                        .setUri(cacheRepository.resolvePlaybackUri(ayahAudio))
+                        .setMediaMetadata(
+                            MediaMetadata.Builder()
+                                .setTitle(title)
+                                .setArtist("$position • Ayet ${ayahAudio.ayahNumber}")
+                                .build(),
+                        )
+                        .build()
+                }
+            }
+        }
+        check(mediaItems.isNotEmpty()) { "Unsupported data: selected surah audio is missing." }
+        exoPlayer.setMediaItems(mediaItems)
+        exoPlayer.prepare()
+        exoPlayer.playbackParameters = PlaybackParameters(speed)
+        exoPlayer.seekTo(0, 0L)
+        context.startService(Intent(context, PracticePlaybackService::class.java))
+        sessionController.start(PracticeTarget.Surahs(audios.map { it.surahId }), repeatCount, speed)
+        exoPlayer.play()
+        if (audios.first() is FullSurahPlaybackAudio) startPositionTicker()
+    }
+
     fun pause() {
         stopPositionTicker()
         playerHolder.player.pause()
@@ -150,15 +214,27 @@ class PlaybackCoordinator @Inject constructor(
         }
 
         override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+            val mediaId = mediaItem?.mediaId ?: return
+            if (surahLoop != null) {
+                // Loop media ids are "surah" (full-surah audio) or "surah:ayah" (per-ayah audio).
+                val parts = mediaId.split(':')
+                val surahId = parts[0].toIntOrNull() ?: return
+                sessionController.markPosition(parts.getOrNull(1)?.toIntOrNull() ?: 1, surahId)
+                return
+            }
             if (playbackAudio !is AyahFilesPlaybackAudio) return
-            val activeAyah = mediaItem?.mediaId?.toIntOrNull() ?: return
+            val activeAyah = mediaId.toIntOrNull() ?: return
             sessionController.markPosition(activeAyah)
         }
 
         override fun onPlaybackStateChanged(playbackState: Int) {
             if (playbackState == Player.STATE_ENDED) {
+                if (surahLoop != null) {
+                    handlePlaylistRepeatEnd()
+                    return
+                }
                 when (playbackAudio) {
-                    is AyahFilesPlaybackAudio -> handleAyahFilesRangeEnd()
+                    is AyahFilesPlaybackAudio -> handlePlaylistRepeatEnd()
                     is FullSurahPlaybackAudio -> handleFullSurahRangeEnd()
                     null -> Unit
                 }
@@ -170,7 +246,8 @@ class PlaybackCoordinator @Inject constructor(
         }
     }
 
-    private fun handleAyahFilesRangeEnd() {
+    /** Restarts the whole playlist (ayah files or surah loop) until the repeat target is reached. */
+    private fun handlePlaylistRepeatEnd() {
         if (handlingBoundary) return
         handlingBoundary = true
         try {
@@ -215,6 +292,16 @@ class PlaybackCoordinator @Inject constructor(
      * playback timeline so screen-off throttling cannot make the selected range overrun or skip.
      */
     private fun updatePosition(positionMs: Long) {
+        val loop = surahLoop
+        if (loop != null) {
+            val audio = loop.audios.getOrNull(playerHolder.player.currentMediaItemIndex) ?: return
+            val currentAyah = PlaybackPositionPolicy.ayahAt(
+                loop.ayahsBySurah[audio.surahId].orEmpty(),
+                positionMs,
+            ) ?: return
+            sessionController.markPosition(currentAyah.number, audio.surahId)
+            return
+        }
         val currentAyah = ayahAt(positionMs) ?: return
         sessionController.markPosition(currentAyah.number)
     }
@@ -274,6 +361,7 @@ class PlaybackCoordinator @Inject constructor(
         rangeAyahs = emptyList()
         range = null
         playbackAudio = null
+        surahLoop = null
         when (termination) {
             PlaybackTermination.Completed -> sessionController.complete()
             PlaybackTermination.Stopped -> sessionController.stop()
@@ -290,6 +378,11 @@ class PlaybackCoordinator @Inject constructor(
         data object Stopped : PlaybackTermination
         data class Failed(val message: String) : PlaybackTermination
     }
+
+    private class SurahLoop(
+        val audios: List<PlaybackAudio>,
+        val ayahsBySurah: Map<Int, List<AyahWithDetails>>,
+    )
 
     private companion object {
         const val POSITION_TICK_MS = 150L

@@ -3,6 +3,7 @@ package com.berkayyetgin.kuranayetezberle.domain
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class PracticeSessionControllerTest {
@@ -107,5 +108,43 @@ class PracticeSessionControllerTest {
         controller.updateSpeed(1.5f)
         val pausedState = controller.state.value as PlaybackSessionState.PausedByUser
         assertEquals(1.5f, pausedState.active.speed, 0f)
+    }
+
+    @Test
+    fun surahLoopRepeatRestartsFromFirstSurahAndCompletesAtTarget() {
+        val controller = PracticeSessionController()
+        controller.start(PracticeTarget.Surahs(listOf(1, 113, 114)), repeatTarget = 2, speed = 1f)
+        controller.markPosition(3, surahId = 114)
+
+        val playing = controller.state.value as PlaybackSessionState.Active
+        assertEquals(114, playing.activeSurahId)
+        assertEquals(3, playing.activeAyah)
+
+        assertEquals(RepeatBoundaryResult.Continue, controller.finishRangeRepeat())
+        val restarted = controller.state.value as PlaybackSessionState.Active
+        assertEquals(2, restarted.currentRepeat)
+        assertEquals(1, restarted.activeSurahId)
+        assertEquals(1, restarted.activeAyah)
+
+        assertEquals(RepeatBoundaryResult.Completed, controller.finishRangeRepeat())
+    }
+
+    @Test
+    fun markPositionWithoutSurahKeepsTheActiveSurah() {
+        val controller = PracticeSessionController()
+        controller.start(PracticeTarget.Surahs(listOf(113, 114)), repeatTarget = 1, speed = 1f)
+        controller.markPosition(2, surahId = 114)
+        controller.markPosition(4)
+
+        val active = controller.state.value as PlaybackSessionState.Active
+        assertEquals(114, active.activeSurahId)
+        assertEquals(4, active.activeAyah)
+    }
+
+    @Test
+    fun surahTargetRejectsEmptyDuplicateAndUnknownSurahs() {
+        assertThrows(IllegalArgumentException::class.java) { PracticeTarget.Surahs(emptyList()) }
+        assertThrows(IllegalArgumentException::class.java) { PracticeTarget.Surahs(listOf(1, 1)) }
+        assertThrows(IllegalArgumentException::class.java) { PracticeTarget.Surahs(listOf(115)) }
     }
 }

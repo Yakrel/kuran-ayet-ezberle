@@ -14,12 +14,36 @@ data class AyahRange(val surahId: Int, val startAyah: Int, val endAyah: Int) {
     }
 }
 
+/** What a practice session repeats: one ayah range, or whole surahs played back to back. */
+sealed interface PracticeTarget {
+    val firstSurahId: Int
+    val firstAyah: Int
+
+    data class Range(val range: AyahRange) : PracticeTarget {
+        override val firstSurahId: Int get() = range.surahId
+        override val firstAyah: Int get() = range.startAyah
+    }
+
+    /** Whole surahs in play order; the full sequence is one repeat. */
+    data class Surahs(val surahIds: List<Int>) : PracticeTarget {
+        init {
+            require(surahIds.isNotEmpty()) { "At least one surah is required." }
+            require(surahIds.all { it in 1..114 }) { "Surah must be between 1 and 114." }
+            require(surahIds.distinct().size == surahIds.size) { "Surahs must be unique." }
+        }
+
+        override val firstSurahId: Int get() = surahIds.first()
+        override val firstAyah: Int get() = 1
+    }
+}
+
 sealed interface PlaybackSessionState {
     data object Idle : PlaybackSessionState
     data class Active(
-        val range: AyahRange,
+        val target: PracticeTarget,
         val repeatTarget: Int,
         val currentRepeat: Int,
+        val activeSurahId: Int,
         val activeAyah: Int,
         val speed: Float,
     ) : PlaybackSessionState
@@ -41,8 +65,19 @@ class PracticeSessionController @Inject constructor() {
     val state: StateFlow<PlaybackSessionState> = mutableState.asStateFlow()
 
     fun start(range: AyahRange, repeatTarget: Int, speed: Float) {
+        start(PracticeTarget.Range(range), repeatTarget, speed)
+    }
+
+    fun start(target: PracticeTarget, repeatTarget: Int, speed: Float) {
         require(repeatTarget in 1..999) { "Repeat count must be between 1 and 999." }
-        mutableState.value = PlaybackSessionState.Active(range, repeatTarget, 1, range.startAyah, speed)
+        mutableState.value = PlaybackSessionState.Active(
+            target = target,
+            repeatTarget = repeatTarget,
+            currentRepeat = 1,
+            activeSurahId = target.firstSurahId,
+            activeAyah = target.firstAyah,
+            speed = speed,
+        )
     }
 
     fun pauseByUser() {
@@ -101,9 +136,13 @@ class PracticeSessionController @Inject constructor() {
         mutableState.value = PlaybackSessionState.Completed
     }
 
-    fun markPosition(activeAyah: Int) {
+    /** Records the playing ayah; [surahId] is only passed when playback may cross surah boundaries. */
+    fun markPosition(activeAyah: Int, surahId: Int? = null) {
         val active = mutableState.value as? PlaybackSessionState.Active ?: return
-        mutableState.value = active.copy(activeAyah = activeAyah)
+        mutableState.value = active.copy(
+            activeSurahId = surahId ?: active.activeSurahId,
+            activeAyah = activeAyah,
+        )
     }
 
     fun finishRangeRepeat(): RepeatBoundaryResult {
@@ -115,7 +154,8 @@ class PracticeSessionController @Inject constructor() {
         } else {
             mutableState.value = active.copy(
                 currentRepeat = active.currentRepeat + 1,
-                activeAyah = active.range.startAyah,
+                activeSurahId = active.target.firstSurahId,
+                activeAyah = active.target.firstAyah,
             )
             RepeatBoundaryResult.Continue
         }

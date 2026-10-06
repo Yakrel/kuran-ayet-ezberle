@@ -37,6 +37,8 @@ class UpdateManager(private val activity: Activity) {
     }
 
     fun start() {
+        // Debug builds carry a placeholder version and a different package, so release updates never apply.
+        if (BuildConfig.DEBUG) return
         registerReceiver()
         resumePendingDownload()
         if (checkStarted) return

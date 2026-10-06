@@ -28,11 +28,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,6 +52,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Pause
@@ -57,6 +60,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Checkbox
@@ -85,15 +89,20 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalLayoutDirection
@@ -111,6 +120,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.berkayyetgin.kuranayetezberle.MainActivity
@@ -121,6 +131,7 @@ import com.berkayyetgin.kuranayetezberle.data.SurahEntity
 import com.berkayyetgin.kuranayetezberle.domain.PlaybackSessionState
 import com.berkayyetgin.kuranayetezberle.ui.theme.AppTheme
 import java.util.Locale
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 private val ArabicFontFamily = FontFamily(Font(R.font.uthmanic_hafs_v22))
@@ -188,7 +199,7 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
 
             if (
                 isIdle &&
-                !state.isSelectedSurahCached &&
+                !state.isPlaybackSetCached &&
                 state.settings.showDownloadPrompt &&
                 !state.settings.autoDownload
             ) {
@@ -248,10 +259,11 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
                     activeAyah = state.activeAyah,
                     startAyah = state.startAyah,
                     endAyah = state.endAyah,
+                    rangeEditable = !state.isLoopMode,
                     showTranscription = state.settings.showTranscription,
                     arabicTextSizeSp = state.settings.arabicTextSizeSp,
-                    canSwipeToPreviousSurah = state.selectedSurahId > 1,
-                    canSwipeToNextSurah = state.selectedSurahId < 114,
+                    canSwipeToPreviousSurah = state.canSelectPreviousSurah,
+                    canSwipeToNextSurah = state.canSelectNextSurah,
                     onPageSwiped = viewModel::onPageSwipe,
                     onPreviousSurah = viewModel::previousSurah,
                     onNextSurah = viewModel::nextSurah,
@@ -264,7 +276,7 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
 
         if (showDownloadPrompt) {
             DownloadPromptDialog(
-                surahName = state.selectedSurah?.name,
+                surahName = if (state.isLoopMode) "Sure listesi" else state.selectedSurah?.name,
                 onDownloadAndPlay = { doNotShowAgain ->
                     if (doNotShowAgain) viewModel.setShowDownloadPrompt(false)
                     runNotificationAction { viewModel.downloadSelectedSurah(playAfterDownload = true) }
@@ -283,10 +295,15 @@ fun PracticeScreen(viewModel: PracticeViewModel = hiltViewModel()) {
             SurahSelectionSheet(
                 surahs = state.surahs,
                 selectedSurahId = state.selectedSurahId,
+                isLoopMode = state.isLoopMode,
+                loopSurahIds = state.loopSurahIds,
                 onSurahSelected = {
                     viewModel.selectSurah(it)
                     showSurahSelection = false
                 },
+                onLoopModeChange = { viewModel.setLoopMode(it) },
+                onToggleLoopSurah = { viewModel.toggleLoopSurah(it) },
+                onMoveLoopSurah = { from, to -> viewModel.moveLoopSurah(from, to) },
                 onDismiss = { showSurahSelection = false }
             )
         }
@@ -361,7 +378,7 @@ private fun PracticeTopBar(
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         onPrevSurah()
                     },
-                    enabled = state.selectedSurahId > 1,
+                    enabled = state.canSelectPreviousSurah,
                     modifier = Modifier.size(36.dp),
                 ) {
                     Icon(Icons.Filled.ChevronLeft, contentDescription = "Önceki sure")
@@ -389,14 +406,23 @@ private fun PracticeTopBar(
                             verticalArrangement = Arrangement.Center,
                         ) {
                             Text(
-                                text = state.selectedSurah?.let { "${it.id}. ${it.name}" } ?: "Sure seç",
+                                text = if (state.isLoopMode && state.loopSurahIds.isEmpty()) {
+                                    "Sure listesi"
+                                } else {
+                                    state.selectedSurah?.let { "${it.id}. ${it.name}" } ?: "Sure seç"
+                                },
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
                             Text(
-                                text = state.selectedSurah?.let { "${it.verseCount} ayet" } ?: "Listeyi aç",
+                                text = when {
+                                    state.isLoopMode && state.loopSurahIds.isEmpty() -> "Tekrar için sure ekle"
+                                    state.isLoopMode ->
+                                        "Sure tekrarı • ${state.loopSurahIds.indexOf(state.selectedSurahId) + 1}/${state.loopSurahIds.size}"
+                                    else -> state.selectedSurah?.let { "${it.verseCount} ayet" } ?: "Listeyi aç"
+                                },
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 maxLines = 1,
@@ -416,7 +442,7 @@ private fun PracticeTopBar(
                         haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         onNextSurah()
                     },
-                    enabled = state.selectedSurahId < 114,
+                    enabled = state.canSelectNextSurah,
                     modifier = Modifier.size(36.dp),
                 ) {
                     Icon(Icons.Filled.ChevronRight, contentDescription = "Sonraki sure")
@@ -438,15 +464,27 @@ private fun PracticeTopBar(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                TopBarChip(
-                    label = "Ayet",
-                    value = "${state.startAyah}-${state.endAyah}",
-                    onClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.Confirm)
-                        onAyahRangeClick()
-                    },
-                    modifier = Modifier.weight(1.2f),
-                )
+                if (state.isLoopMode) {
+                    TopBarChip(
+                        label = "Sure listesi",
+                        value = "${state.loopSurahIds.size} sure",
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                            onSurahClick()
+                        },
+                        modifier = Modifier.weight(1.2f),
+                    )
+                } else {
+                    TopBarChip(
+                        label = "Ayet",
+                        value = "${state.startAyah}-${state.endAyah}",
+                        onClick = {
+                            haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                            onAyahRangeClick()
+                        },
+                        modifier = Modifier.weight(1.2f),
+                    )
+                }
                 TopBarChip(
                     label = "Tekrar",
                     value = state.settings.repeatCount.toString(),
@@ -626,15 +664,21 @@ private fun PlaybackBar(
         is PlaybackSessionState.PausedByUser -> session.active.activeAyah
         else -> null
     }
+    val activeSurahName = state.surahs.firstOrNull { it.id == state.activeSurahId }?.name
     val title = when {
+        isActive && state.isLoopMode -> "${activeSurahName ?: "Sure"} • Ayet $activeAyah"
         isActive -> "Ayet $activeAyah"
         isCompleted -> "Çalışma tamamlandı"
         session is PlaybackSessionState.Error -> "Hata oluştu"
+        state.isLoopMode -> "Sure tekrarı"
         else -> state.selectedSurah?.name ?: "Hazır"
     }
     val subtitle = when {
         isActive -> "${activeRepeat.first} / ${activeRepeat.second} tekrar • ${state.settings.playbackSpeed.toSpeedLabel()}"
         isCompleted -> "Tekrar başlatmaya hazır"
+        state.isLoopMode && state.canStart ->
+            "${state.loopSurahIds.size} sure • ${state.settings.repeatCount} tekrar • ${state.settings.playbackSpeed.toSpeedLabel()}"
+        state.isLoopMode -> "Önce sure listesine sure ekle"
         state.canStart -> "Ayet ${state.startAyah}-${state.endAyah} • ${state.settings.repeatCount} tekrar • ${state.settings.playbackSpeed.toSpeedLabel()}"
         else -> "Ayet aralığı hazır değil"
     }
@@ -691,8 +735,8 @@ private fun PlaybackBar(
 
                 if (!isActive) {
                     CacheStatusButton(
-                        surahName = state.selectedSurah?.name,
-                        isCached = state.isSelectedSurahCached,
+                        surahName = if (state.isLoopMode) "Liste" else state.selectedSurah?.name,
+                        isCached = state.isPlaybackSetCached,
                         downloadState = state.downloadState,
                         onDownload = onDownloadClick,
                     )
@@ -1465,6 +1509,7 @@ private fun AyahList(
     activeAyah: Int?,
     startAyah: Int,
     endAyah: Int,
+    rangeEditable: Boolean,
     showTranscription: Boolean,
     arabicTextSizeSp: Float,
     canSwipeToPreviousSurah: Boolean,
@@ -1587,11 +1632,12 @@ private fun AyahList(
                     AyahCard(
                         ayah = ayah,
                         active = ayah.number == activeAyah,
-                        inRange = ayah.number in startAyah..endAyah,
-                        isRangeStart = ayah.number == startAyah,
-                        isRangeEnd = ayah.number == endAyah,
+                        inRange = rangeEditable && ayah.number in startAyah..endAyah,
+                        isRangeStart = rangeEditable && ayah.number == startAyah,
+                        isRangeEnd = rangeEditable && ayah.number == endAyah,
                         showTranscription = showTranscription,
                         arabicTextSizeSp = arabicTextSizeSp,
+                        menuEnabled = rangeEditable,
                         onSetStartAndEnd = { onSetStartAndEnd(ayah.number) },
                         onSetEnd = { onSetEnd(ayah.number) }
                     )
@@ -1611,6 +1657,7 @@ private fun AyahCard(
     isRangeEnd: Boolean,
     showTranscription: Boolean,
     arabicTextSizeSp: Float,
+    menuEnabled: Boolean,
     onSetStartAndEnd: () -> Unit,
     onSetEnd: () -> Unit,
 ) {
@@ -1646,10 +1693,14 @@ private fun AyahCard(
                 .border(if (active || isRangeBoundary) 2.dp else 1.dp, borderColor, RoundedCornerShape(12.dp))
                 .combinedClickable(
                     onClick = {},
-                    onLongClick = {
-                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                        showMenu = true
-                    }
+                    onLongClick = if (menuEnabled) {
+                        {
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            showMenu = true
+                        }
+                    } else {
+                        null
+                    },
                 )
                 .padding(16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1746,7 +1797,12 @@ private fun AyahCard(
 private fun SurahSelectionSheet(
     surahs: List<SurahEntity>,
     selectedSurahId: Int,
+    isLoopMode: Boolean,
+    loopSurahIds: List<Int>,
     onSurahSelected: (Int) -> Unit,
+    onLoopModeChange: (Boolean) -> Unit,
+    onToggleLoopSurah: (Int) -> Unit,
+    onMoveLoopSurah: (from: Int, to: Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var searchQuery by rememberSaveable { mutableStateOf("") }
@@ -1754,6 +1810,11 @@ private fun SurahSelectionSheet(
         if (searchQuery.isBlank()) surahs
         else surahs.filter { it.name.matchesSurahQuery(searchQuery) }
     }
+    val loopSurahs = remember(surahs, loopSurahIds) {
+        val byId = surahs.associateBy { it.id }
+        loopSurahIds.mapNotNull { byId[it] }
+    }
+    val loopSurahIdSet = remember(loopSurahIds) { loopSurahIds.toSet() }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1764,6 +1825,22 @@ private fun SurahSelectionSheet(
                 .fillMaxHeight(0.85f)
                 .padding(horizontal = 16.dp)
         ) {
+            Row(
+                modifier = Modifier.padding(bottom = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                FilterChip(
+                    selected = !isLoopMode,
+                    onClick = { onLoopModeChange(false) },
+                    label = { Text("Tek sure") },
+                )
+                FilterChip(
+                    selected = isLoopMode,
+                    onClick = { onLoopModeChange(true) },
+                    label = { Text("Sure tekrarı") },
+                )
+            }
+
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
@@ -1788,10 +1865,43 @@ private fun SurahSelectionSheet(
                 verticalArrangement = Arrangement.spacedBy(4.dp),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
-                items(filteredSurahs, key = { it.id }) { surah ->
-                    val isSelected = surah.id == selectedSurahId
+                if (isLoopMode) {
+                    item(key = "loop_header") {
+                        Text(
+                            text = if (loopSurahs.isEmpty()) {
+                                "Sure tekrarı: aşağıdan en az bir sure seç"
+                            } else {
+                                "Çalma sırası • sürükleyerek değiştir"
+                            },
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(vertical = 4.dp),
+                        )
+                    }
+                    itemsIndexed(loopSurahs, key = { _, surah -> "loop_${surah.id}" }) { index, surah ->
+                        LoopOrderRow(
+                            index = index,
+                            lastIndex = loopSurahs.lastIndex,
+                            surah = surah,
+                            onMove = onMoveLoopSurah,
+                            onRemove = { onToggleLoopSurah(surah.id) },
+                        )
+                    }
+                    item(key = "all_header") {
+                        Text(
+                            text = "Tüm sureler",
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
+                        )
+                    }
+                }
+                items(filteredSurahs, key = { "all_${it.id}" }) { surah ->
+                    val isSelected = if (isLoopMode) surah.id in loopSurahIdSet else surah.id == selectedSurahId
                     Surface(
-                        onClick = { onSurahSelected(surah.id) },
+                        onClick = {
+                            if (isLoopMode) onToggleLoopSurah(surah.id) else onSurahSelected(surah.id)
+                        },
                         shape = RoundedCornerShape(12.dp),
                         color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
                         modifier = Modifier.fillMaxWidth()
@@ -1820,7 +1930,9 @@ private fun SurahSelectionSheet(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            if (isSelected) {
+                            if (isLoopMode) {
+                                Checkbox(checked = isSelected, onCheckedChange = null)
+                            } else if (isSelected) {
                                 Icon(
                                     imageVector = Icons.Default.CheckCircle,
                                     contentDescription = null,
@@ -1832,6 +1944,121 @@ private fun SurahSelectionSheet(
                     }
                 }
             }
+
+            if (isLoopMode) {
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                ) {
+                    Text(if (loopSurahs.isEmpty()) "Kapat" else "Tamam • ${loopSurahs.size} sure")
+                }
+            }
+        }
+    }
+}
+
+private val LoopOrderRowHeight = 56.dp
+
+/** One surah of the loop order: remove button and a drag handle that reorders the list live. */
+@Composable
+private fun LoopOrderRow(
+    index: Int,
+    lastIndex: Int,
+    surah: SurahEntity,
+    onMove: (from: Int, to: Int) -> Unit,
+    onRemove: () -> Unit,
+) {
+    val rowHeightPx = with(LocalDensity.current) { LoopOrderRowHeight.toPx() }
+    var dragOffset by remember { mutableFloatStateOf(0f) }
+    var dragging by remember { mutableStateOf(false) }
+    // Several drag events can arrive before the list recomposes with the new order, so the row
+    // tracks its own index and only resyncs once the new order has been composed.
+    var liveIndex by remember { mutableIntStateOf(index) }
+    SideEffect { liveIndex = index }
+    val currentLastIndex by rememberUpdatedState(lastIndex)
+    val currentOnMove by rememberUpdatedState(onMove)
+
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (dragging) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        },
+        shadowElevation = if (dragging) 6.dp else 0.dp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(LoopOrderRowHeight)
+            .zIndex(if (dragging) 1f else 0f)
+            .graphicsLayer { translationY = dragOffset },
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 16.dp, end = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = (index + 1).toString(),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.width(24.dp),
+            )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = surah.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "${surah.verseCount} Ayet",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            IconButton(onClick = onRemove) {
+                Icon(Icons.Default.Close, contentDescription = "Listeden çıkar")
+            }
+            Icon(
+                imageVector = Icons.Default.DragHandle,
+                contentDescription = "Sırayı değiştir",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .size(48.dp)
+                    .padding(12.dp)
+                    .pointerInput(Unit) {
+                        detectDragGestures(
+                            onDragStart = { dragging = true },
+                            onDragEnd = {
+                                dragging = false
+                                dragOffset = 0f
+                            },
+                            onDragCancel = {
+                                dragging = false
+                                dragOffset = 0f
+                            },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                dragOffset += dragAmount.y
+                                val steps = (dragOffset / rowHeightPx).roundToInt()
+                                if (steps != 0) {
+                                    val from = liveIndex
+                                    val to = (from + steps).coerceIn(0, currentLastIndex)
+                                    if (to != from) {
+                                        currentOnMove(from, to)
+                                        liveIndex = to
+                                        dragOffset -= (to - from) * rowHeightPx
+                                    } else {
+                                        dragOffset = 0f
+                                    }
+                                }
+                            },
+                        )
+                    },
+            )
         }
     }
 }

@@ -75,18 +75,43 @@ data class PracticeUiState(
     /** Reflects the state of any active download triggered by the user. */
     val downloadState: DownloadState = DownloadState.Idle,
     val restoredActiveAyah: Int? = null,
+    /** True while the screen is in surah-loop mode (whole surahs instead of an ayah range). */
+    val isLoopMode: Boolean = false,
+    /** Surahs of the loop in play order. */
+    val loopSurahIds: List<Int> = emptyList(),
+    /** Reflects whether every surah of the loop is fully available in the local cache. */
+    val isLoopCached: Boolean = false,
     val error: String? = null,
 ) {
     val selectedSurahFromId: SurahEntity? get() = surahs.firstOrNull { it.id == selectedSurahId }
     val selectedReciter: ReciterOption? get() = reciters.firstOrNull { it.id == settings.reciterId }
+    /** Playing ayah, only while the playing surah is the one on screen. */
     val activeAyah: Int?
         get() = when (val session = sessionState) {
-            is PlaybackSessionState.Active -> session.activeAyah
-            is PlaybackSessionState.PausedByUser -> session.active.activeAyah
+            is PlaybackSessionState.Active -> session.activeAyah.takeIf { session.activeSurahId == selectedSurahId }
+            is PlaybackSessionState.PausedByUser ->
+                session.active.activeAyah.takeIf { session.active.activeSurahId == selectedSurahId }
             else -> restoredActiveAyah
+        }
+    val activeSurahId: Int?
+        get() = when (val session = sessionState) {
+            is PlaybackSessionState.Active -> session.activeSurahId
+            is PlaybackSessionState.PausedByUser -> session.active.activeSurahId
+            else -> null
+        }
+    /** Cache state of whatever Play would start: the loop, or the selected surah. */
+    val isPlaybackSetCached: Boolean get() = if (isLoopMode) isLoopCached else isSelectedSurahCached
+    val canSelectPreviousSurah: Boolean
+        get() = if (isLoopMode) loopSurahIds.indexOf(selectedSurahId) > 0 else selectedSurahId > 1
+    val canSelectNextSurah: Boolean
+        get() = if (isLoopMode) {
+            loopSurahIds.indexOf(selectedSurahId).let { it >= 0 && it < loopSurahIds.lastIndex }
+        } else {
+            selectedSurahId < 114
         }
     val canStart: Boolean
         get() {
+            if (isLoopMode) return !loading && loopSurahIds.isNotEmpty()
             if (loading || ayahs.isEmpty() || selectedSurah == null) return false
             if (startAyah > endAyah) return false
             val availableAyahs = ayahs.mapTo(mutableSetOf()) { it.number }
@@ -122,7 +147,11 @@ class PracticeViewModel @Inject constructor(
                     mutableUiState.update { 
                         it.copy(
                             settings = settings,
-                            selectedSurahId = settings.lastSurahId,
+                            isLoopMode = settings.surahLoopEnabled,
+                            loopSurahIds = settings.surahLoopIds,
+                            selectedSurahId = settings.surahLoopIds.firstOrNull()
+                                ?.takeIf { settings.surahLoopEnabled }
+                                ?: settings.lastSurahId,
                             startAyah = settings.lastStartAyah,
                             endAyah = settings.lastEndAyah,
                             restoredActiveAyah = settings.lastActiveAyah,
@@ -151,14 +180,21 @@ class PracticeViewModel @Inject constructor(
         viewModelScope.launch {
             sessionController.state.collect { session ->
                 val current = mutableUiState.value
+                val activeSurahId = when (session) {
+                    is PlaybackSessionState.Active -> session.activeSurahId
+                    is PlaybackSessionState.PausedByUser -> session.active.activeSurahId
+                    else -> null
+                }
                 val activeAyah = when (session) {
                     is PlaybackSessionState.Active -> session.activeAyah
                     is PlaybackSessionState.PausedByUser -> session.active.activeAyah
                     else -> null
                 }
-                val activePage = activeAyah?.let { ayah ->
-                    current.ayahs.firstOrNull { it.number == ayah }?.page
-                }
+                // A surah loop crosses surah boundaries; the screen follows the playing surah.
+                val followSurahId = activeSurahId?.takeIf { current.isLoopMode && it != current.selectedSurahId }
+                val activePage = activeAyah
+                    ?.takeIf { followSurahId == null }
+                    ?.let { ayah -> current.ayahs.firstOrNull { it.number == ayah }?.page }
                 mutableUiState.update {
                     it.copy(
                         sessionState = session,
@@ -167,7 +203,8 @@ class PracticeViewModel @Inject constructor(
                         restoredActiveAyah = if (session !is PlaybackSessionState.Idle) null else it.restoredActiveAyah
                     )
                 }
-                if (activeAyah != null) {
+                if (followSurahId != null) showLoopSurah(followSurahId)
+                if (activeAyah != null && !current.isLoopMode) {
                     saveLastSession()
                 }
             }
@@ -197,7 +234,11 @@ class PracticeViewModel @Inject constructor(
 
     fun selectSurah(id: Int) = viewModelScope.launch {
         stopIfSessionStarted()
-        val surah = mutableUiState.value.surahs.firstOrNull { it.id == id } ?: return@launch
+        applySelectedSurah(id)
+    }
+
+    private suspend fun applySelectedSurah(id: Int) {
+        val surah = mutableUiState.value.surahs.firstOrNull { it.id == id } ?: return
         mutableUiState.update {
             it.copy(
                 selectedSurahId = id,
@@ -211,14 +252,21 @@ class PracticeViewModel @Inject constructor(
         reloadSelectedSurah()
     }
 
-    fun nextSurah() {
-        val current = mutableUiState.value.selectedSurahId
-        if (current < 114) selectSurah(current + 1)
-    }
+    fun nextSurah() = stepSurah(1)
 
-    fun previousSurah() {
-        val current = mutableUiState.value.selectedSurahId
-        if (current > 1) selectSurah(current - 1)
+    fun previousSurah() = stepSurah(-1)
+
+    /** Moves to the neighbouring surah: within the loop in loop mode, else by surah number. */
+    private fun stepSurah(delta: Int) {
+        val state = mutableUiState.value
+        if (state.isLoopMode) {
+            val index = state.loopSurahIds.indexOf(state.selectedSurahId)
+            if (index < 0) return
+            state.loopSurahIds.getOrNull(index + delta)?.let(::showLoopSurah)
+        } else {
+            val target = state.selectedSurahId + delta
+            if (target in 1..114) selectSurah(target)
+        }
     }
 
     fun setStartAyah(value: Int) {
@@ -352,8 +400,12 @@ class PracticeViewModel @Inject constructor(
             val state = mutableUiState.value
             check(state.canStart) { "Unsupported state: selected ayah range is not ready." }
             // If autoDownload is enabled and the surah is not cached, trigger download-then-play.
-            if (state.settings.autoDownload && !state.isSelectedSurahCached) {
+            if (state.settings.autoDownload && !state.isPlaybackSetCached) {
                 downloadSelectedSurah(playAfterDownload = true)
+                return@launch
+            }
+            if (state.isLoopMode) {
+                startSurahLoop(state)
                 return@launch
             }
             val range = AyahRange(state.selectedSurahId, state.startAyah, state.endAyah)
@@ -390,6 +442,10 @@ class PracticeViewModel @Inject constructor(
     /** Downloads the currently selected surah. No-ops if a download is already in progress. */
     fun downloadSelectedSurah(playAfterDownload: Boolean = false): kotlinx.coroutines.Job = viewModelScope.launch {
         if (mutableUiState.value.downloadState is DownloadState.InProgress) return@launch
+        if (mutableUiState.value.isLoopMode) {
+            downloadLoopSurahs(playAfterDownload)
+            return@launch
+        }
         val initialState = mutableUiState.value
         val requestedSurahId = initialState.selectedSurahId
         val requestedReciterId = initialState.settings.reciterId
@@ -515,6 +571,8 @@ class PracticeViewModel @Inject constructor(
                 val currentAudio = runCatching { selectedSurahPlaybackAudio() }.getOrNull()
                 val selectedCached = currentAudio?.let { audioCacheRepository.isCached(it) } ?: false
                 val cachedCount = cachedSurahCount()
+                val loopState = mutableUiState.value
+                val loopCached = computeLoopCached(loopState.loopSurahIds, loopState.settings.reciterId)
                 mutableUiState.update {
                     it.copy(
                         downloadState = DownloadState.Done(
@@ -528,6 +586,7 @@ class PracticeViewModel @Inject constructor(
                             ),
                         ),
                         isSelectedSurahCached = selectedCached,
+                        isLoopCached = loopCached,
                         cachedSurahCount = cachedCount,
                     )
                 }
@@ -553,7 +612,7 @@ class PracticeViewModel @Inject constructor(
                 mutableUiState.update {
                     it.copy(
                         isSelectedSurahCached = false,
-                        cachedSurahCount = 0,
+                        isLoopCached = false,
                     )
                 }
             }
@@ -583,6 +642,11 @@ class PracticeViewModel @Inject constructor(
                 )
             }.getOrNull()
             val isCached = audio?.let { audioCacheRepository.isCached(it) } ?: false
+            val loopCached = if (requestedState.isLoopMode) {
+                computeLoopCached(requestedState.loopSurahIds, requestedState.settings.reciterId)
+            } else {
+                false
+            }
             val currentState = mutableUiState.value
             val requestIsCurrent = generation == reloadGeneration.get() &&
                 currentState.selectedSurahId == requestedState.selectedSurahId &&
@@ -590,23 +654,28 @@ class PracticeViewModel @Inject constructor(
                 currentState.settings.reciterId == requestedState.settings.reciterId
             if (!requestIsCurrent) return@runCatching
 
+            // Only trust the playing ayah when the session is on the surah being loaded.
             val activeAyah = when (val session = currentState.sessionState) {
-                is PlaybackSessionState.Active -> session.activeAyah
-                is PlaybackSessionState.PausedByUser -> session.active.activeAyah
+                is PlaybackSessionState.Active ->
+                    session.activeAyah.takeIf { session.activeSurahId == requestedState.selectedSurahId }
+                is PlaybackSessionState.PausedByUser ->
+                    session.active.activeAyah.takeIf { session.active.activeSurahId == requestedState.selectedSurahId }
                 else -> null
             }
             val validStartAyah = currentState.startAyah.coerceIn(1, selectedSurah.verseCount)
             val validEndAyah = currentState.endAyah.coerceIn(validStartAyah, selectedSurah.verseCount)
-            val targetAyah = activeAyah ?: validStartAyah
+            // In loop mode the single-surah ayah range is left untouched for when the mode is switched off.
+            val targetAyah = activeAyah ?: if (currentState.isLoopMode) 1 else validStartAyah
             val page = ayahs.firstOrNull { it.number == targetAyah }?.page
                 ?: ayahs.firstOrNull()?.page ?: 1
             mutableUiState.update {
                 it.copy(
                     ayahs = ayahs,
-                    startAyah = validStartAyah,
-                    endAyah = validEndAyah,
+                    startAyah = if (it.isLoopMode) it.startAyah else validStartAyah,
+                    endAyah = if (it.isLoopMode) it.endAyah else validEndAyah,
                     selectedPage = page,
                     isSelectedSurahCached = isCached,
+                    isLoopCached = loopCached,
                     selectedSurah = selectedSurah,
                     restoredActiveAyah = it.restoredActiveAyah?.takeIf { ayah -> ayah in 1..selectedSurah.verseCount },
                 )
@@ -724,6 +793,166 @@ class PracticeViewModel @Inject constructor(
 
     private fun PracticeUiState.pageForAyah(ayahNumber: Int): Int =
         ayahs.firstOrNull { it.number == ayahNumber }?.page ?: selectedPage
+
+    // ─── Surah loop mode ─────────────────────────────────────────────────────
+
+    fun setLoopMode(enabled: Boolean) = viewModelScope.launch {
+        val state = mutableUiState.value
+        if (state.isLoopMode == enabled) return@launch
+        stopIfSessionStarted()
+        mutableUiState.update { it.copy(isLoopMode = enabled, restoredActiveAyah = null, error = null) }
+        persistSurahLoop()
+        if (enabled) {
+            val first = state.loopSurahIds.firstOrNull()
+            if (first != null && state.selectedSurahId !in state.loopSurahIds) {
+                showLoopSurah(first)
+            } else {
+                reloadSelectedSurah()
+            }
+        } else {
+            applySelectedSurah(state.selectedSurahId)
+        }
+    }
+
+    fun toggleLoopSurah(surahId: Int) {
+        val ids = mutableUiState.value.loopSurahIds
+        updateLoopSurahIds(if (surahId in ids) ids - surahId else ids + surahId, membershipChanged = true)
+    }
+
+    fun moveLoopSurah(from: Int, to: Int) {
+        val ids = mutableUiState.value.loopSurahIds
+        if (from !in ids.indices || to !in ids.indices || from == to) return
+        updateLoopSurahIds(
+            ids.toMutableList().apply { add(to, removeAt(from)) },
+            membershipChanged = false,
+        )
+    }
+
+    private fun updateLoopSurahIds(ids: List<Int>, membershipChanged: Boolean) {
+        stopIfSessionStarted()
+        val state = mutableUiState.value
+        mutableUiState.update { it.copy(loopSurahIds = ids, restoredActiveAyah = null, error = null) }
+        persistSurahLoop()
+        if (!membershipChanged) return
+        if (state.isLoopMode && state.selectedSurahId !in ids) ids.firstOrNull()?.let(::showLoopSurah)
+        viewModelScope.launch { refreshLoopCached() }
+    }
+
+    private fun persistSurahLoop() = viewModelScope.launch {
+        val state = mutableUiState.value
+        settingsRepository.saveSurahLoop(state.isLoopMode, state.loopSurahIds)
+    }
+
+    /** Displays [surahId] without touching playback or the single-surah ayah range. */
+    private fun showLoopSurah(surahId: Int) {
+        mutableUiState.update {
+            it.copy(
+                selectedSurahId = surahId,
+                selectedSurah = it.surahs.firstOrNull { surah -> surah.id == surahId },
+                ayahs = emptyList(),
+                restoredActiveAyah = null,
+            )
+        }
+        viewModelScope.launch { reloadSelectedSurah() }
+    }
+
+    private suspend fun startSurahLoop(state: PracticeUiState) {
+        val surahIds = state.loopSurahIds
+        val reciterId = state.settings.reciterId
+        val audios = withContext(Dispatchers.IO) {
+            quranRepository.playbackAudioForSurahs(surahIds, reciterId)
+        }
+        val ayahsBySurah = withContext(Dispatchers.IO) {
+            surahIds.associateWith { surahId ->
+                quranRepository.ayahsForSurah(surahId, state.settings.translationAuthorId, reciterId)
+            }
+        }
+        mutableUiState.update { it.copy(error = null) }
+        playbackCoordinator.startSurahs(
+            audios = audios,
+            ayahsBySurah = ayahsBySurah,
+            surahNames = state.surahs.associate { it.id to it.name },
+            repeatCount = state.settings.repeatCount,
+            speed = state.settings.playbackSpeed,
+        )
+    }
+
+    private suspend fun downloadLoopSurahs(playAfterDownload: Boolean) {
+        val requested = mutableUiState.value
+        val surahIds = requested.loopSurahIds
+        val reciterId = requested.settings.reciterId
+        val label = "${surahIds.size} sure indiriliyor"
+        mutableUiState.update { it.copy(downloadState = DownloadState.InProgress(label = label)) }
+        val result = runCatching {
+            val audios = withContext(Dispatchers.IO) {
+                quranRepository.playbackAudioForSurahs(surahIds, reciterId)
+            }
+            audioCacheRepository.downloadAllPlayback(audios) { completedCount, totalCount ->
+                mutableUiState.update {
+                    it.copy(
+                        downloadState = DownloadState.InProgress(
+                            label = label,
+                            completedItems = completedCount,
+                            totalItems = totalCount,
+                        ),
+                    )
+                }
+            }
+        }
+        val failure = result.exceptionOrNull()
+            ?: result.getOrNull()?.failureCount?.takeIf { it > 0 }?.let {
+                IllegalStateException("$it sure indirilemedi. Bağlantını kontrol edip tekrar dene.")
+            }
+        if (failure != null) {
+            mutableUiState.update {
+                it.copy(downloadState = DownloadState.Idle, error = downloadErrorMessage(failure))
+            }
+            return
+        }
+
+        val cachedSurahCount = cachedSurahCount()
+        val loopCached = computeLoopCached(surahIds, reciterId)
+        val selectedCached = runCatching {
+            audioCacheRepository.isCached(selectedSurahPlaybackAudio())
+        }.getOrDefault(false)
+        mutableUiState.update {
+            it.copy(
+                downloadState = DownloadState.Done(successCount = surahIds.size, failureCount = 0),
+                isSelectedSurahCached = selectedCached,
+                isLoopCached = loopCached,
+                cachedSurahCount = cachedSurahCount,
+            )
+        }
+        val current = mutableUiState.value
+        if (
+            playAfterDownload &&
+            current.isLoopMode &&
+            current.loopSurahIds == surahIds &&
+            current.settings.reciterId == reciterId
+        ) {
+            start()
+        }
+    }
+
+    private suspend fun refreshLoopCached() {
+        val state = mutableUiState.value
+        val cached = computeLoopCached(state.loopSurahIds, state.settings.reciterId)
+        mutableUiState.update {
+            if (it.loopSurahIds == state.loopSurahIds && it.settings.reciterId == state.settings.reciterId) {
+                it.copy(isLoopCached = cached)
+            } else {
+                it
+            }
+        }
+    }
+
+    private suspend fun computeLoopCached(surahIds: List<Int>, reciterId: Int): Boolean =
+        withContext(Dispatchers.IO) {
+            surahIds.isNotEmpty() && runCatching {
+                quranRepository.playbackAudioForSurahs(surahIds, reciterId)
+                    .all { audioCacheRepository.isCached(it) }
+            }.getOrDefault(false)
+        }
 
     private fun stopIfSessionStarted() {
         when (mutableUiState.value.sessionState) {

@@ -91,9 +91,10 @@ internal fun DownloadManagerCard(
     } else {
         0f
     }
+    val selectionCached = state.isPlaybackSetCached
     val selectedStatus = when {
         isDownloading -> "İndiriliyor"
-        state.isSelectedSurahCached -> "Cihazda hazır"
+        selectionCached -> "Cihazda hazır"
         else -> "İndirilecek"
     }
     val allCached = totalSurahs > 0 && state.cachedSurahCount >= totalSurahs
@@ -117,12 +118,16 @@ internal fun DownloadManagerCard(
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     Text(
-                        text = "Seçili sure",
+                        text = if (state.isLoopMode) "Tekrar listesi" else "Seçili sure",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = state.selectedSurah?.name ?: "Sure",
+                        text = if (state.isLoopMode) {
+                            "${state.loopSurahIds.size} sure"
+                        } else {
+                            state.selectedSurah?.name ?: "Sure"
+                        },
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
@@ -132,7 +137,7 @@ internal fun DownloadManagerCard(
 
                 Surface(
                     shape = RoundedCornerShape(8.dp),
-                    color = if (state.isSelectedSurahCached) {
+                    color = if (selectionCached) {
                         MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.75f)
                     } else {
                         MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
@@ -142,7 +147,7 @@ internal fun DownloadManagerCard(
                         text = selectedStatus,
                         style = MaterialTheme.typography.labelSmall,
                         fontWeight = FontWeight.Bold,
-                        color = if (state.isSelectedSurahCached) {
+                        color = if (selectionCached) {
                             MaterialTheme.colorScheme.onPrimaryContainer
                         } else {
                             MaterialTheme.colorScheme.onSecondaryContainer
@@ -190,10 +195,16 @@ internal fun DownloadManagerCard(
             ) {
                 TextButton(
                     onClick = onDownloadSelected,
-                    enabled = !isDownloading && !state.isSelectedSurahCached && state.selectedSurah != null,
+                    enabled = !isDownloading && !selectionCached &&
+                        if (state.isLoopMode) state.loopSurahIds.isNotEmpty() else state.selectedSurah != null,
                 ) {
                     Text(
-                        text = if (state.isSelectedSurahCached) "Seçili sure hazır" else "Seçili sureyi indir",
+                        text = when {
+                            state.isLoopMode && selectionCached -> "Liste hazır"
+                            state.isLoopMode -> "Listeyi indir"
+                            selectionCached -> "Seçili sure hazır"
+                            else -> "Seçili sureyi indir"
+                        },
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
