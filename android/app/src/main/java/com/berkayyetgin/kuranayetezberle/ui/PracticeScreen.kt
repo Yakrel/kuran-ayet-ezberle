@@ -60,6 +60,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material3.Button
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Checkbox
@@ -1941,6 +1942,17 @@ private fun SurahSelectionSheet(
                             }
                         }
                     }
+                }
+            }
+
+            if (isLoopMode) {
+                Button(
+                    onClick = onDismiss,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp),
+                ) {
+                    Text(if (loopSurahs.isEmpty()) "Kapat" else "Tamam • ${loopSurahs.size} sure")
                 }
             }
         }
