@@ -103,4 +103,17 @@ class QuranRepository @Inject constructor(
             }
         }
     }
+
+    /** Resolves full-surah playback audio for each of [surahIds], preserving their order. */
+    suspend fun playbackAudioForSurahs(surahIds: List<Int>, reciterId: Int): List<PlaybackAudio> {
+        val verseCounts = surahs().associate { it.id to it.verseCount }
+        return surahIds.map { surahId ->
+            playbackAudioForRange(
+                surahId = surahId,
+                startAyah = 1,
+                endAyah = checkNotNull(verseCounts[surahId]) { "Unsupported data: missing surah $surahId" },
+                reciterId = reciterId,
+            )
+        }
+    }
 }

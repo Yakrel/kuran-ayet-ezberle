@@ -29,6 +29,8 @@ data class AppSettings(
     val lastStartAyah: Int = 1,
     val lastEndAyah: Int = 7,
     val lastActiveAyah: Int? = null,
+    val surahLoopEnabled: Boolean = false,
+    val surahLoopIds: List<Int> = emptyList(),
 )
 
 class SettingsRepository @Inject constructor(
@@ -53,6 +55,8 @@ class SettingsRepository @Inject constructor(
             lastStartAyah = startAyah,
             lastEndAyah = (preferences[Keys.lastEndAyah] ?: 7).coerceAtLeast(startAyah),
             lastActiveAyah = preferences[Keys.lastActiveAyah]?.takeIf { it >= 1 },
+            surahLoopEnabled = preferences[Keys.surahLoopEnabled] ?: false,
+            surahLoopIds = parseSurahIds(preferences[Keys.surahLoopIds]),
         )
     }
 
@@ -65,6 +69,11 @@ class SettingsRepository @Inject constructor(
         } else {
             it.remove(Keys.lastActiveAyah)
         }
+    }
+
+    suspend fun saveSurahLoop(enabled: Boolean, surahIds: List<Int>) = context.dataStore.edit {
+        it[Keys.surahLoopEnabled] = enabled
+        it[Keys.surahLoopIds] = surahIds.joinToString(",")
     }
 
     suspend fun setRepeatCount(value: Int) = context.dataStore.edit { it[Keys.repeatCount] = value }
@@ -95,5 +104,14 @@ class SettingsRepository @Inject constructor(
         val lastStartAyah = intPreferencesKey("last_start_ayah")
         val lastEndAyah = intPreferencesKey("last_end_ayah")
         val lastActiveAyah = intPreferencesKey("last_active_ayah")
+        val surahLoopEnabled = booleanPreferencesKey("surah_loop_enabled")
+        val surahLoopIds = stringPreferencesKey("surah_loop_ids")
     }
 }
+
+/** Decodes the comma-separated surah id list, dropping malformed, out-of-range and repeated ids. */
+internal fun parseSurahIds(raw: String?): List<Int> =
+    raw.orEmpty().split(',')
+        .mapNotNull { it.trim().toIntOrNull() }
+        .filter { it in 1..114 }
+        .distinct()
