@@ -116,6 +116,16 @@ jobs:
             --title "Kur'an Ayet Ezberle v$VERSION" \
             --notes "İmzalı Android uygulaması v$VERSION. Uygulama içi güncelleme SHA-256 ile doğrulanır."
 
+      # Only vX.Y.Z releases are pruned; the app-update and latest-audio releases are data channels and stay.
+      # Tags are kept, so a version number cannot be reused by accident.
+      - name: Delete old version releases (keep 2)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --limit 100 --json tagName --jq '.[].tagName | select(test("^v[0-9]"))' |
+            tail -n +3 |
+            while read -r tag; do gh release delete "$tag" --yes; done
+
       - name: Publish update manifest
         env:
           GH_TOKEN: ${{ github.token }}
